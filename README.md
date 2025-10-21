@@ -1,4 +1,4 @@
-# Understanding and controlling the dendrites through phase field method and generative AI
+# Understanding and controlling the battery dendrites through phase field method and generative AI
 
 
 # Phase Field Method 
