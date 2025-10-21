@@ -10,7 +10,7 @@
 (The description of the codes related to AI model development and optimization will be provided here)
 
 
-# Authors (of this repository):
+# Authors of this repository :
 
 1. Anil Kunwar 
 
