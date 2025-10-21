@@ -22,4 +22,5 @@
 How to cite this work: 
 
 If you use the data and codes of this repository in your work, please cite this work:
-H. Tang et al. (2025), Latent space exploration to decode the physics of interfacial dendrites in lithium ion batteries, Unpublished work (Work in Progress)
+
+# H. Tang et al. (2025), Latent space exploration to decode the physics of interfacial dendrites in lithium ion batteries, Unpublished work (Work in Progress)
