@@ -7,9 +7,9 @@
 # ===== Config =====
 INPUT_DIR="generated_inputs"
 LOG_DIR="logs"
-MOOSE_EXEC="/home/xtanghao/MooseProject/newt"
+MOOSE_EXEC="/home/xtanghao/MooseProject/newt/newt-opt"
 NPROC_PER_JOB=4
-MAX_PARALLEL=6
+MAX_PARALLEL=4
 
 # =========================
 

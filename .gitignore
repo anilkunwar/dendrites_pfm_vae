@@ -1,6 +1,7 @@
 **/csv_files/*.csv
 **/npy_files/
 *.json
+*.i
 figs/
 *.pth
 *.idea/
