@@ -84,6 +84,6 @@ def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
 
 if __name__ == '__main__':
 
-    makeDataset("sim_0/")
-    makeDataset("sim_1/")
-    makeDataset("sim_2/")
+    makeDataset("data/case_000/")
+    # makeDataset("sim_1/")
+    # makeDataset("sim_2/")

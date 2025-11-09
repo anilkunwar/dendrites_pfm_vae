@@ -22,13 +22,13 @@ def main(args):
 
     ts = time.time()
 
-    dataset1 = DendritePFMDataset(args.image_size, "Data/sim_0/dataset_split.json", split="train",
-                                 meta_path="Data/sim_0_meta.csv")
-    dataset2 = DendritePFMDataset(args.image_size, "Data/sim_1/dataset_split.json", split="train",
-                                 meta_path="Data/sim_1_meta.csv")
-    dataset3 = DendritePFMDataset(args.image_size, "Data/sim_2/dataset_split.json", split="train",
-                                 meta_path="Data/sim_2_meta.csv")
-    dataset = ConcatDataset([dataset1, dataset2, dataset3])
+    dataset1 = DendritePFMDataset(args.image_size, "data/sim_0/dataset_split.json", split="train",
+                                 meta_path="data/sim_0_meta.csv")
+    # dataset2 = DendritePFMDataset(args.image_size, "data/sim_1/dataset_split.json", split="train",
+    #                              meta_path="data/sim_1_meta.csv")
+    # dataset3 = DendritePFMDataset(args.image_size, "data/sim_2/dataset_split.json", split="train",
+    #                              meta_path="data/sim_2_meta.csv")
+    dataset = ConcatDataset([dataset1])
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=True)
 
     def loss_fn(recon_x, x, mean, log_var):
