@@ -21,6 +21,7 @@ class DendritePFMDataset(Dataset):
 
         assert split in splits
         self.files = splits[split]
+        self.dataset_id = os.path.basename(os.path.dirname(json_path))
 
         image_size = (image_size[1], image_size[2])
         self.resize = transforms.Resize(image_size)
@@ -50,4 +51,4 @@ class DendritePFMDataset(Dataset):
         c = [name_id]
         c += self.meta
 
-        return tensor.to(self.device), torch.tensor(c, dtype=torch.float32)
+        return tensor.to(self.device), torch.tensor(c, dtype=torch.float32), self.dataset_id
