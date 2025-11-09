@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Author: Hao Tang (Nov 2025)
-# Purpose: Generate randomized MOOSE input files from a template with placeholders like $factorL
+# Purpose: Generate randomized MOOSE input files from a template with placeholders like $ko
 
 import random
 import json
 from pathlib import Path
 
-# ====== 1️⃣ 用户配置 ======
-
-# 模板文件路径
+# template file
 TEMPLATE_FILE = "template.i"
 
-# 输出目录
+# output path
 OUTPUT_DIR = Path("MooseProject/generated_inputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# 参数范围设置：参数名 -> (min, max)
+# param range -> (min, max)
 PARAM_RANGES = {
     "POT_LEFT": (-0.5, -0.2),
     # "flo": (1e-3, 1e-1),
@@ -38,14 +36,13 @@ PARAM_RANGES = {
     "Noise": (5e-4, 5e-3)
 }
 
-# 生成文件数量
+# results num
 NUM_CASES = 100
 
-
-# ====== 2️⃣ 生成并替换 ======
+# ====== 2️⃣ generate and replace ======
 
 def generate_case(template_text: str, param_ranges: dict):
-    """生成一组随机参数并替换模板"""
+    """generate with template"""
     values = {}
     new_text = template_text
     for name, (low, high) in param_ranges.items():
@@ -55,7 +52,7 @@ def generate_case(template_text: str, param_ranges: dict):
     return new_text, values
 
 
-# ====== 3️⃣ 主函数 ======
+# ====== 3️⃣ main ======
 
 def main():
     template = Path(TEMPLATE_FILE).read_text()
@@ -65,16 +62,16 @@ def main():
         new_text, params = generate_case(template, PARAM_RANGES)
         new_text = new_text.replace("$CASE", f"case_{i:03d}")
 
-        # 保存 .i 文件
+        # save .i file
         i_file = OUTPUT_DIR / f"{case_name}.i"
         i_file.write_text(new_text)
 
-        # 保存对应 JSON 文件
+        # save JSON file
         json_file = OUTPUT_DIR / f"{case_name}.json"
         with open(json_file, "w") as f:
             json.dump(params, f, indent=2)
 
-        # 控制台输出
+        # console output
         print(f"[+] Generated {case_name}.i and {case_name}.json")
         for k, v in params.items():
             print(f"    {k:10s} = {v:.4e}")
