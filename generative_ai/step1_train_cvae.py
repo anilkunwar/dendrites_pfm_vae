@@ -22,8 +22,8 @@ def main(args):
 
     ts = time.time()
 
-    dataset1 = DendritePFMDataset(args.image_size, "data/sim_0/dataset_split.json", split="train",
-                                 meta_path="data/sim_0_meta.csv")
+    dataset1 = DendritePFMDataset(args.image_size, "data/case_000/dataset_split.json", split="train",
+                                 meta_path="data/case_000/case_000.json")
     # dataset2 = DendritePFMDataset(args.image_size, "data/sim_1/dataset_split.json", split="train",
     #                              meta_path="data/sim_1_meta.csv")
     # dataset3 = DendritePFMDataset(args.image_size, "data/sim_2/dataset_split.json", split="train",
@@ -82,7 +82,7 @@ def main(args):
                     epoch, args.epochs, iteration, len(data_loader)-1, loss.item()))
 
                 if args.conditional:
-                    c = torch.randn(6, args.num_params).to(device) # g
+                    c = torch.randn(6, args.num_params+1).to(device) # g
                     z = torch.randn([c.size(0), args.latent_size]).to(device)
                     x = vae.inference(z, c=c)
                 else:
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument("--image_size", type=tuple, default=(3, 28, 28))
     parser.add_argument("--hidden_dimension", type=tuple, default=256)
     parser.add_argument("--latent_size", type=int, default=2)
-    parser.add_argument("--num_params", type=int, default=4)    # another param is t
+    parser.add_argument("--num_params", type=int, default=14)    # another param is t
     parser.add_argument("--print_every", type=int, default=100)
     parser.add_argument("--fig_root", type=str, default='figs')
     parser.add_argument("--conditional", type=bool, default=True)

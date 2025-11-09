@@ -17,7 +17,7 @@ class DendritePFMDataset(Dataset):
         with open(json_path, "r", encoding="utf-8") as f:
             splits = json.load(f)
         with open(meta_path, "r", encoding="utf-8") as f:
-            meta = f.readline()
+            meta = json.load(f)
 
         assert split in splits
         self.files = splits[split]
@@ -26,7 +26,7 @@ class DendritePFMDataset(Dataset):
         self.resize = transforms.Resize(image_size)
         self.transform = transform
 
-        self.meta = [float(e) for e in meta.strip().split(" ")]
+        self.meta = list(meta.values())
         self.device = device
 
     def __len__(self):

@@ -22,9 +22,9 @@ class VAE(nn.Module):
         self.latent_size = latent_size
 
         self.encoder = Encoder(
-            [self.image_size_flatten, hidden_dimension], latent_size, conditional, num_params)
+            [self.image_size_flatten, hidden_dimension], latent_size, conditional, num_params+1)
         self.decoder = Decoder(
-            [hidden_dimension, self.image_size_flatten], latent_size, conditional, num_params)
+            [hidden_dimension, self.image_size_flatten], latent_size, conditional, num_params+1)
 
     def forward(self, x, c=None):
 
