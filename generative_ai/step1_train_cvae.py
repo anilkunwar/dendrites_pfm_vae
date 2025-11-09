@@ -59,7 +59,7 @@ def main(args):
         tracker_epoch = defaultdict(lambda: defaultdict(dict))
 
         vae.train()
-        for iteration, (x, y) in enumerate(train_dataloader):
+        for iteration, (x, y, did) in enumerate(train_dataloader):
 
             # image and control variables
             x, y = x.to(device), y.to(device)
@@ -73,8 +73,8 @@ def main(args):
                 id = len(tracker_epoch)
                 tracker_epoch[id]['x'] = z[i, 0].item()
                 tracker_epoch[id]['y'] = z[i, 1].item()
-                tracker_epoch[id]['params'] = yi
-                tracker_epoch[id]['label'] = yi[0].item()
+                tracker_epoch[id]['did'] = did[i]
+                tracker_epoch[id]['label'] = f"t={yi[0].item()} did={did[i]}"   # label for each sample
 
             loss = loss_fn(recon_x, x, mean, log_var)
 
@@ -90,7 +90,7 @@ def main(args):
 
         # evaluate
         vae.eval()
-        for iteration, (x, y) in enumerate(valid_dataloader):
+        for iteration, (x, y, did) in enumerate(valid_dataloader):
 
             # image and control variables
             x, y = x.to(device), y.to(device)
@@ -107,13 +107,12 @@ def main(args):
                 print("Epoch {:02d}/{:02d} Batch {:04d}/{:d}, Valid Loss {:9.4f}".format(
                     epoch, args.epochs, iteration, len(valid_dataset)-1, loss.item()))
 
-            plt.figure()
             plt.figure(figsize=(5, 10))
             for p in range(min(9, recon_x.shape[0])):
                 plt.subplot(3, 3, p+1)
                 if args.conditional:
                     plt.text(
-                        0, 0, f"c={y[p][0].item()}", color='black',
+                        0, 0, f"t={y[p][0].item()}_did={did[p]}", color='black',
                         backgroundcolor='white', fontsize=8)
                 plt.imshow(recon_x[p].view(args.image_size).cpu().data.numpy().transpose(1, 2, 0))
                 plt.axis('off')
@@ -130,10 +129,23 @@ def main(args):
             plt.clf()
             plt.close('all')
 
+        # select 100 samples for each simulation
         df = pd.DataFrame.from_dict(tracker_epoch, orient='index')
+        # build platte
+        df['group'] = df['label'].str.split(' ').str[1]
+        main_colors = sns.color_palette('tab10', n_colors=df['group'].nunique())
+        palette = {}
+        for color, g in zip(main_colors, df['group'].unique()):
+            # 给每个小类分配同色系的不同亮度
+            shades = sns.light_palette(color, n_colors=sum(df['group'] == g) + 1)[1:]
+            sublabels = df[df['group'] == g]['label'].unique()
+            for s, c in zip(sublabels, shades):
+                palette[s] = c
+        # plot result
         g = sns.lmplot(
-            x='x', y='y', hue='label', data=df.groupby('label').head(100),
-            fit_reg=False, legend=True)
+            x='x', y='y', hue='label', data=df,
+            fit_reg=False, legend=True, palette=palette
+        )
         g.savefig(os.path.join(
             args.fig_root, str(ts), "E{:d}-Dist.png".format(epoch)),
             dpi=300)
@@ -146,6 +158,7 @@ def main(args):
     plt.savefig(os.path.join(
             args.fig_root, str(ts), "train_loss.png"), dpi=300, bbox_inches='tight')
     plt.show()
+
     plt.figure()
     plt.plot(list(range(1, len(logs["valid_loss"]) + 1)), logs["valid_loss"], marker='o', color='b', label='y = x^2')
     plt.xlabel("Epoch")
@@ -165,11 +178,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=0.001)
-    parser.add_argument("--image_size", type=tuple, default=(3, 28, 28))
-    parser.add_argument("--hidden_dimension", type=tuple, default=256)
-    parser.add_argument("--latent_size", type=int, default=2)
+    parser.add_argument("--image_size", type=tuple, default=(3, 51, 51))
+    parser.add_argument("--hidden_dimension", type=tuple, default=1024)
+    parser.add_argument("--latent_size", type=int, default=32)
     parser.add_argument("--num_params", type=int, default=14)    # another param is t
     parser.add_argument("--print_every", type=int, default=100)
     parser.add_argument("--fig_root", type=str, default='figs')

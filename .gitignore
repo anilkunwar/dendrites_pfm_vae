@@ -4,5 +4,6 @@ phase_field_model/MooseProject/logs
 phase_field_model/MooseProject/generated_inputs
 phase_field_model/MooseProject/results
 generative_ai/data/
-generative_ai/figs
+generative_ai/figs/
+generative_ai/ckpt/
 tmp/
