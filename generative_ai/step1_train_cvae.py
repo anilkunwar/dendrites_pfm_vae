@@ -22,14 +22,19 @@ def main(args):
 
     ts = time.time()
 
-    dataset1 = DendritePFMDataset(args.image_size, "data/case_000/dataset_split.json", split="train",
-                                 meta_path="data/case_000/case_000.json")
-    # dataset2 = DendritePFMDataset(args.image_size, "data/sim_1/dataset_split.json", split="train",
-    #                              meta_path="data/sim_1_meta.csv")
-    # dataset3 = DendritePFMDataset(args.image_size, "data/sim_2/dataset_split.json", split="train",
-    #                              meta_path="data/sim_2_meta.csv")
-    dataset = ConcatDataset([dataset1])
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=True)
+    tdatasets = []
+    vdatasets = []
+    for dpath in os.listdir("data"):
+        td = DendritePFMDataset(args.image_size, os.path.join("data", dpath, "dataset_split.json"), split="train",
+                                 meta_path=os.path.join("data", dpath, f"{dpath}.json"))
+        vd = DendritePFMDataset(args.image_size, os.path.join("data", dpath, "dataset_split.json"), split="val",
+                                meta_path=os.path.join("data", dpath, f"{dpath}.json"))
+        tdatasets.append(td)
+        vdatasets.append(vd)
+    train_dataset = ConcatDataset(tdatasets)
+    valid_dataset = ConcatDataset(vdatasets)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
+    valid_dataloader = DataLoader(dataset=valid_dataset, batch_size=args.batch_size, shuffle=True)
 
     def loss_fn(recon_x, x, mean, log_var):
         BCE = torch.nn.functional.binary_cross_entropy_with_logits(
@@ -53,8 +58,10 @@ def main(args):
 
         tracker_epoch = defaultdict(lambda: defaultdict(dict))
 
-        for iteration, (x, y) in enumerate(data_loader):
+        vae.train()
+        for iteration, (x, y) in enumerate(train_dataloader):
 
+            # image and control variables
             x, y = x.to(device), y.to(device)
 
             if args.conditional:
@@ -67,7 +74,7 @@ def main(args):
                 tracker_epoch[id]['x'] = z[i, 0].item()
                 tracker_epoch[id]['y'] = z[i, 1].item()
                 tracker_epoch[id]['params'] = yi
-                tracker_epoch[id]['label'] = f"c={yi[1:].sum().item():.2f}_{yi[0].item():.2f}"
+                tracker_epoch[id]['label'] = yi[0].item()
 
             loss = loss_fn(recon_x, x, mean, log_var)
 
@@ -75,42 +82,53 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            logs['loss'].append(loss.item())
+            logs['train_loss'].append(loss.item())
 
-            if iteration % args.print_every == 0 or iteration == len(data_loader)-1:
-                print("Epoch {:02d}/{:02d} Batch {:04d}/{:d}, Loss {:9.4f}".format(
-                    epoch, args.epochs, iteration, len(data_loader)-1, loss.item()))
+            if iteration % args.print_every == 0 or iteration == len(train_dataloader)-1:
+                print("Epoch {:02d}/{:02d} Batch {:04d}/{:d}, Train Loss {:9.4f}".format(
+                    epoch, args.epochs, iteration, len(train_dataloader)-1, loss.item()))
 
+        # evaluate
+        vae.eval()
+        for iteration, (x, y) in enumerate(valid_dataloader):
+
+            # image and control variables
+            x, y = x.to(device), y.to(device)
+
+            if args.conditional:
+                recon_x, mean, log_var, z = vae(x, y)
+            else:
+                recon_x, mean, log_var, z = vae(x)
+
+            loss = loss_fn(recon_x, x, mean, log_var)
+            logs['valid_loss'].append(loss.item())
+
+            if iteration % args.print_every == 0 or iteration == len(train_dataloader)-1:
+                print("Epoch {:02d}/{:02d} Batch {:04d}/{:d}, Valid Loss {:9.4f}".format(
+                    epoch, args.epochs, iteration, len(valid_dataset)-1, loss.item()))
+
+            plt.figure()
+            plt.figure(figsize=(5, 10))
+            for p in range(min(9, recon_x.shape[0])):
+                plt.subplot(3, 3, p+1)
                 if args.conditional:
-                    c = torch.randn(6, args.num_params+1).to(device) # g
-                    z = torch.randn([c.size(0), args.latent_size]).to(device)
-                    x = vae.inference(z, c=c)
-                else:
-                    z = torch.randn([6, args.latent_size]).to(device)
-                    x = vae.inference(z)
+                    plt.text(
+                        0, 0, f"c={y[p][0].item()}", color='black',
+                        backgroundcolor='white', fontsize=8)
+                plt.imshow(recon_x[p].view(args.image_size).cpu().data.numpy().transpose(1, 2, 0))
+                plt.axis('off')
 
-                plt.figure()
-                plt.figure(figsize=(5, 10))
-                for p in range(6):
-                    plt.subplot(3, 2, p+1)
-                    if args.conditional:
-                        plt.text(
-                            0, 0, f"c={c[p][1:].sum().item():.2f}_{c[p][0].item():.2f}", color='black',
-                            backgroundcolor='white', fontsize=8)
-                    plt.imshow(x[p].view(args.image_size).cpu().data.numpy().transpose(1, 2, 0))
-                    plt.axis('off')
+            if not os.path.exists(os.path.join(args.fig_root, str(ts))):
+                if not(os.path.exists(os.path.join(args.fig_root))):
+                    os.mkdir(os.path.join(args.fig_root))
+                os.mkdir(os.path.join(args.fig_root, str(ts)))
 
-                if not os.path.exists(os.path.join(args.fig_root, str(ts))):
-                    if not(os.path.exists(os.path.join(args.fig_root))):
-                        os.mkdir(os.path.join(args.fig_root))
-                    os.mkdir(os.path.join(args.fig_root, str(ts)))
-
-                plt.savefig(
-                    os.path.join(args.fig_root, str(ts),
-                                 "E{:d}I{:d}.png".format(epoch, iteration)),
-                    dpi=300)
-                plt.clf()
-                plt.close('all')
+            plt.savefig(
+                os.path.join(args.fig_root, str(ts),
+                             "E{:d}I{:d}.png".format(epoch, iteration)),
+                dpi=300)
+            plt.clf()
+            plt.close('all')
 
         df = pd.DataFrame.from_dict(tracker_epoch, orient='index')
         g = sns.lmplot(
@@ -121,11 +139,19 @@ def main(args):
             dpi=300)
 
     # show loss
-    plt.plot(list(range(1, len(logs["loss"])+1)), logs["loss"], marker='o', color='b', label='y = x^2')
+    plt.figure()
+    plt.plot(list(range(1, len(logs["train_loss"])+1)), logs["train_loss"], marker='o', color='b', label='y = x^2')
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.savefig(os.path.join(
-            args.fig_root, str(ts), "loss.png"), dpi=300, bbox_inches='tight')
+            args.fig_root, str(ts), "train_loss.png"), dpi=300, bbox_inches='tight')
+    plt.show()
+    plt.figure()
+    plt.plot(list(range(1, len(logs["valid_loss"]) + 1)), logs["valid_loss"], marker='o', color='b', label='y = x^2')
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.savefig(os.path.join(
+        args.fig_root, str(ts), "valid_loss.png"), dpi=300, bbox_inches='tight')
     plt.show()
 
     # save model
