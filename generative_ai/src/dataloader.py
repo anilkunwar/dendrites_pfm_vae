@@ -52,3 +52,30 @@ class DendritePFMDataset(Dataset):
         c += self.meta
 
         return tensor.to(self.device), torch.tensor(c, dtype=torch.float32), self.dataset_id
+
+    def showSample(self):
+        import matplotlib.pyplot as plt
+        import random
+        path = random.choice(self.files)
+        arr = np.load(path)  # shape (H, W, 3)
+
+        plt.figure(figsize=(16, 16))
+        plt.imshow(arr[..., 0])
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+        plt.margins(0, 0)
+        plt.axis('off')
+        plt.show()
+
+        plt.figure(figsize=(16, 16))
+        plt.imshow(arr[..., 1])
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+        plt.margins(0, 0)
+        plt.axis('off')
+        plt.show()
+
+        plt.figure(figsize=(16, 16))
+        plt.imshow(arr[..., 2])
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+        plt.margins(0, 0)
+        plt.axis('off')
+        plt.show()
