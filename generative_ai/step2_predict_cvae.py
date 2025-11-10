@@ -30,13 +30,7 @@ def main(args):
     test_dataset = ConcatDataset(tdatasets)
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=True)
 
-    vae = VAE(
-        image_size=args.image_size,
-        latent_size=args.latent_size,
-        hidden_dimension=args.hidden_dimension,
-        conditional=args.conditional,
-        num_params=args.num_params if args.conditional else 0).to(device)
-    vae.load_state_dict(torch.load(os.path.join("ckpt", "CVAE.pth" if args.conditional else "VAE.ckpt")))
+    vae = torch.load(os.path.join("ckpt", "CVAE.pth" if args.conditional else "VAE.ckpt"))
 
     if not os.path.exists(args.save_fig_path):
         os.makedirs(args.save_fig_path)
@@ -114,9 +108,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--image_size", type=tuple, default=(3, 51, 51))
-    parser.add_argument("--hidden_dimension", type=int, default=1024)
-    parser.add_argument("--latent_size", type=int, default=32)
-    parser.add_argument("--num_params", type=int, default=14)    # another param is t
     parser.add_argument("--conditional", type=bool, default=True)
     parser.add_argument("--save_fig_path", type=str, default='test_figs')
 

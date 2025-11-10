@@ -15,7 +15,7 @@ def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
         os.makedirs(path_save_npy)
 
     sim_no = os.path.basename(path_sim)  # Simulation No
-    csv_files = natsorted(glob.glob(path_sim + 'csv_files/*.csv'))  # Importing csv files of simulation naturally sorted
+    csv_files = natsorted(glob.glob(path_sim + '/csv_files/*.csv'))  # Importing csv files of simulation naturally sorted
 
     filenames = []  # List of lists of compositions for all coordinate points for all time step
     for idx, file in enumerate(csv_files):  # Looping for all csv files (total csv files = number of time steps)
@@ -39,7 +39,7 @@ def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
             data[i, j, 2] = row["pot"]
 
         # save as npy files
-        save_path = os.path.join(os.path.abspath(path_save_npy), f"{idx}.npy")
+        save_path = os.path.join(os.path.abspath(path_save_npy), f"{row['Time']}.npy")
         np.save(save_path, data)
         filenames.append(save_path)
 
@@ -84,6 +84,5 @@ def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
 
 if __name__ == '__main__':
 
-    makeDataset("data/case_000/")
-    makeDataset("data/case_001/")
-    # makeDataset("sim_2/")
+    for n in os.listdir("data"):
+        makeDataset(os.path.join("data", n), train_ratio=0.8, val_ratio=0.1)
