@@ -6,4 +6,5 @@ phase_field_model/MooseProject/results
 generative_ai/data/
 generative_ai/figs/
 generative_ai/ckpt/
+generative_ai/test_figs/
 tmp/
