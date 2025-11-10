@@ -218,7 +218,8 @@ if __name__ == '__main__':
     save_images = False
 
     data_root = "data/"
-    for vn in os.listdir(data_root):
+    # for vn in os.listdir(data_root):
+    for vn in ["case_004"]:
         main_file = glob.glob(os.path.join(data_root, vn, "exodus_files", "*.e"))[0]
         export_all_variables(
             base_exodus_file=main_file,

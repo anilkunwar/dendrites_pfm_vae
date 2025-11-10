@@ -8,94 +8,45 @@ import argparse
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from scipy import fftpack
+from scipy.ndimage import filters
+from skimage.restoration import denoise_bilateral
 from sklearn.decomposition import PCA
+from torch import nn
 from torch.utils.data import DataLoader, ConcatDataset
 from collections import defaultdict
 
 from src.dataloader import DendritePFMDataset
 from src.models import VAE
 
-from skimage.restoration import denoise_bilateral
-from skimage import filters
-from scipy import fftpack
 
-def loss_fn(recon_x, x, mean, log_var, use_fft_loss=False, w_phys=0.1):
-    """
-    Physics-driven VAE loss supporting 3-channel independent images.
+class Loss(nn.Module):
 
-    Parameters
-    ----------
-    recon_x : torch.Tensor
-        Decoder output, shape (B, 3, H, W)
-    x : torch.Tensor
-        Ground-truth input, shape (B, 3, H, W)
-    mean : torch.Tensor
-        Encoder mean (B, latent_dim)
-    log_var : torch.Tensor
-        Encoder log-variance (B, latent_dim)
-    use_fft_loss : bool
-        Whether to include the FFT-based physical loss (SL₂)
-    w_phys : float
-        Weight (slack) for the physical loss Ψ, 0 ≤ w ≤ 0.5
+    def __init__(self, device="cuda"):
+        super(Loss, self).__init__()
 
-    Returns
-    -------
-    total_loss, recon_loss, kl_loss, phys_loss
-    """
+        self.kernel_grady = torch.tensor([[[[1.], [-1.]]], [[[1.], [-1.]]]] * 3).to(device)
+        self.kernel_gradx = torch.tensor([[[[1., -1.]]], [[[1., -1.]]]] * 3).to(device)
 
-    # -----------------------------
-    # 1. Reconstruction loss (independent per channel)
-    # -----------------------------
-    recon_loss = 0
-    for c in range(3):
-        recon_loss += F.mse_loss(recon_x[:, c, :, :],
-                                 x[:, c, :, :],
-                                 reduction="sum")
-    recon_loss /= 3.0
+    def grad_loss(self, input, target):
 
-    # -----------------------------
-    # 2. KL divergence loss
-    # -----------------------------
-    kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
+        input_rectangles_h = F.conv2d(input, self.kernel_grady, padding=0, groups=3)
+        target_rectangles_h = F.conv2d(target, self.kernel_grady, padding=0, groups=3)
+        input_arget_rectangles_h = F.l1_loss(input_rectangles_h, target_rectangles_h)
+        input_rectangles_o = F.conv2d(input, self.kernel_gradx, padding=0, groups=3)
+        target_rectangles_o = F.conv2d(target, self.kernel_gradx, padding=0, groups=3)
+        input_arget_rectangles_o = F.l1_loss(input_rectangles_o, target_rectangles_o)
+        loss_rectangles = input_arget_rectangles_h + input_arget_rectangles_o
 
-    # -----------------------------
-    # 3. Physics-driven loss Ψ
-    # -----------------------------
-    phys_loss = 0.0
-    with torch.no_grad():  # 不反传梯度，仅作正则项
-        batch_np = x.detach().cpu().numpy()
-        for b in range(batch_np.shape[0]):
-            for c in range(3):
-                img = batch_np[b, c]
-                # 归一化
-                img = (img - img.min()) / (img.max() - img.min() + 1e-8)
-                # 去噪
-                img_dn = denoise_bilateral(img, sigma_color=None, sigma_spatial=5)
-                if not use_fft_loss:
-                    # ---------- SL₁：Scharr 边缘总和 ----------
-                    emag = filters.scharr(img_dn)
-                    phys_loss += np.sum(emag)
-                else:
-                    # ---------- SL₂：FFT 中心峰外强度比 ----------
-                    Fimg = fftpack.fft2(img_dn)
-                    Fimg_shift = fftpack.fftshift(Fimg)
-                    Flog = np.log(np.abs(Fimg_shift) + 1)
-                    total_int = np.sum(Flog)
-                    h, w = Flog.shape
-                    cx, cy = h // 2, w // 2
-                    a = 1
-                    central_peak = np.sum(
-                        Flog[cx-a:cx+a, cy-a:cy+a])
-                    outer_int = total_int - central_peak
-                    phys_loss += outer_int / (total_int + 1e-8)
-        phys_loss /= (batch_np.shape[0] * 3)
+        return loss_rectangles
 
-    # -----------------------------
-    # 4. 组合总损失  L_phy-VAE = (φ + D_KL) × (w + Ψ)
-    # -----------------------------
-    total_loss = (recon_loss + kl_loss) * (1.0 + w_phys * phys_loss)
+    def forward(self, recon_x, x, mean, log_var):
 
-    return total_loss, recon_loss + kl_loss, torch.tensor(phys_loss)
+        recon_loss = F.mse_loss(recon_x, x, reduction='mean')
+        kl_loss = -0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp())
+        g_loss = self.grad_loss(recon_x, x)
+
+        return recon_loss + kl_loss + g_loss, kl_loss+recon_loss, g_loss
 
 def main(args):
 
@@ -128,6 +79,7 @@ def main(args):
         conditional=args.conditional,
         num_params=args.num_params if args.conditional else 0).to(device)
 
+    loss_fn = Loss()
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
 
     logs = defaultdict(list)
@@ -268,7 +220,7 @@ if __name__ == '__main__':
     parser.add_argument("--learning_rate", type=float, default=0.001)
     parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
     parser.add_argument("--hidden_dimension", type=int, default=512)
-    parser.add_argument("--latent_size", type=int, default=32)
+    parser.add_argument("--latent_size", type=int, default=4)
     parser.add_argument("--num_params", type=int, default=14)    # another param is t
     parser.add_argument("--print_every", type=int, default=100)
     parser.add_argument("--fig_root", type=str, default='figs')

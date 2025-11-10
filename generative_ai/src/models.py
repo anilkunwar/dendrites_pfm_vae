@@ -104,8 +104,8 @@ class Decoder(nn.Module):
                 name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
             if i+1 < len(layer_sizes):
                 self.MLP.add_module(name="A{:d}".format(i), module=nn.ReLU())
-            # else:
-            #     self.MLP.add_module(name="sigmoid", module=nn.Sigmoid())
+            else:
+                self.MLP.add_module(name="activation", module=nn.Hardtanh(-5, 5))
 
     def forward(self, z, c):
 

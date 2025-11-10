@@ -38,6 +38,8 @@ class DendritePFMDataset(Dataset):
         path = self.files[idx]
         arr = np.load(path)  # shape (H, W, 3)
 
+        assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
+
         tensor = torch.from_numpy(arr).float().permute(2, 0, 1)  # -> (3, H, W)
         tensor = self.resize(tensor)
 

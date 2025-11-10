@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader, ConcatDataset
 from collections import defaultdict
 
 from src.dataloader import DendritePFMDataset
-from src.models import VAE
 
 def main(args):
 
@@ -30,7 +29,7 @@ def main(args):
     test_dataset = ConcatDataset(tdatasets)
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=True)
 
-    vae = torch.load(os.path.join("ckpt", "CVAE.pth" if args.conditional else "VAE.ckpt"))
+    vae = torch.load(os.path.join("ckpt", "CVAE.ckpt" if args.conditional else "VAE.ckpt"))
 
     if not os.path.exists(args.save_fig_path):
         os.makedirs(args.save_fig_path)
@@ -107,7 +106,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--image_size", type=tuple, default=(3, 51, 51))
+    parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
     parser.add_argument("--conditional", type=bool, default=True)
     parser.add_argument("--save_fig_path", type=str, default='test_figs')
 
