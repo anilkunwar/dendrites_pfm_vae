@@ -266,8 +266,8 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=0.001)
-    parser.add_argument("--image_size", type=tuple, default=(3, 51, 51))
-    parser.add_argument("--hidden_dimension", type=int, default=1024)
+    parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
+    parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=32)
     parser.add_argument("--num_params", type=int, default=14)    # another param is t
     parser.add_argument("--print_every", type=int, default=100)

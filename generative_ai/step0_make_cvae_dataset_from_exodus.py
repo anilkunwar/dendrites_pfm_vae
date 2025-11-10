@@ -26,7 +26,6 @@ def read_exodus_netcdf(filename):
         print(f"[ERROR] Cannot read {filename}\n        {e}")
         return None
 
-
 def get_variable_names(dataset):
     """Return a list of nodal variable names."""
     var_names = []
@@ -38,7 +37,6 @@ def get_variable_names(dataset):
             if name:
                 var_names.append(name)
     return var_names
-
 
 def get_mesh_data(dataset):
     """Extract node coordinates and element connectivity."""
@@ -59,7 +57,6 @@ def get_mesh_data(dataset):
 
     return x, y, connectivity
 
-
 def get_nodal_variable_data(dataset, var_name, time_step):
     """Read nodal variable at a given time step."""
     var_names = get_variable_names(dataset)
@@ -74,7 +71,6 @@ def get_nodal_variable_data(dataset, var_name, time_step):
     if time_step < data.shape[0]:
         return np.array(data[time_step, :])
     return None
-
 
 # ============================================================
 # Plotting
@@ -164,18 +160,11 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
             else:
                 times = [0.0]
 
-            # Filter variables
-            all_var_names = get_variable_names(ds)
-            var_list = [v for v in all_var_names if v in variables]
-            if not var_list:
-                print(f"[WARN] No requested variables found in this file.")
-                continue
-
             # Loop over time steps
             for t_idx, t_val in enumerate(times):
                 print(f"\n[STEP] t = {t_val:.6e}")
                 var_data_list = []
-                for vname in var_list:
+                for vname in variables:
                     nodal_values = get_nodal_variable_data(ds, vname, t_idx)
                     if nodal_values is None:
                         print(f"  [WARN] Could not read variable {vname}")
@@ -223,12 +212,10 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
 # Entry point
 # ============================================================
 if __name__ == '__main__':
-    import glob, random, json
+    import glob
 
     grid_size = 256
     save_images = False
-    train_ratio = 0.8
-    val_ratio = 0.1
 
     data_root = "data/"
     for vn in os.listdir(data_root):
@@ -239,28 +226,3 @@ if __name__ == '__main__':
             grid_size=grid_size,
             save_images = save_images
         )
-
-        # split dataset
-        # 打乱
-        filenames = glob.glob(os.path.join(data_root, vn, "npy_files", "*.npy"))
-        files = list(filenames)
-        random.shuffle(files)
-
-        n = len(files)
-        n_train = int(n * train_ratio)
-        n_val = int(n * val_ratio)
-
-        train_files = files[:n_train]
-        val_files = files[n_train:n_train + n_val]
-        test_files = files[n_train + n_val:]
-
-        splits = {
-            "train": train_files,
-            "val": val_files,
-            "test": test_files
-        }
-
-        with open(os.path.join(data_root, vn, "dataset_split.json"), "w", encoding="utf-8") as f:
-            json.dump(splits, f, indent=2, ensure_ascii=False)
-
-        print(f"Train: {len(train_files)}, Val: {len(val_files)}, Test: {len(test_files)}")

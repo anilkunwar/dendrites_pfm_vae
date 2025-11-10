@@ -1,15 +1,13 @@
 # according to the result of MOOSE simulation, make datasets for CVAE training
 import glob
 import os
-import random
-import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from natsort import natsorted
 
-def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
+def makeDataset(path_sim):
     path_save_npy = os.path.join(path_sim, 'npy_files')
     if not os.path.exists(path_save_npy):
         os.makedirs(path_save_npy)
@@ -43,30 +41,6 @@ def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
         np.save(save_path, data)
         filenames.append(save_path)
 
-    # split dataset
-    # 打乱
-    files = list(filenames)
-    random.shuffle(files)
-
-    n = len(files)
-    n_train = int(n * train_ratio)
-    n_val = int(n * val_ratio)
-
-    train_files = files[:n_train]
-    val_files = files[n_train:n_train + n_val]
-    test_files = files[n_train + n_val:]
-
-    splits = {
-        "train": train_files,
-        "val": val_files,
-        "test": test_files
-    }
-
-    with open(os.path.join(path_sim, "dataset_split.json"), "w", encoding="utf-8") as f:
-        json.dump(splits, f, indent=2, ensure_ascii=False)
-
-    print(f"Train: {len(train_files)}, Val: {len(val_files)}, Test: {len(test_files)}")
-
     ### Plotting last frame ###
     frame_no = idx
     plt.imshow(data[..., 0], cmap="rainbow")
@@ -85,4 +59,4 @@ def makeDataset(path_sim, train_ratio=0.8, val_ratio=0.1):
 if __name__ == '__main__':
 
     for n in os.listdir("data"):
-        makeDataset(os.path.join("data", n), train_ratio=0.8, val_ratio=0.1)
+        makeDataset(os.path.join("data", n))
