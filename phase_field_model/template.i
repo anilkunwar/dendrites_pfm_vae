@@ -341,7 +341,7 @@
   petsc_options_value = 'preonly   lu        mumps'
   
   dtmax = 100
-  end_time = 10E3
+  end_time = 5E3
   
   [./TimeStepper]
     type = IterationAdaptiveDT
@@ -369,11 +369,6 @@
 []
 
 [Postprocessors]
-  [./area_metal-electrode_eta]
-    type = ElementIntegralMaterialProperty
-    mat_prop = h
-    execute_on = 'Initial TIMESTEP_END'
-  [../]
   [./eta_min]
     type = NodalExtremeValue
     variable = eta
@@ -431,7 +426,7 @@
   [../]
   [./c_min_m]
     type = Terminator
-    expression = 'c_min >= 1'
+    expression = 'abs(c_min) >= 1'
     fail_mode = HARD
     error_level = INFO
     message = 'c_min_m says this should end'
