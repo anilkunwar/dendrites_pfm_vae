@@ -12,7 +12,7 @@ def inv_smooth_scale(y, k=0.3, eps=1e-6):
     return 0.5 / k * torch.log(y / (1 - y))
 
 class DendritePFMDataset(Dataset):
-    def __init__(self, image_size, json_path, split="train", meta_path="", transform=None, device="cuda"):
+    def __init__(self, image_size, json_path, split="train", transform=None, device="cuda"):
         """
         参数:
             json_path: str, JSON 文件路径 (包含 train/val/test 列表)
@@ -22,8 +22,8 @@ class DendritePFMDataset(Dataset):
         """
         with open(json_path, "r", encoding="utf-8") as f:
             splits = json.load(f)
-        with open(meta_path, "r", encoding="utf-8") as f:
-            meta = json.load(f)
+
+        self.meta_dict = {}
 
         assert split in splits
         self.files = splits[split]
@@ -33,7 +33,6 @@ class DendritePFMDataset(Dataset):
         self.resize = transforms.Resize(image_size)
         self.transform = transform
 
-        self.meta = list(meta.values())
         self.device = device
 
     def __len__(self):
@@ -59,7 +58,14 @@ class DendritePFMDataset(Dataset):
         name_no_ext = os.path.splitext(base)[0]
         name_id = float(name_no_ext)
         c = [name_id]
-        c += self.meta
+        # find meta
+        sub_path = os.path.dirname(os.path.dirname(path))
+        meta_path = os.path.join(sub_path, os.path.basename(sub_path) + ".json")
+        if meta_path not in self.meta_dict:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f).values()
+            self.meta_dict[meta_path] = meta
+        c += self.meta_dict[meta_path]
 
         return tensor.to(self.device), torch.tensor(c, dtype=torch.float32), self.dataset_id
 

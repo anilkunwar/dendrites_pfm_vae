@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from collections import defaultdict
 
 from src.dataloader import DendritePFMDataset
-from src.models import VAE
+from src.model import VAE
 
 
 class Loss(nn.Module):
@@ -42,7 +42,7 @@ class Loss(nn.Module):
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
         g_loss = self.grad_loss(recon_x, x)
 
-        return recon_loss + kl_loss + 0.01 * g_loss, kl_loss+recon_loss, g_loss
+        return recon_loss + kl_loss + 0.1 * g_loss, kl_loss+recon_loss, g_loss
 
 def main(args):
 
@@ -54,17 +54,8 @@ def main(args):
 
     ts = time.time()
 
-    tdatasets = []
-    vdatasets = []
-    for dpath in os.listdir("data"):
-        td = DendritePFMDataset(args.image_size, os.path.join("data", dpath, "dataset_split.json"), split="train",
-                                 meta_path=os.path.join("data", dpath, f"{dpath}.json"))
-        vd = DendritePFMDataset(args.image_size, os.path.join("data", dpath, "dataset_split.json"), split="val",
-                                meta_path=os.path.join("data", dpath, f"{dpath}.json"))
-        tdatasets.append(td)
-        vdatasets.append(vd)
-    train_dataset = ConcatDataset(tdatasets)
-    valid_dataset = ConcatDataset(vdatasets)
+    train_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="train")
+    valid_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="test")
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
     valid_dataloader = DataLoader(dataset=valid_dataset, batch_size=args.batch_size, shuffle=True)
 
