@@ -4,6 +4,12 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 
+def smooth_scale(x, k=0.3):
+    return 0.5 + 0.5 * torch.tanh(k * x)
+
+def inv_smooth_scale(y, k=0.3, eps=1e-6):
+    y = torch.clamp(y, eps, 1 - eps)
+    return 0.5 / k * torch.log(y / (1 - y))
 
 class DendritePFMDataset(Dataset):
     def __init__(self, image_size, json_path, split="train", meta_path="", transform=None, device="cuda"):
@@ -38,13 +44,15 @@ class DendritePFMDataset(Dataset):
         path = self.files[idx]
         arr = np.load(path)  # shape (H, W, 3)
 
-        assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
+        # assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
 
         tensor = torch.from_numpy(arr).float().permute(2, 0, 1)  # -> (3, H, W)
         tensor = self.resize(tensor)
 
         if self.transform:
             tensor = self.transform(tensor)
+
+        tensor = smooth_scale(tensor)
 
         # build control variable
         base = os.path.basename(path)

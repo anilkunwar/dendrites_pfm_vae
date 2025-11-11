@@ -1,16 +1,12 @@
 import os
 import time
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import argparse
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from scipy import fftpack
-from scipy.ndimage import filters
-from skimage.restoration import denoise_bilateral
 from sklearn.decomposition import PCA
 from torch import nn
 from torch.utils.data import DataLoader, ConcatDataset
@@ -32,21 +28,21 @@ class Loss(nn.Module):
 
         input_rectangles_h = F.conv2d(input, self.kernel_grady, padding=0, groups=3)
         target_rectangles_h = F.conv2d(target, self.kernel_grady, padding=0, groups=3)
-        input_arget_rectangles_h = F.l1_loss(input_rectangles_h, target_rectangles_h)
+        input_arget_rectangles_h = F.l1_loss(input_rectangles_h, target_rectangles_h, reduction='sum')
         input_rectangles_o = F.conv2d(input, self.kernel_gradx, padding=0, groups=3)
         target_rectangles_o = F.conv2d(target, self.kernel_gradx, padding=0, groups=3)
-        input_arget_rectangles_o = F.l1_loss(input_rectangles_o, target_rectangles_o)
+        input_arget_rectangles_o = F.l1_loss(input_rectangles_o, target_rectangles_o, reduction='sum')
         loss_rectangles = input_arget_rectangles_h + input_arget_rectangles_o
 
         return loss_rectangles
 
     def forward(self, recon_x, x, mean, log_var):
 
-        recon_loss = F.mse_loss(recon_x, x, reduction='mean')
-        kl_loss = -0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp())
+        recon_loss = F.mse_loss(recon_x, x, reduction='sum')
+        kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
         g_loss = self.grad_loss(recon_x, x)
 
-        return recon_loss + kl_loss + g_loss, kl_loss+recon_loss, g_loss
+        return recon_loss + kl_loss + 0.01 * g_loss, kl_loss+recon_loss, g_loss
 
 def main(args):
 
@@ -81,6 +77,7 @@ def main(args):
 
     loss_fn = Loss()
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     logs = defaultdict(list)
 
@@ -147,7 +144,7 @@ def main(args):
                 plt.text(
                     0, 0, f"t={y[p][0].item()}_did={did[p]}", color='black',
                     backgroundcolor='white', fontsize=8)
-                plt.imshow(recon_x[p].view(args.image_size).cpu().data.numpy().transpose(1, 2, 0))
+                plt.imshow(recon_x[p].view(args.image_size).detach().cpu().numpy().transpose(1, 2, 0))
                 plt.axis('off')
 
             if not os.path.exists(os.path.join(args.fig_root, str(ts))):
@@ -161,6 +158,8 @@ def main(args):
                 dpi=300)
             plt.clf()
             plt.close('all')
+
+        lr_scheduler.step()
 
         # select 100 samples for each simulation
         df = pd.DataFrame.from_dict(tracker_epoch, orient='index')
@@ -215,14 +214,14 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--learning_rate", type=float, default=0.001)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
     parser.add_argument("--hidden_dimension", type=int, default=512)
-    parser.add_argument("--latent_size", type=int, default=4)
-    parser.add_argument("--num_params", type=int, default=14)    # another param is t
-    parser.add_argument("--print_every", type=int, default=100)
+    parser.add_argument("--latent_size", type=int, default=32)
+    parser.add_argument("--num_params", type=int, default=15)    # another param is t (included here)
+    parser.add_argument("--print_every", type=int, default=10)
     parser.add_argument("--fig_root", type=str, default='figs')
     parser.add_argument("--conditional", type=bool, default=True)
 

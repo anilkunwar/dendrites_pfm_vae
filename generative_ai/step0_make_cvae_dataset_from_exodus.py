@@ -144,6 +144,8 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
     global_time_list = []
 
     for file_idx, filename in enumerate(all_files):
+        # if file_idx % 10 != 0:
+        #     continue
         print(f"\n=== File {file_idx + 1}/{len(all_files)}: {os.path.basename(filename)} ===")
         ds = read_exodus_netcdf(filename)
         if ds is None:
