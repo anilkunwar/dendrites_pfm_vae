@@ -4,8 +4,8 @@ import glob, os
 
 if __name__ == '__main__':
 
-    train_ratio = 0.8
-    val_ratio = 0.1
+    train_ratio = 0.9
+    # val_ratio = 0.1
 
     data_root = "data"
 

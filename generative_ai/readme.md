@@ -1,7 +1,5 @@
 this is work is based on Pytorch
 
-- CVAE: https://github.com/timbmg/VAE-CVAE-MNIST
-
 ## Usage:
 1. First run the simulations, store the results in the directory **data/case_xxx/exodus_files**
 2. Run **Data/step0_make_cvae_dataset_exodus.py** to transfer the moose results to npy files, you may need post-processing to filter physically incorrect results

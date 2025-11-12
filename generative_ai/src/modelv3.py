@@ -3,6 +3,17 @@ import torch.nn as nn
 
 from generative_ai.src.dataloader import smooth_scale
 
+# 定义初始化函数
+def init_weights(model):
+    for name, m in model.named_modules():  # 递归遍历所有模块
+        if isinstance(m, nn.Linear):
+            nn.init.kaiming_normal_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.Conv2d):
+            nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
 
 # ==========================================================
 # Multi-kernel Residual Block
@@ -76,50 +87,103 @@ class ResEncoder(nn.Module):
 
 
 # ==========================================================
-# Decoder (with additive coupling between z and c)
+# Residual Upsampling Block (for decoder)
+# ==========================================================
+class ResUpBlock(nn.Module):
+    """
+    Residual block for upsampling in decoder using ConvTranspose2d.
+    """
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+
+        # 主路径：上采样 + 卷积
+        self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+        self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        # Shortcut（调整通道 + 上采样）
+        self.shortcut = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(out_channels)
+        )
+
+    def forward(self, x):
+        out = self.deconv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.conv(out)
+        out = self.bn2(out)
+
+        shortcut = self.shortcut(x)
+        out += shortcut
+        return self.relu(out)
+
+
+# ==========================================================
+# Decoder (with residual upsampling blocks)
 # ==========================================================
 class ResDecoder(nn.Module):
-    def __init__(self, out_channels, base_channels, latent_size, H, W,
-                 num_params=0):
+    def __init__(self, out_channels, base_channels, latent_size, H, W, num_params=0):
         super().__init__()
         self.H, self.W = H, W
         init_h, init_w = H // 8, W // 8  # 16x16 for 128x128 input
 
-        # Project c to same dimension as z
-        self.cMLP = nn.Sequential(
-            nn.Linear(num_params, latent_size),
-            nn.ReLU(inplace=True)
-        )
-
         # Fully connected layer expands latent vector to spatial feature map
         self.fc = nn.Linear(latent_size, base_channels * 4 * init_h * init_w)
 
-        # Transposed convolutions for upsampling (16 → 128)
+        # Residual upsampling blocks (16 → 128)
         self.deconv = nn.Sequential(
-            self._block(base_channels * 4, base_channels * 2),
-            self._block(base_channels * 2, base_channels),
-            nn.ConvTranspose2d(base_channels, out_channels, 4, 2, 1)
+            ResUpBlock(base_channels * 4, base_channels * 2),  # 16→32
+            ResUpBlock(base_channels * 2, base_channels),      # 32→64
+            ResUpBlock(base_channels, base_channels // 2),     # 64→128
         )
 
-    def _block(self, in_c, out_c):
-        return nn.Sequential(
-            nn.ConvTranspose2d(in_c, out_c, 4, 2, 1),
-            nn.BatchNorm2d(out_c),
-            nn.ReLU(inplace=True)
-        )
+        # Final output convolution
+        self.final_conv = nn.Conv2d(base_channels // 2, out_channels, 3, 1, 1)
 
-    def forward(self, z, ctr=None):
-        # Additive coupling: z' = z + f(c)
-        if ctr is not None:
-            c = self.cMLP(ctr)
-            z = z + c
-
+    def forward(self, z):
         x = self.fc(z)
         x = x.view(x.size(0), -1, self.H // 8, self.W // 8)
         x = self.deconv(x)
+        x = self.final_conv(x)
         x = smooth_scale(x)
         return x
 
+class CrossAttention(nn.Module):
+    def __init__(self, dim, dropout=0.1):
+        """
+        dim: 输入特征维度 (embedding dim)
+        dropout: 注意力得分后的dropout比例
+        """
+        super().__init__()
+        self.q_proj = nn.Linear(dim, dim)
+        self.k_proj = nn.Linear(dim, dim)
+        self.v_proj = nn.Linear(dim, dim)
+        self.out_proj = nn.Linear(dim, dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, query, context):
+        """
+        query: [B, L_q, D]
+        context: [B, L_c, D]
+        return: [B, L_q, D]
+        """
+        Q = self.q_proj(query)    # [B, L_q, D]
+        K = self.k_proj(context)  # [B, L_c, D]
+        V = self.v_proj(context)  # [B, L_c, D]
+
+        # 注意力得分 (QK^T / sqrt(D))
+        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / (Q.size(-1) ** 0.5)  # [B, L_q, L_c]
+        attn_weights = nn.functional.softmax(attn_scores, dim=-1)  # 对context维度做softmax
+        attn_weights = self.dropout(attn_weights)
+
+        # 加权求和
+        context_out = torch.matmul(attn_weights, V)  # [B, L_q, D]
+        out = self.out_proj(context_out)
+        return out
 
 # ==========================================================
 # Full Model
@@ -140,23 +204,57 @@ class VAE(nn.Module):
         # Encoder does NOT take c
         self.encoder = ResEncoder(self.C, hidden_dimension, latent_size)
 
+        self.cMLP = nn.Sequential(
+            nn.Linear(num_params, latent_size),
+            nn.ReLU()
+        )
+        self.zAttn1 = CrossAttention(latent_size)
+        self.zAttn2 = CrossAttention(latent_size)
+
         # Decoder takes z (+ c additively)
         self.decoder = ResDecoder(
             self.C, hidden_dimension, latent_size, self.H, self.W,
             num_params=num_params
         )
 
+        init_weights(self)
+
     def reparameterize(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x, c=None):
+    # def inference(self, ctr=None):
+    #
+    #     z = torch.randn(ctr.size(0) if ctr != None else 1, self.latent_size)
+    #     # Additive coupling: z' = z + f(c)
+    #     if ctr is not None:
+    #         c = self.cMLP(ctr)
+    #         mu_ = self.zAttn1(mu, c)
+    #         logvar_ = self.zAttn2(logvar, c)
+    #
+    #     z = self.reparameterize(mu, logvar)
+    #
+    #     recon = self.decoder(z)
+    #     return recon, mu, logvar, z
+
+    def forward(self, x, ctr=None):
         B, _, H, W = x.shape
 
         mu, logvar = self.encoder(x)
-        z = self.reparameterize(mu, logvar)
-        recon = self.decoder(z, c)
+
+        # Additive coupling: z' = z + f(c)
+        if ctr is not None:
+            c = self.cMLP(ctr)
+            mu_ = self.zAttn1(mu, c)
+            logvar_ = self.zAttn2(logvar, c)
+        else:
+            mu_ = mu
+            logvar_ = logvar
+
+        z = self.reparameterize(mu_, logvar_)
+
+        recon = self.decoder(z)
         return recon, mu, logvar, z
 
 

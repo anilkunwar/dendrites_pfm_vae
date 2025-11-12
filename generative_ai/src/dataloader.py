@@ -4,6 +4,35 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 
+# param range -> (min, max)
+PARAM_RANGES = {
+    "POT_LEFT": (-0.5, -0.2),
+    # "flo": (1e-3, 1e-1),
+    # "fso": (1e-3, 1e-1),
+    "fo": (1e-3, 1e-1),
+    "Al": (0, 10),
+    "Bl": (0, 10),
+    "Cl": (0, 10),
+    # "Dl": (-10, 10),
+    "As": (0, 10),
+    "Bs": (0, 10),
+    "Cs": (0, 10),
+    # "Ds": (-10, 10),
+    "cleq": (0.01, 0.99),
+    "cseq": (0.01, 0.99),
+    "L1o": (0.01, 0.5),
+    "L2o": (0.01, 0.5),
+    "ko": (1e-11, 1e-9),
+    "Noise": (5e-4, 5e-3)
+}
+
+def inverse_scale_params(params):
+    normed = {}
+    for key, val in params.items():
+        lo, hi = PARAM_RANGES[key]
+        normed[key] = (val - lo) / (hi - lo)
+    return normed
+
 def smooth_scale(x, k=0.3):
     return 0.5 + 0.5 * torch.tanh(k * x)
 
@@ -27,7 +56,6 @@ class DendritePFMDataset(Dataset):
 
         assert split in splits
         self.files = splits[split]
-        self.dataset_id = os.path.basename(os.path.dirname(json_path))
 
         image_size = (image_size[1], image_size[2])
         self.resize = transforms.Resize(image_size)
@@ -56,18 +84,18 @@ class DendritePFMDataset(Dataset):
         # build control variable
         base = os.path.basename(path)
         name_no_ext = os.path.splitext(base)[0]
-        name_id = float(name_no_ext)
+        name_id = float(name_no_ext) / 5e3  # scale
         c = [name_id]
         # find meta
         sub_path = os.path.dirname(os.path.dirname(path))
         meta_path = os.path.join(sub_path, os.path.basename(sub_path) + ".json")
         if meta_path not in self.meta_dict:
             with open(meta_path, "r", encoding="utf-8") as f:
-                meta = json.load(f).values()
-            self.meta_dict[meta_path] = meta
+                meta = json.load(f)
+            self.meta_dict[meta_path] = inverse_scale_params(meta).values()
         c += self.meta_dict[meta_path]
 
-        return tensor.to(self.device), torch.tensor(c, dtype=torch.float32), self.dataset_id
+        return tensor.to(self.device), torch.tensor(c, dtype=torch.float32), os.path.basename(sub_path)
 
     def showSample(self):
         import matplotlib.pyplot as plt
