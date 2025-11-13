@@ -263,8 +263,10 @@ class VAE(nn.Module):
             nn.Linear(num_params, latent_size),
             nn.ReLU()
         )
-        self.zAttn = nn.Linear(latent_size*2, latent_size)
-
+        self.zAttn = nn.Sequential(
+            nn.Linear(latent_size*2, latent_size),
+            nn.ReLU()
+        )
         # Decoder takes z (+ c additively)
         self.decoder = ResDecoder(
             self.C, hidden_dimension, latent_size, self.H, self.W

@@ -221,7 +221,7 @@ if __name__ == '__main__':
 
     data_root = "data/"
     # for vn in os.listdir(data_root):
-    for vn in ["case_011"]:
+    for vn in ["case_017"]:
         main_file = glob.glob(os.path.join(data_root, vn, "exodus_files", "*.e"))[0]
         export_all_variables(
             base_exodus_file=main_file,

@@ -130,7 +130,7 @@ class Lossv2(nn.Module):
         # ratio = self.current_epoch / self.total_epochs
         # beta = 0.5 * self.max_beta * (1 - math.cos(math.pi * min(ratio, 1.0)))
         # return beta
-        return 1
+        return 0.1
 
     def step_epoch(self, epoch):
         """训练循环中每个 epoch 调用以更新 β"""
@@ -541,7 +541,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
     parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=32)
