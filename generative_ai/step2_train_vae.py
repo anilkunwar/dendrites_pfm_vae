@@ -209,7 +209,7 @@ def main(args):
                                                p=0.1
                                            ),
                                            A.PixelDropout(dropout_prob=0.05, p=0.1),
-                                           A.GaussNoise(p=0.1),
+                                           A.GaussNoise(p=0.9),
                                         ]))
     valid_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="test")
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -224,7 +224,7 @@ def main(args):
     # loss_fn = Loss()
     loss_fn = PhysicsConstrainedVAELoss()
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
     logs = defaultdict(list)
     best_val_loss = float('inf')
@@ -311,7 +311,7 @@ def main(args):
         avg_valid_loss = sum(logs['valid_total_loss'][-len(valid_dataloader):]) / len(valid_dataloader)
         print(f"Epoch {epoch}: Avg Valid Loss = {avg_valid_loss:.4f}")
 
-        lr_scheduler.step(avg_valid_loss)
+        lr_scheduler.step()
 
         # check improved
         if avg_valid_loss < best_val_loss:
@@ -323,9 +323,9 @@ def main(args):
         else:
             epochs_no_improve += 1
             print(f"⚠️ No improvement for {epochs_no_improve} epochs.")
-            if epochs_no_improve >= early_stop_patience / 2:
-                optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
-                lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+            # if epochs_no_improve >= early_stop_patience / 2:
+            #     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
+            #     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
         # early stopping
         if epochs_no_improve >= early_stop_patience:
@@ -388,7 +388,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
-    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
+    parser.add_argument("--image_size", type=tuple, default=(3, 32, 32))
     parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=32)
     parser.add_argument("--num_params", type=int, default=15)    # another param is t (included here)

@@ -21,7 +21,8 @@ class PhysicsConstrainedVAELoss(nn.Module):
                  use_edge_loss=True,
                  use_fft_loss=True,
                  use_tv_loss=True,
-                 use_smoothness_loss=True):
+                 use_smoothness_loss=True,
+                 device="cuda"):
         """
         Args:
             w_edge: Weight for edge magnitude loss (penalize excessive edges)
@@ -42,6 +43,28 @@ class PhysicsConstrainedVAELoss(nn.Module):
         self.use_fft_loss = use_fft_loss
         self.use_tv_loss = use_tv_loss
         self.use_smoothness_loss = use_smoothness_loss
+
+        # 梯度卷积核
+        self.kernel_grady = torch.tensor(
+            [[[[1.], [-1.]]]] * 3, device=device
+        )
+        self.kernel_gradx = torch.tensor(
+            [[[[1., -1.]]]] * 3, device=device
+        )
+
+    # ===============================
+    # 梯度损失
+    # ===============================
+    def grad_loss(self, input, target):
+        input_rectangles_h = F.conv2d(input, self.kernel_grady, padding=0, groups=3)
+        target_rectangles_h = F.conv2d(target, self.kernel_grady, padding=0, groups=3)
+        loss_h = torch.sum(torch.abs(input_rectangles_h - target_rectangles_h) * (target_rectangles_h.abs().exp()))
+
+        input_rectangles_o = F.conv2d(input, self.kernel_gradx, padding=0, groups=3)
+        target_rectangles_o = F.conv2d(target, self.kernel_gradx, padding=0, groups=3)
+        loss_o = torch.sum(torch.abs(input_rectangles_o - target_rectangles_o) * (target_rectangles_o.abs().exp()))
+
+        return loss_h + loss_o
 
     def forward(self, recon_x, x, mean, log_var):
         """
@@ -88,7 +111,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
             physics_loss += self.w_smoothness * smoothness_loss_val
 
         # 3. Total loss
-        total_loss = elbo_loss + physics_loss
+        total_loss = elbo_loss + physics_loss + (self.grad_loss(recon_x, x) / batch_size) * 0.1
 
         # Return detailed loss breakdown
         loss_dict = {

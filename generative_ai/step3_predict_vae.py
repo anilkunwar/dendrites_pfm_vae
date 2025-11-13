@@ -29,7 +29,7 @@ def main(args):
     dids = []
     # evaluate
     with torch.no_grad():
-        for iteration, (x, y, did) in enumerate(test_dataloader):
+        for iteration, (x, y, did, _) in enumerate(test_dataloader):
 
             ys.append(y[0])
             dids.append(did[0])
