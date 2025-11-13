@@ -1,4 +1,6 @@
 import json, os
+
+import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -57,8 +59,7 @@ class DendritePFMDataset(Dataset):
         assert split in splits
         self.files = splits[split]
 
-        image_size = (image_size[1], image_size[2])
-        self.resize = transforms.Resize(image_size)
+        self.image_size = (image_size[1], image_size[2])
         self.transform = transform
 
         self.device = device
@@ -72,14 +73,17 @@ class DendritePFMDataset(Dataset):
         arr = np.load(path)  # shape (H, W, 3)
 
         # assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
+        arr = cv2.resize(arr, self.image_size)
+        if self.transform:
+            arr_t = self.transform(image=np.astype(arr, "float32"))["image"]
+        else:
+            arr_t = arr
 
         tensor = torch.from_numpy(arr).float().permute(2, 0, 1)  # -> (3, H, W)
-        tensor = self.resize(tensor)
-
-        if self.transform:
-            tensor = self.transform(tensor)
+        tensor_t = torch.from_numpy(arr_t).float().permute(2, 0, 1)
 
         tensor = smooth_scale(tensor)
+        tensor_t = smooth_scale(tensor_t)
 
         # build control variable
         base = os.path.basename(path)
@@ -95,7 +99,7 @@ class DendritePFMDataset(Dataset):
             self.meta_dict[meta_path] = inverse_scale_params(meta).values()
         c += self.meta_dict[meta_path]
 
-        return tensor.to(self.device), torch.tensor(c, dtype=torch.float32), os.path.basename(sub_path)
+        return tensor_t.to(self.device), torch.tensor(c, dtype=torch.float32), os.path.basename(sub_path), tensor.to(self.device)
 
     def showSample(self):
         import matplotlib.pyplot as plt

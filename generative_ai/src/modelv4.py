@@ -63,7 +63,7 @@ class MultiKernelResBlock(nn.Module):
 # Downsampling 3 times: 128 -> 64 -> 32 -> 16
 # ==========================================================
 class ResEncoder(nn.Module):
-    def __init__(self, in_channels, base_channels, latent_size):
+    def __init__(self, img_size, in_channels, base_channels, latent_size):
         super().__init__()
 
         self.layers = nn.Sequential(
@@ -72,11 +72,7 @@ class ResEncoder(nn.Module):
             MultiKernelResBlock(base_channels * 2, base_channels * 4, downsample=True),  # 16x16
         )
 
-        # Infer flattened dimension
-        dummy = torch.zeros(1, in_channels, 128, 128)
-        conv_out = self.layers(dummy)
-        conv_dim = conv_out.view(1, -1).shape[1]
-
+        conv_dim = int(img_size[0] * img_size[1] * base_channels * 4 / (8 * 8))
         self.fc_mu = nn.Linear(conv_dim, latent_size)
         self.fc_logvar = nn.Linear(conv_dim, latent_size)
 
@@ -252,7 +248,7 @@ class VAE(nn.Module):
         self.latent_size = latent_size
 
         # Encoder does NOT take c
-        self.encoder = ResEncoder(self.C, hidden_dimension, latent_size)
+        self.encoder = ResEncoder((image_size[1], image_size[2]), self.C, hidden_dimension, latent_size)
 
         # Project c to same dimension as z
         self.cMLP = nn.Sequential(
@@ -347,13 +343,13 @@ class VAE(nn.Module):
 # ==========================================================
 if __name__ == "__main__":
     model = VAE(
-        image_size=(3, 128, 128),
+        image_size=(3, 64, 64),
         latent_size=32,
         hidden_dimension=256,
         num_params=15
     )
 
-    x = torch.randn(2, 3, 128, 128)
+    x = torch.randn(2, 3, 64, 64)
     c = torch.randn(2, 15)
     recon, mu, logvar, z = model(x, c)
 

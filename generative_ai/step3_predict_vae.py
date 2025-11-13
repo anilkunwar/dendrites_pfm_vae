@@ -60,7 +60,7 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
+    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--save_fig_path", type=str, default='test_figs')
 
     args = parser.parse_args()

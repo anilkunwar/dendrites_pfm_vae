@@ -5,6 +5,7 @@ import math
 
 import numpy as np
 import torch
+import albumentations as A
 import torch.nn.functional as F
 import argparse
 import pandas as pd
@@ -20,6 +21,7 @@ from collections import defaultdict
 
 from torchvision import models
 
+from generative_ai.src.loss import AdaptivePhysicsVAELoss, PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv4 import VAE
 
@@ -184,177 +186,6 @@ class Lossv2(nn.Module):
         total = recon_loss + beta * kl_loss + g_loss + vgg_loss
         return total / x.size(0), kl_loss, recon_loss, g_loss, vgg_loss
 
-class PhysicsAugmentedVAELoss(nn.Module):
-    """
-    Physics-augmented VAE loss combining ELBO with custom physics-driven losses.
-    Based on: "Combining Variational Autoencoders and Physical Bias for
-    Improved Microscopy Data Analysis" by Arpan Biswas
-
-    All the samples in a batch should have similarities, like from the same simulation.
-    In this case we can limit their latent shape.
-    """
-
-    def __init__(self, w1=1.0, w2=0.0, use_edge_loss=True, use_fft_loss=False):
-        """
-        Args:
-            w1: Weight for custom loss (default: 1.0)
-            w2: Additional weight parameter (default: 0.0)
-            use_edge_loss: Whether to use edge magnitude loss (default: True)
-            use_fft_loss: Whether to use FFT-based loss (default: False)
-        """
-        super(PhysicsAugmentedVAELoss, self).__init__()
-        self.w1 = w1
-        self.w2 = w2
-        self.use_edge_loss = use_edge_loss
-        self.use_fft_loss = use_fft_loss
-
-    def forward(self, recon_x, x, mean, log_var):
-        """
-        Compute physics-augmented VAE loss.
-
-        Args:
-            recon_x: Reconstructed images [batch_size, channels, H, W]
-            x: Original images [batch_size, channels, H, W]
-            mean: Latent mean [batch_size, latent_dim]
-            log_var: Latent log variance [batch_size, latent_dim]
-
-        Returns:
-            total_loss: Weighted total loss (ELBO + custom physics loss)
-            elbo_loss: Standard ELBO loss
-            custom_loss: Physics-driven custom loss
-        """
-        batch_size = x.size(0)
-
-        # 1. Reconstruction loss (BCE or MSE)
-        recon_loss = nn.functional.l1_loss(recon_x, x, reduction='sum')
-
-        # 2. KL divergence loss
-        # KL(q(z|x) || p(z)) where p(z) = N(0, I)
-        kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
-
-        # 3. Standard ELBO loss (negative ELBO)
-        elbo_loss = (recon_loss + kl_loss) / batch_size
-
-        # 4. Custom physics-driven loss
-        custom_loss = 0.0
-        if self.use_edge_loss:
-            custom_loss += self.edge_magnitude_loss(mean)
-        if self.use_fft_loss:
-            custom_loss += self.fft_loss(mean)
-
-        # Scale custom loss (as in original code)
-        custom_loss = custom_loss * 1e4
-
-        # 5. Augmented loss: ELBO weighted by (w1 + custom_loss)
-        # Based on the original implementation's aug_particle calculation
-        total_loss = elbo_loss * (self.w1 + custom_loss)
-
-        return total_loss, elbo_loss, custom_loss
-
-    def edge_magnitude_loss(self, z_mean):
-        """
-        Compute edge magnitude loss using Scharr filter on latent dimensions.
-        Loss = mean of sum of edge magnitudes (to minimize sharp edges)
-
-        Args:
-            z_mean: Latent mean [batch_size, latent_dim]
-        """
-        batch_size = z_mean.size(0)
-        d1 = int(np.sqrt(batch_size))
-        d2 = d1
-
-        # Check if batch can form a square image
-        if d1 * d2 != batch_size:
-            return 0.0
-
-        # Use latent dimensions 2 and 3 (as in original code)
-        if z_mean.size(1) < 4:
-            return 0.0
-
-        z1 = z_mean[:, 2].reshape(d1, d2)
-        z2 = z_mean[:, 3].reshape(d1, d2)
-
-        # Normalize to [0, 1]
-        z1 = (z1 - z1.min()) / (z1.max() - z1.min() + 1e-8)
-        z2 = (z2 - z2.min()) / (z2.max() - z2.min() + 1e-8)
-
-        # Convert to numpy for scikit-image processing
-        z1_np = z1.detach().cpu().numpy()
-        z2_np = z2.detach().cpu().numpy()
-
-        # Denoise using bilateral filter
-        z1_denoised = denoise_bilateral(z1_np, sigma_color=None, sigma_spatial=5)
-        z2_denoised = denoise_bilateral(z2_np, sigma_color=None, sigma_spatial=5)
-
-        # Compute edge magnitude using Scharr filter
-        emag_z1 = filters.scharr(z1_denoised)
-        emag_z2 = filters.scharr(z2_denoised)
-
-        # Loss is mean of sum of edge magnitudes
-        loss = (np.sum(emag_z1) + np.sum(emag_z2)) / 2
-
-        return loss
-
-    def fft_loss(self, z_mean):
-        """
-        Compute FFT-based loss: ratio of intensity outside central peak
-        to total intensity.
-
-        Args:
-            z_mean: Latent mean [batch_size, latent_dim]
-        """
-        batch_size = z_mean.size(0)
-        d1 = int(np.sqrt(batch_size))
-        d2 = d1
-
-        # Check if batch can form a square image
-        if d1 * d2 != batch_size:
-            return 0.0
-
-        # Use latent dimensions 2 and 3
-        if z_mean.size(1) < 4:
-            return 0.0
-
-        z1 = z_mean[:, 2].reshape(d1, d2)
-        z2 = z_mean[:, 3].reshape(d1, d2)
-
-        # Convert to numpy for FFT
-        z1_np = z1.detach().cpu().numpy()
-        z2_np = z2.detach().cpu().numpy()
-
-        # Compute FFT
-        Fz1 = fftpack.fft2(z1_np)
-        Fz2 = fftpack.fft2(z2_np)
-
-        # Shift zero frequency to center
-        F_shiftz1 = fftpack.fftshift(Fz1)
-        F_shiftz2 = fftpack.fftshift(Fz2)
-
-        # Log magnitude spectrum
-        F_shiftz1 = np.log(np.abs(F_shiftz1) + 1)
-        F_shiftz2 = np.log(np.abs(F_shiftz2) + 1)
-
-        # Total intensity
-        total_int = (np.sum(F_shiftz1) + np.sum(F_shiftz2)) / 2
-
-        # Define central peak region (3x3 around center)
-        lim_kx_min, lim_kx_max = int(d1 / 2 - 1), int(d1 / 2 + 2)
-        lim_ky_min, lim_ky_max = int(d2 / 2 - 1), int(d2 / 2 + 2)
-
-        # Central peak intensity
-        central_peak_intz1 = np.sum(F_shiftz1[lim_kx_min:lim_kx_max, lim_ky_min:lim_ky_max])
-        central_peak_intz2 = np.sum(F_shiftz2[lim_kx_min:lim_kx_max, lim_ky_min:lim_ky_max])
-
-        # Intensity outside central peak
-        outcentral_peak_intz1 = np.sum(F_shiftz1) - central_peak_intz1
-        outcentral_peak_intz2 = np.sum(F_shiftz2) - central_peak_intz2
-
-        # Mean ratio (minimize intensity outside central peak)
-        outcentral_peak_int_mean = (outcentral_peak_intz1 + outcentral_peak_intz2) / 2
-        loss = outcentral_peak_int_mean / (total_int + 1e-8)
-
-        return loss
-
 def main(args):
 
     torch.manual_seed(args.seed)
@@ -369,7 +200,17 @@ def main(args):
             os.mkdir(os.path.join(args.fig_root))
         os.mkdir(os.path.join(args.fig_root, str(ts)))
 
-    train_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="train")
+    train_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="train",
+                                       transform=A.Compose([
+                                           A.CoarseDropout(
+                                               num_holes_range=(1, 8),
+                                               hole_height_range=(0.01, 0.1),
+                                               hole_width_range=(0.01, 0.1),
+                                               p=0.1
+                                           ),
+                                           A.PixelDropout(dropout_prob=0.05, p=0.1),
+                                           A.GaussNoise(p=0.1),
+                                        ]))
     valid_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="test")
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
     valid_dataloader = DataLoader(dataset=valid_dataset, batch_size=args.batch_size, shuffle=False)
@@ -380,9 +221,10 @@ def main(args):
         hidden_dimension=args.hidden_dimension,
         num_params=args.num_params).to(device)
 
-    loss_fn = Lossv2(total_epochs=args.epochs)
+    # loss_fn = Loss()
+    loss_fn = PhysicsConstrainedVAELoss()
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
     logs = defaultdict(list)
     best_val_loss = float('inf')
@@ -390,10 +232,10 @@ def main(args):
     early_stop_patience = 5
     for epoch in range(args.epochs):
 
-        # tracker_epoch = defaultdict(lambda: defaultdict(dict))
+        # loss_fn.set_epoch(epoch)
 
         vae.train()
-        for iteration, (x, y, did) in enumerate(train_dataloader):
+        for iteration, (x, y, did, xo) in enumerate(train_dataloader):
 
             # image and control variables
             x, y = x.to(device), y.to(device)
@@ -413,27 +255,27 @@ def main(args):
             #     tracker_epoch[id]['did'] = did[i]
             #     tracker_epoch[id]['label'] = f"t={yi[0].item()} did={did[i]}"   # label for each sample
 
-            loss = loss_fn(recon_x.view(x.shape), x, mean, log_var)
-            logs['train_total_loss'].append(loss[0].item())
-            logs['train_kl_loss'].append(loss[1].item())
-            logs['train_recon_loss'].append(loss[2].item())
-            logs['train_phy_loss'].append(loss[3].item())
-            logs['train_vgg_loss'].append(loss[4].item())
+            total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
+            logs['train_total_loss'].append(total_loss.item())
+            logs['train_kl_loss'].append(loss_dict['kl'])
+            logs['train_recon_loss'].append(loss_dict['recon'])
+            logs['train_phy_loss'].append(loss_dict['physics'])
+            logs['train_edge_loss'].append(loss_dict['edge'])
 
             optimizer.zero_grad()
-            loss[0].backward()
+            total_loss.backward()
             optimizer.step()
 
-            logs['train_loss'].append(loss[0].item())
+            logs['train_loss'].append(total_loss.item())
 
             if iteration % args.print_every == 0 or iteration == len(train_dataloader)-1:
                 print("Epoch {:02d}/{:02d} Batch {:04d}/{:d}, Train Loss {:9.4f}".format(
-                    epoch, args.epochs, iteration, len(train_dataloader)-1, loss[0].item()))
+                    epoch, args.epochs, iteration, len(train_dataloader)-1, total_loss.item()))
 
         # evaluate
         vae.eval()
         with torch.no_grad():
-            for iteration, (x, y, did) in enumerate(valid_dataloader):
+            for iteration, (x, y, did, xo) in enumerate(valid_dataloader):
 
                 # image and control variables
                 x, y = x.to(device), y.to(device)
@@ -442,11 +284,12 @@ def main(args):
                 # x_s = x[torch.randperm(x.size(0))]
                 recon_x, mean, log_var, z = vae(x, y)
 
-                loss = loss_fn(recon_x.view(x.shape), x, mean, log_var)
-                logs['valid_total_loss'].append(loss[0].item())
-                logs['valid_kl_loss'].append(loss[1].item())
-                logs['valid_recon_loss'].append(loss[2].item())
-                logs['valid_phy_loss'].append(loss[3].item())
+                total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
+                logs['valid_total_loss'].append(total_loss.item())
+                logs['valid_kl_loss'].append(loss_dict['kl'])
+                logs['valid_recon_loss'].append(loss_dict['recon'])
+                logs['valid_phy_loss'].append(loss_dict['physics'])
+                logs['valid_edge_loss'].append(loss_dict['edge'])
 
                 plt.figure()
                 for p in range(min(9, recon_x.shape[0])):
@@ -464,12 +307,12 @@ def main(args):
                 plt.clf()
                 plt.close('all')
 
-        lr_scheduler.step()
-        loss_fn.step_epoch(epoch)
-
         # cal eval loss
         avg_valid_loss = sum(logs['valid_total_loss'][-len(valid_dataloader):]) / len(valid_dataloader)
         print(f"Epoch {epoch}: Avg Valid Loss = {avg_valid_loss:.4f}")
+
+        lr_scheduler.step(avg_valid_loss)
+
         # check improved
         if avg_valid_loss < best_val_loss:
             best_val_loss = avg_valid_loss
@@ -480,6 +323,9 @@ def main(args):
         else:
             epochs_no_improve += 1
             print(f"⚠️ No improvement for {epochs_no_improve} epochs.")
+            if epochs_no_improve >= early_stop_patience / 2:
+                optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
+                lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
         # early stopping
         if epochs_no_improve >= early_stop_patience:
@@ -540,9 +386,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
-    parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
+    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=32)
     parser.add_argument("--num_params", type=int, default=15)    # another param is t (included here)
