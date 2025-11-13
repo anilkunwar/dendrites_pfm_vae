@@ -21,7 +21,7 @@ from collections import defaultdict
 from torchvision import models
 
 from src.dataloader import DendritePFMDataset
-from src.modelv2 import VAE
+from src.modelv4 import VAE
 
 class Loss(nn.Module):
     """
@@ -170,14 +170,14 @@ class Lossv2(nn.Module):
     # -------------------------------
     def forward(self, recon_x, x, mean, log_var):
         # 基础项
-        recon_loss = F.l1_loss(recon_x, x, reduction='sum')
+        recon_loss = F.mse_loss(recon_x, x, reduction='sum')
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
         # 余弦退火 β
         beta = self.get_beta()
 
         # 梯度与感知损失
-        g_loss = 0.8 * self.grad_loss(recon_x, x)
+        g_loss = 0.1 * self.grad_loss(recon_x, x)
         vgg_loss = 0.01 * self.vgg_loss(recon_x, x)
 
         # 总和
@@ -540,8 +540,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--image_size", type=tuple, default=(3, 128, 128))
     parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=32)
