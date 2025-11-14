@@ -69,8 +69,8 @@ def main(args):
         split="test"
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=False)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, pin_memory=False)
 
     # --------------------------
     # 模型
@@ -116,7 +116,7 @@ def main(args):
         # ==================================================
         vae.train()
         for it, (x, y, did, xo) in enumerate(train_loader):
-            x, y = x.to(device), y.to(device)
+            x, y, xo = x.to(device), y.to(device), xo.to(device)
             recon_x, mean, log_var, z = vae(x, y)
 
             total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
@@ -140,7 +140,7 @@ def main(args):
 
         with torch.no_grad():
             for it, (x, y, did, xo) in enumerate(valid_loader):
-                x, y = x.to(device), y.to(device)
+                x, y, xo = x.to(device), y.to(device), xo.to(device)
                 recon_x, mean, log_var, z = vae(x, y)
 
                 total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
@@ -223,7 +223,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=512)

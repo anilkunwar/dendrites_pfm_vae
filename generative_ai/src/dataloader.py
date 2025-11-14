@@ -43,7 +43,7 @@ def inv_smooth_scale(y, k=0.3, eps=1e-6):
     return 0.5 / k * torch.log(y / (1 - y))
 
 class DendritePFMDataset(Dataset):
-    def __init__(self, image_size, json_path, split="train", transform=None, device="cuda"):
+    def __init__(self, image_size, json_path, split="train", transform=None):
         """
         参数:
             json_path: str, JSON 文件路径 (包含 train/val/test 列表)
@@ -61,8 +61,6 @@ class DendritePFMDataset(Dataset):
 
         self.image_size = (image_size[1], image_size[2])
         self.transform = transform
-
-        self.device = device
 
     def __len__(self):
         return len(self.files)
@@ -99,7 +97,7 @@ class DendritePFMDataset(Dataset):
             self.meta_dict[meta_path] = inverse_scale_params(meta).values()
         c += self.meta_dict[meta_path]
 
-        return tensor_t.to(self.device), torch.tensor(c, dtype=torch.float32), os.path.basename(sub_path), tensor.to(self.device)
+        return tensor_t, torch.tensor(c, dtype=torch.float32), os.path.basename(sub_path), tensor
 
     def showSample(self):
         import matplotlib.pyplot as plt
