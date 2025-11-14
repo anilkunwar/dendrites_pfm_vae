@@ -1,3 +1,4 @@
+import math
 import os
 import time
 from datetime import datetime
@@ -10,7 +11,7 @@ from torch.utils.data import DataLoader
 from collections import defaultdict
 import pandas as pd
 
-from src.loss import PhysicsConstrainedVAELoss
+from src.lossv2 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv4 import VAE
 
@@ -29,8 +30,8 @@ def main(args):
     exp_name = (
         f"V4_"
         f"noise{args.noise_prob}_"
-        f"edge{args.w_edge}_"
-        f"fft{args.w_fft}_"
+        # f"edge{args.w_edge}_"
+        f"fft{args.w_kl}_"
         f"tv{args.w_tv}_"
         f"smooth{args.w_smooth}_"
         f"grad{args.w_grad}_"
@@ -68,8 +69,8 @@ def main(args):
         split="test"
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # --------------------------
     # 模型
@@ -85,8 +86,7 @@ def main(args):
     # 可调权重损失
     # --------------------------
     loss_fn = PhysicsConstrainedVAELoss(
-        w_edge=args.w_edge,
-        w_fft=args.w_fft,
+        w_kl=args.w_kl,
         w_tv=args.w_tv,
         w_smoothness=args.w_smooth,
         w_grad=args.w_grad
@@ -103,7 +103,7 @@ def main(args):
     }
 
     best_val = float("inf")
-    patience = 5
+    patience = 10
     no_imp = 0
 
     # ======================================================
@@ -185,7 +185,7 @@ def main(args):
             no_imp += 1
             print(f"No improvement {no_imp}/{patience}")
 
-        if no_imp >= patience:
+        if no_imp >= patience or math.isnan(avg_val):
             print("🛑 Early stopping")
             break
 
@@ -223,18 +223,18 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=512)
-    parser.add_argument("--latent_size", type=int, default=32)
+    parser.add_argument("--latent_size", type=int, default=128)
     parser.add_argument("--num_params", type=int, default=15)
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.3)
-    parser.add_argument("--w_edge", type=float, default=0.01)
-    parser.add_argument("--w_fft", type=float, default=0.01)
+    # parser.add_argument("--w_edge", type=float, default=0.01)
+    parser.add_argument("--w_kl", type=float, default=0.01)
     parser.add_argument("--w_tv", type=float, default=0.001)
     parser.add_argument("--w_smooth", type=float, default=0.01)
     parser.add_argument("--w_grad", type=float, default=0.01)

@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--model_root", type=str, default='results/V4_noise0.1_edge0.001_fft0.001_tv0.0005_smooth0.005_grad0.001_20251114_112549')
+    parser.add_argument("--model_root", type=str, default='results/V4_noise0.1_edge0.001_fft0.001_tv0.0005_smooth0.005_grad0.05_20251114_115424')
 
     args = parser.parse_args()
 
