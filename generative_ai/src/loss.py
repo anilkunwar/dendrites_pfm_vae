@@ -18,6 +18,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
                  w_fft=0.01,
                  w_tv=0.001,
                  w_smoothness=0.01,
+                 w_grad=0.01,
                  use_edge_loss=True,
                  use_fft_loss=True,
                  use_tv_loss=True,
@@ -39,6 +40,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         self.w_fft = w_fft
         self.w_tv = w_tv
         self.w_smoothness = w_smoothness
+        self.w_grad = w_grad
         self.use_edge_loss = use_edge_loss
         self.use_fft_loss = use_fft_loss
         self.use_tv_loss = use_tv_loss
@@ -110,8 +112,10 @@ class PhysicsConstrainedVAELoss(nn.Module):
             smoothness_loss_val = self.local_smoothness_loss(recon_x)
             physics_loss += self.w_smoothness * smoothness_loss_val
 
+        grad_loss = (self.grad_loss(recon_x, x) / batch_size) * self.w_grad
+
         # 3. Total loss
-        total_loss = elbo_loss + physics_loss + (self.grad_loss(recon_x, x) / batch_size) * 0.1
+        total_loss = elbo_loss + physics_loss + grad_loss
 
         # Return detailed loss breakdown
         loss_dict = {

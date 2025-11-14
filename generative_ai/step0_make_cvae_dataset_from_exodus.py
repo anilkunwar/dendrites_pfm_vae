@@ -144,7 +144,7 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
     global_time_list = []
 
     for file_idx, filename in enumerate(all_files):
-        if file_idx % 10 != 0:
+        if file_idx % 20 != 0:
             continue
         print(f"\n=== File {file_idx + 1}/{len(all_files)}: {os.path.basename(filename)} ===")
         ds = read_exodus_netcdf(filename)
@@ -221,7 +221,7 @@ if __name__ == '__main__':
 
     data_root = "data/"
     # for vn in os.listdir(data_root):
-    for vn in ["case_020"]:
+    for vn in ["case_023"]:
         main_file = glob.glob(os.path.join(data_root, vn, "exodus_files", "*.e"))[0]
         export_all_variables(
             base_exodus_file=main_file,

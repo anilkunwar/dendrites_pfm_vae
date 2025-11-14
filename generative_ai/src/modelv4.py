@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from generative_ai.src.dataloader import smooth_scale
+from src.dataloader import smooth_scale
 
 # 定义初始化函数
 def init_weights(model):

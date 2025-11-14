@@ -20,10 +20,11 @@ def main(args):
     test_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="test")
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=True)
 
-    vae = torch.load(os.path.join("ckpt", "CVAE.ckpt")).to(device)
+    vae = torch.load(os.path.join(args.model_root, "ckpt", "CVAE.ckpt")).to(device)
 
-    if not os.path.exists(args.save_fig_path):
-        os.makedirs(args.save_fig_path)
+    save_fig_path = os.path.join(args.model_root, "figures")
+    if not os.path.exists(save_fig_path):
+        os.makedirs(save_fig_path)
 
     ys = []
     dids = []
@@ -53,7 +54,7 @@ def main(args):
             plt.subplot(3, 2, 6)
             plt.imshow(recon_x[0].view(args.image_size).cpu().data.numpy()[2])
             plt.savefig(
-                os.path.join(args.save_fig_path, str(f"t={y[0][0].item()}_did={did[0]}.png")),
+                os.path.join(save_fig_path, str(f"t={y[0][0].item()}_did={did[0]}.png")),
                 dpi=300)
             plt.show()
 
@@ -61,7 +62,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--save_fig_path", type=str, default='test_figs')
+    parser.add_argument("--model_root", type=str, default='results/V4_noise0.1_edge0.001_fft0.001_tv0.0005_smooth0.005_grad0.001_20251114_112549')
 
     args = parser.parse_args()
 
