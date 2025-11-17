@@ -116,7 +116,7 @@ def plot_variable_smooth(x, y, connectivity, nodal_values, var_name, time, outpu
 # ============================================================
 # Main export
 # ============================================================
-def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "pot"), grid_size=256, save_images=False):
+def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "pot"), sample_interval=1, grid_size=256, save_images=False):
     """
     Process all .e/.e-s### files, plot variables, and export .npy arrays.
     One .npy file per time step: shape = (H, W, n_variables).
@@ -144,7 +144,7 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
     global_time_list = []
 
     for file_idx, filename in enumerate(all_files):
-        if file_idx % 20 != 0:
+        if file_idx % sample_interval != 0:
             continue
         print(f"\n=== File {file_idx + 1}/{len(all_files)}: {os.path.basename(filename)} ===")
         ds = read_exodus_netcdf(filename)
@@ -221,11 +221,12 @@ if __name__ == '__main__':
 
     data_root = "data/"
     # for vn in os.listdir(data_root):
-    for vn in ["case_023"]:
+    for vn in ["case_072"]:
         main_file = glob.glob(os.path.join(data_root, vn, "exodus_files", "*.e"))[0]
         export_all_variables(
             base_exodus_file=main_file,
             output_root=os.path.join(data_root, vn),
+            sample_interval = 5,
             grid_size=grid_size,
             save_images = save_images
         )
