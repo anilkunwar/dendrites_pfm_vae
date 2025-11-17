@@ -31,7 +31,7 @@ def main(args):
         f"V4_"
         f"noise{args.noise_prob}_"
         # f"edge{args.w_edge}_"
-        f"fft{args.w_kl}_"
+        f"kl{args.w_kl}_"
         f"tv{args.w_tv}_"
         f"smooth{args.w_smooth}_"
         f"grad{args.w_grad}_"
@@ -224,7 +224,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--learning_rate", type=float, default=5e-5)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=128)
@@ -232,12 +232,12 @@ if __name__ == "__main__":
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
-    parser.add_argument("--noise_prob", type=float, default=0.3)
+    parser.add_argument("--noise_prob", type=float, default=0.8)
     # parser.add_argument("--w_edge", type=float, default=0.01)
-    parser.add_argument("--w_kl", type=float, default=0.01)
-    parser.add_argument("--w_tv", type=float, default=0.001)
-    parser.add_argument("--w_smooth", type=float, default=0.01)
-    parser.add_argument("--w_grad", type=float, default=0.01)
+    parser.add_argument("--w_kl", type=float, default=0.1)
+    parser.add_argument("--w_tv", type=float, default=0)
+    parser.add_argument("--w_smooth", type=float, default=0)
+    parser.add_argument("--w_grad", type=float, default=0.5)
 
     parser.add_argument("--fig_root", type=str, default="results")
 

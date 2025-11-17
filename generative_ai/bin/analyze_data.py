@@ -1,5 +1,5 @@
 import json
-import glob
+import glob, os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -7,6 +7,10 @@ import seaborn as sns
 # 1️⃣ 使用 glob 读取当前目录下所有 .json 文件
 file_list = glob.glob("../data/case_*/*.json")
 print(f"读取到 {len(file_list)} 个 JSON 文件")
+
+# 判断是否出现重复的模拟
+for fn in glob.glob("../data/case_*/exodus_files/*.e"):
+    print(os.path.basename(fn))
 
 # 2️⃣ 逐个加载 JSON 文件为字典并组成 DataFrame
 data_list = []
