@@ -221,12 +221,12 @@ if __name__ == '__main__':
 
     data_root = "data/"
     # for vn in os.listdir(data_root):
-    for vn in ["case_072"]:
+    for vn in ["case_071"]:
         main_file = glob.glob(os.path.join(data_root, vn, "exodus_files", "*.e"))[0]
         export_all_variables(
             base_exodus_file=main_file,
             output_root=os.path.join(data_root, vn),
-            sample_interval = 5,
+            sample_interval = 10,
             grid_size=grid_size,
             save_images = save_images
         )

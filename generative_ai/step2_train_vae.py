@@ -222,7 +222,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
@@ -234,10 +234,10 @@ if __name__ == "__main__":
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
     # parser.add_argument("--w_edge", type=float, default=0.01)
-    parser.add_argument("--w_kl", type=float, default=0.1)
+    parser.add_argument("--w_kl", type=float, default=0.001)
     parser.add_argument("--w_tv", type=float, default=0)
     parser.add_argument("--w_smooth", type=float, default=0)
-    parser.add_argument("--w_grad", type=float, default=0.5)
+    parser.add_argument("--w_grad", type=float, default=0.001)
 
     parser.add_argument("--fig_root", type=str, default="results")
 
