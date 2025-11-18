@@ -2,7 +2,8 @@
 phase_field_model/MooseProject/.jitcache
 phase_field_model/MooseProject/logs
 phase_field_model/MooseProject/generated_inputs
+phase_field_model/MooseProject/results
 generative_ai/data/
-generative_ai/results
+generative_ai/results/
 tmp/results/
 tmp/
