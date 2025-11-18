@@ -112,6 +112,12 @@ def plot_variable_smooth(x, y, connectivity, nodal_values, var_name, time, outpu
     print(f"  [IMG] {fname}")
     return fname
 
+def extract_s_number(path):
+    m = re.search(r'-s(\d+)$', path)
+    if m:
+        return int(m.group(1))
+    else:
+        return -1   # 没有 -s 后缀的排最前（也可放成很大数字）
 
 # ============================================================
 # Main export
@@ -127,7 +133,7 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
     # --- locate all related Exodus files
     all_files = [os.path.join(base_dir, f) for f in os.listdir(base_dir)
                  if re.match(fr"{re.escape(prefix)}(\.e|\.e-s\d+)$", f)]
-    all_files.sort()
+    all_files.sort(key=extract_s_number)
     if not all_files:
         print(f"[ERROR] No Exodus files found for prefix {prefix}")
         return
@@ -143,9 +149,9 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
 
     global_time_list = []
 
+    total_ts_index = -1
     for file_idx, filename in enumerate(all_files):
-        if file_idx % sample_interval != 0:
-            continue
+
         print(f"\n=== File {file_idx + 1}/{len(all_files)}: {os.path.basename(filename)} ===")
         ds = read_exodus_netcdf(filename)
         if ds is None:
@@ -164,6 +170,11 @@ def export_all_variables(base_exodus_file, output_root, variables=("eta", "c", "
 
             # Loop over time steps
             for t_idx, t_val in enumerate(times):
+
+                total_ts_index += 1
+                if total_ts_index % sample_interval != 0:
+                    continue
+
                 print(f"\n[STEP] t = {t_val:.6e}")
                 var_data_list = []
                 for vname in variables:
@@ -221,12 +232,12 @@ if __name__ == '__main__':
 
     data_root = "data/"
     # for vn in os.listdir(data_root):
-    for vn in ["case_071"]:
+    for vn in ["case_037"]:
         main_file = glob.glob(os.path.join(data_root, vn, "exodus_files", "*.e"))[0]
         export_all_variables(
             base_exodus_file=main_file,
             output_root=os.path.join(data_root, vn),
-            sample_interval = 10,
+            sample_interval = 2,
             grid_size=grid_size,
             save_images = save_images
         )
