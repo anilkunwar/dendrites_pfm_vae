@@ -9,7 +9,7 @@ setlocal enabledelayedexpansion
 set noise_list=0.1 0.3 0.5 0.7 0.9
 
 :: TV 权重
-set kl_weights=0.001 0.01 0.1 0.5 1.0 5.0
+set kl_weights=0.001 0.01 0.1
 
 :: TV 权重
 set tv_weights=0.0
@@ -18,7 +18,7 @@ set tv_weights=0.0
 set smooth_weights=0.0
 
 :: Grad 权重
-set grad_weights=0.001 0.01 0.1 0.5 1.0 5.0
+set grad_weights=0.001 0.01 0.1 0.5 1.0
 
 :: 输出根目录
 set OUTROOT=results
