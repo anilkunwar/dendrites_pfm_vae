@@ -232,12 +232,12 @@ if __name__ == "__main__":
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
-    parser.add_argument("--noise_prob", type=float, default=0.8)
+    parser.add_argument("--noise_prob", type=float, default=0.1)
     # parser.add_argument("--w_edge", type=float, default=0.01)
     parser.add_argument("--w_kl", type=float, default=0.001)
     parser.add_argument("--w_tv", type=float, default=0)
     parser.add_argument("--w_smooth", type=float, default=0)
-    parser.add_argument("--w_grad", type=float, default=0.001)
+    parser.add_argument("--w_grad", type=float, default=1.0)
 
     parser.add_argument("--fig_root", type=str, default="results")
 
