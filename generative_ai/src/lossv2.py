@@ -55,7 +55,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         batch_size = x.size(0)
 
         # 1. Standard ELBO components
-        recon_loss = F.mse_loss(recon_x, x, reduction='sum') / batch_size
+        recon_loss = F.l1_loss(recon_x, x, reduction='sum') / batch_size
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / batch_size
         elbo_loss = recon_loss + kl_loss * self.w_kl
 
