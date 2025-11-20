@@ -29,11 +29,9 @@ def main(args):
     # --------------------------
     exp_name = (
         f"V4_"
+        f"latent_size={args.latent_size}_"
         f"noise{args.noise_prob}_"
-        # f"edge{args.w_edge}_"
         f"kl{args.w_kl}_"
-        f"tv{args.w_tv}_"
-        f"smooth{args.w_smooth}_"
         f"grad{args.w_grad}_"
         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
