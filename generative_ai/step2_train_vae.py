@@ -87,8 +87,6 @@ def main(args):
     # --------------------------
     loss_fn = PhysicsConstrainedVAELoss(
         w_kl=args.w_kl,
-        w_tv=args.w_tv,
-        w_smoothness=args.w_smooth,
         w_grad=args.w_grad
     )
 
@@ -233,10 +231,7 @@ if __name__ == "__main__":
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.1)
-    # parser.add_argument("--w_edge", type=float, default=0.01)
     parser.add_argument("--w_kl", type=float, default=0.01)
-    parser.add_argument("--w_tv", type=float, default=0)
-    parser.add_argument("--w_smooth", type=float, default=0)
     parser.add_argument("--w_grad", type=float, default=1.0)
 
     parser.add_argument("--fig_root", type=str, default="results")
