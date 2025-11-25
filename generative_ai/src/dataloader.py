@@ -97,7 +97,7 @@ class DendritePFMDataset(Dataset):
             self.meta_dict[meta_path] = inverse_scale_params(meta).values()
         c += self.meta_dict[meta_path]
 
-        return tensor_t, torch.tensor(c, dtype=torch.float32), os.path.basename(sub_path), tensor
+        return tensor_t, torch.tensor(c, dtype=torch.float32), int(os.path.basename(sub_path).split("_")[-1]), tensor
 
     def showSample(self):
         import matplotlib.pyplot as plt

@@ -15,8 +15,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
 
     def __init__(self,
                  w_kl = 0.1,
-                 w_tv=0.001,
-                 w_smoothness=0.01,
                  w_grad=0.01,
                  device="cuda"):
         """
@@ -26,8 +24,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
         """
         super(PhysicsConstrainedVAELoss, self).__init__()
         self.w_kl = w_kl
-        self.w_tv = w_tv
-        self.w_smoothness = w_smoothness
         self.w_grad = w_grad
 
         # 梯度卷积核
@@ -60,12 +56,10 @@ class PhysicsConstrainedVAELoss(nn.Module):
         elbo_loss = recon_loss + kl_loss * self.w_kl
 
         # 2. Physics constraints on reconstructed images
-        smoothness_loss_val = self.local_smoothness_loss(recon_x) * self.w_smoothness
-        tv_loss_val = self.total_variation_loss(x) * self.w_tv
         grad_loss = (self.grad_loss(recon_x, x) / batch_size) * self.w_grad
 
         # 3. Total loss
-        total_loss = elbo_loss + smoothness_loss_val + tv_loss_val + grad_loss
+        total_loss = elbo_loss + grad_loss
 
         # Return detailed loss breakdown
         loss_dict = {
@@ -73,8 +67,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
             'elbo': elbo_loss.item(),
             'recon': recon_loss.item(),
             'kl': kl_loss.item(),
-            'tv': tv_loss_val if isinstance(tv_loss_val, float) else tv_loss_val.item(),
-            'smoothness': smoothness_loss_val if isinstance(smoothness_loss_val, float) else smoothness_loss_val.item()
         }
 
         return total_loss, loss_dict

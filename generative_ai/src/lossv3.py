@@ -72,6 +72,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
     def __init__(self,
                  w_kl = 0.1,
                  w_grad=0.01,
+                 w_con=0.1,
                  device="cuda"):
         """
         Args:
@@ -81,6 +82,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         super(PhysicsConstrainedVAELoss, self).__init__()
         self.w_kl = w_kl
         self.w_grad = w_grad
+        self.w_con = w_con
 
         # 梯度卷积核
         self.kernel_grady = torch.tensor(
@@ -90,7 +92,20 @@ class PhysicsConstrainedVAELoss(nn.Module):
             [[[[1., -1.]]]] * 3, device=device
         )
 
-    def forward(self, recon_x, x, mean, log_var):
+        self.cLoss = SupervisedContrastiveLoss()
+
+    def grad_loss(self, input, target):
+        input_rectangles_h = F.conv2d(input, self.kernel_grady, padding=0, groups=3)
+        target_rectangles_h = F.conv2d(target, self.kernel_grady, padding=0, groups=3)
+        loss_h = torch.sum(torch.abs(input_rectangles_h - target_rectangles_h) * (target_rectangles_h.abs().exp()))
+
+        input_rectangles_o = F.conv2d(input, self.kernel_gradx, padding=0, groups=3)
+        target_rectangles_o = F.conv2d(target, self.kernel_gradx, padding=0, groups=3)
+        loss_o = torch.sum(torch.abs(input_rectangles_o - target_rectangles_o) * (target_rectangles_o.abs().exp()))
+
+        return loss_h + loss_o
+
+    def forward(self, recon_x, x, mean, log_var, n_mean, n_log_var, dids):
         """
         Compute physics-constrained VAE loss.
 
@@ -111,13 +126,13 @@ class PhysicsConstrainedVAELoss(nn.Module):
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / batch_size
         elbo_loss = recon_loss + kl_loss * self.w_kl
 
-        # 2. Physics constraints on reconstructed images
-        smoothness_loss_val = self.local_smoothness_loss(recon_x) * self.w_smoothness
-        tv_loss_val = self.total_variation_loss(x) * self.w_tv
-        grad_loss = (self.grad_loss(recon_x, x) / batch_size) * self.w_grad
+        grad_loss = self.grad_loss(recon_x, x) * self.w_grad
+        con_mean_loss = self.cLoss(n_mean, dids)
+        con_log_var_loss = self.cLoss(n_log_var, dids)
+        c_loss = (con_mean_loss + con_log_var_loss) * self.w_con
 
         # 3. Total loss
-        total_loss = elbo_loss + smoothness_loss_val + tv_loss_val + grad_loss
+        total_loss = elbo_loss + c_loss + grad_loss
 
         # Return detailed loss breakdown
         loss_dict = {
@@ -125,8 +140,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
             'elbo': elbo_loss.item(),
             'recon': recon_loss.item(),
             'kl': kl_loss.item(),
-            'tv': tv_loss_val if isinstance(tv_loss_val, float) else tv_loss_val.item(),
-            'smoothness': smoothness_loss_val if isinstance(smoothness_loss_val, float) else smoothness_loss_val.item()
+            'contrasive': c_loss.item()
         }
 
         return total_loss, loss_dict

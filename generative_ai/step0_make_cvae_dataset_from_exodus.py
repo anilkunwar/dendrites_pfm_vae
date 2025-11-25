@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Process MOOSE Exodus (.e, .e-s###) results:
+Process MOOSE Exodus (.e, .e-s###) old_results_exp8:
  - Read all variables across all time steps
  - Save smooth PNG plots (tripcolor shading)
  - Interpolate variables onto a uniform grid and save as (H, W, n) npy arrays

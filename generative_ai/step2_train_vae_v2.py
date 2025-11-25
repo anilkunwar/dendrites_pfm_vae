@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from collections import defaultdict
 import pandas as pd
 
-from src.lossv2 import PhysicsConstrainedVAELoss
+from src.lossv3 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv4 import VAE
 
@@ -33,6 +33,7 @@ def main(args):
         f"noise{args.noise_prob}_"
         f"kl{args.w_kl}_"
         f"grad{args.w_grad}_"
+        f"con{args.w_con}_"
         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
@@ -67,8 +68,8 @@ def main(args):
         split="test"
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=False)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, pin_memory=False)
 
     # --------------------------
     # 模型
@@ -86,6 +87,7 @@ def main(args):
     loss_fn = PhysicsConstrainedVAELoss(
         w_kl=args.w_kl,
         w_grad=args.w_grad,
+        w_con=args.w_con
     )
 
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
@@ -113,9 +115,9 @@ def main(args):
         vae.train()
         for it, (x, y, did, xo) in enumerate(train_loader):
             x, y, xo = x.to(device), y.to(device), xo.to(device)
-            recon_x, mean, log_var, z = vae(x, y)
+            recon_x, mean, log_var, z, mu_, log_var_ = vae(x, y)
 
-            total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
+            total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var, mu_, log_var_, did)
 
             # ---- 记录损失（所有字段）----
             for k, v in loss_dict.items():
@@ -137,9 +139,9 @@ def main(args):
         with torch.no_grad():
             for it, (x, y, did, xo) in enumerate(valid_loader):
                 x, y, xo = x.to(device), y.to(device), xo.to(device)
-                recon_x, mean, log_var, z = vae(x, y)
+                recon_x, mean, log_var, z, mu_, log_var_ = vae(x, y)
 
-                total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
+                total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var, mu_, log_var_, did)
 
                 # ---- 记录损失（所有字段）----
                 for k, v in loss_dict.items():
@@ -218,21 +220,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--epochs", type=int, default=500)
+    parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--learning_rate", type=float, default=1e-5)
-    parser.add_argument("--image_size", type=tuple, default=(3, 32, 32))
+    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=512)
-    parser.add_argument("--latent_size", type=int, default=8)
+    parser.add_argument("--latent_size", type=int, default=64)
     parser.add_argument("--num_params", type=int, default=15)
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
-    parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--w_kl", type=float, default=0.5)
-    parser.add_argument("--w_grad", type=float, default=0.)
+    parser.add_argument("--noise_prob", type=float, default=0.1)
+    parser.add_argument("--w_kl", type=float, default=0.01)
+    parser.add_argument("--w_grad", type=float, default=0.1)
+    parser.add_argument("--w_con", type=float, default=0.)
 
-    parser.add_argument("--fig_root", type=str, default="results")
+    parser.add_argument("--fig_root", type=str, default="old_results_exp8")
 
     args = parser.parse_args()
     main(args)
