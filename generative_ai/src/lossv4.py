@@ -11,7 +11,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
     def __init__(self,
                  beta_start=0.0,         # 初始 β
                  beta_end=4.0,           # 最终 β
-                 anneal_steps=100,     # β 从 start 增到 end 的步数
+                 anneal_steps=1000,     # β 从 start 增到 end 的步数
                  w_grad=0.01,
                  device="cuda"):
         super().__init__()
