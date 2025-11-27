@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from collections import defaultdict
 import pandas as pd
 
-from src.lossv2 import PhysicsConstrainedVAELoss
+from src.lossv4 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv4 import VAE
 
@@ -84,7 +84,6 @@ def main(args):
     # 可调权重损失
     # --------------------------
     loss_fn = PhysicsConstrainedVAELoss(
-        w_kl=args.w_kl,
         w_grad=args.w_grad,
     )
 
@@ -139,7 +138,7 @@ def main(args):
                 x, y, xo = x.to(device), y.to(device), xo.to(device)
                 recon_x, mean, log_var, z = vae(x, y)
 
-                total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var)
+                total_loss, loss_dict = loss_fn(recon_x.view(xo.shape), xo, mean, log_var, True)
 
                 # ---- 记录损失（所有字段）----
                 for k, v in loss_dict.items():
@@ -219,9 +218,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--batch_size", type=int, default=96)
     parser.add_argument("--learning_rate", type=float, default=1e-5)
-    parser.add_argument("--image_size", type=tuple, default=(3, 32, 32))
+    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=8)
     parser.add_argument("--num_params", type=int, default=15)
@@ -229,8 +228,8 @@ if __name__ == "__main__":
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--w_kl", type=float, default=0.5)
-    parser.add_argument("--w_grad", type=float, default=0.)
+    parser.add_argument("--w_kl", type=float, default=0.01)
+    parser.add_argument("--w_grad", type=float, default=0.1)
 
     parser.add_argument("--fig_root", type=str, default="results")
 

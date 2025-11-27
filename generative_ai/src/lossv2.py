@@ -71,58 +71,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
 
         return total_loss, loss_dict
 
-    def total_variation_loss(self, images):
-        """
-        Total Variation loss encourages spatial smoothness.
-        Physical reasoning: Penalizes pixel-to-pixel variations,
-        encouraging piecewise smooth images typical of physical systems.
-
-        Args:
-            images: [batch_size, channels, H, W]
-        Returns:
-            Total variation loss
-        """
-        # Compute differences between adjacent pixels
-        diff_h = torch.abs(images[:, :, 1:, :] - images[:, :, :-1, :])
-        diff_w = torch.abs(images[:, :, :, 1:] - images[:, :, :, :-1])
-
-        # Sum of absolute differences
-        tv_loss = torch.sum(diff_h) + torch.sum(diff_w)
-
-        return tv_loss / images.size(0)
-
-    def local_smoothness_loss(self, images):
-        """
-        Penalize large variations between neighboring pixels using Laplacian.
-        Physical reasoning: Physical fields typically vary smoothly in space.
-
-        Args:
-            images: [batch_size, channels, H, W]
-        Returns:
-            Local smoothness loss
-        """
-        # Laplacian kernel (discrete approximation of second derivative)
-        # Detects rapid changes in intensity
-        batch_size, channels, h, w = images.shape
-
-        # Compute Laplacian using convolution
-        laplacian_kernel = torch.tensor([
-            [0, 1, 0],
-            [1, -4, 1],
-            [0, 1, 0]
-        ], dtype=images.dtype, device=images.device).view(1, 1, 3, 3)
-
-        # Replicate kernel for all channels
-        laplacian_kernel = laplacian_kernel.repeat(channels, 1, 1, 1)
-
-        # Apply Laplacian
-        laplacian = F.conv2d(images, laplacian_kernel, padding=1, groups=channels)
-
-        # L2 norm of Laplacian (penalize large second derivatives)
-        smoothness_loss = torch.sum(laplacian ** 2)
-
-        return smoothness_loss / batch_size
-
     def grad_loss(self, input, target):
         input_rectangles_h = F.conv2d(input, self.kernel_grady, padding=0, groups=3)
         target_rectangles_h = F.conv2d(target, self.kernel_grady, padding=0, groups=3)
@@ -133,43 +81,3 @@ class PhysicsConstrainedVAELoss(nn.Module):
         loss_o = torch.sum(torch.abs(input_rectangles_o - target_rectangles_o) * (target_rectangles_o.abs().exp()))
 
         return loss_h + loss_o
-
-class AdaptivePhysicsVAELoss(nn.Module):
-    """
-    Adaptive version that adjusts physics constraint strength based on training progress.
-    Gradually increases physics constraints as reconstruction quality improves.
-    """
-
-    def __init__(self,
-                 w_edge_max=0.01,
-                 w_fft_max=0.01,
-                 w_tv_max=0.001,
-                 warmup_epochs=10):
-        """
-        Args:
-            w_edge_max: Maximum weight for edge loss
-            w_fft_max: Maximum weight for FFT loss
-            w_tv_max: Maximum weight for TV loss
-            warmup_epochs: Number of epochs to gradually increase physics weights
-        """
-        super(AdaptivePhysicsVAELoss, self).__init__()
-        self.w_edge_max = w_edge_max
-        self.w_fft_max = w_fft_max
-        self.w_tv_max = w_tv_max
-        self.warmup_epochs = warmup_epochs
-        self.current_epoch = 0
-
-        self.base_loss = PhysicsConstrainedVAELoss()
-
-    def set_epoch(self, epoch):
-        """Update current epoch for adaptive weighting."""
-        self.current_epoch = epoch
-
-        # Linear warmup
-        alpha = min(1.0, epoch / self.warmup_epochs)
-        self.base_loss.w_edge = alpha * self.w_edge_max
-        self.base_loss.w_fft = alpha * self.w_fft_max
-        self.base_loss.w_tv = alpha * self.w_tv_max
-
-    def forward(self, recon_x, x, mean, log_var):
-        return self.base_loss(recon_x, x, mean, log_var)
