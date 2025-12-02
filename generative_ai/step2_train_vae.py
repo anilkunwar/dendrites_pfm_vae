@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from collections import defaultdict
 import pandas as pd
 
-from src.lossv5 import PhysicsConstrainedVAELoss
+from src.lossv4 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv5 import VAE
 
@@ -31,8 +31,9 @@ def main(args):
         f"V5_"
         f"latent_size{args.latent_size}_"
         f"noise{args.noise_prob}_"
-        f"kl{args.w_kl}_"
-        f"grad{args.w_grad}_"
+        f"beta_start{args.beta_start}_"
+        f"beta_end{args.beta_end}_"
+        f"phy{args.w_phy}_"
         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
@@ -49,16 +50,16 @@ def main(args):
         args.image_size,
         os.path.join("data", "dataset_split.json"),
         split="train",
-        transform=A.Compose([
-            A.CoarseDropout(
-                num_holes_range=(1, 8),
-                hole_height_range=(0.01, 0.1),
-                hole_width_range=(0.01, 0.1),
-                p=0.1
-            ),
-            A.PixelDropout(dropout_prob=0.05, p=0.1),
-            A.GaussNoise(p=args.noise_prob),
-        ])
+        # transform=A.Compose([
+        #     A.CoarseDropout(
+        #         num_holes_range=(1, 8),
+        #         hole_height_range=(0.01, 0.1),
+        #         hole_width_range=(0.01, 0.1),
+        #         p=0.1
+        #     ),
+        #     A.PixelDropout(dropout_prob=0.05, p=0.1),
+        #     A.GaussNoise(p=args.noise_prob),
+        # ])
     )
 
     valid_dataset = DendritePFMDataset(
@@ -84,9 +85,9 @@ def main(args):
     # 可调权重损失
     # --------------------------
     loss_fn = PhysicsConstrainedVAELoss(
-        w_grad=args.w_grad,
-        w_kl=args.w_kl
-        # 这里仍用默认 beta_start/beta_end 做 KL anneal；如果想用 args.w_kl，可以在类里再加权
+        beta_start=args.beta_start,
+        beta_end=args.beta_end,
+        w_grad=args.w_phy
     )
 
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
@@ -100,7 +101,7 @@ def main(args):
     }
 
     best_val = float("inf")
-    patience = 20
+    patience = 30
     no_imp = 0
 
     # ======================================================
@@ -115,16 +116,13 @@ def main(args):
         for it, (x, y, did, xo) in enumerate(train_loader):
             x, y, xo = x.to(device), y.to(device), xo.to(device)
 
-            # 模型现在返回 6 个量
-            recon_x, mu_x, log_var_x, z, mu_c, logvar_c = vae(x, y)
+            recon_x, mu_x, log_var_x, z = vae(x, y)
 
             total_loss, loss_dict = loss_fn(
                 recon_x.view(xo.shape),
                 xo,
                 mu_x,
-                log_var_x,
-                ctr_mean=mu_c,
-                ctr_logvar=logvar_c
+                log_var_x
             )
 
             # ---- 记录损失（所有字段）----
@@ -139,7 +137,9 @@ def main(args):
                 print(f"[Train] Epoch {epoch} It {it}/{len(train_loader)} "
                       f"Loss = {total_loss.item():.4f} "
                       f"Recon = {loss_dict['recon']:.4f} "
-                      f"Consist = {loss_dict['kl']:.4f}")
+                      f"KL = {loss_dict['kl']:.4f} "
+                      # f"Phy = {loss_dict['grad']:.4f}"
+                )
 
         # ==================================================
         #                     Valid
@@ -151,15 +151,13 @@ def main(args):
             for it, (x, y, did, xo) in enumerate(valid_loader):
                 x, y, xo = x.to(device), y.to(device), xo.to(device)
 
-                recon_x, mu_x, log_var_x, z, mu_c, logvar_c = vae(x, y)
+                recon_x, mu_x, log_var_x, z = vae(x, y)
 
                 total_loss, loss_dict = loss_fn(
                     recon_x.view(xo.shape),
                     xo,
                     mu_x,
                     log_var_x,
-                    ctr_mean=mu_c,
-                    ctr_logvar=logvar_c,
                     freeze=True
                 )
 
@@ -241,18 +239,20 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=96)
-    parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--hidden_dimension", type=int, default=512)
+    parser.add_argument("--hidden_dimension", type=int, default=256)
     parser.add_argument("--latent_size", type=int, default=32)
     parser.add_argument("--num_params", type=int, default=15)
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
-    parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--w_kl", type=float, default=0.01)      # 目前未直接用，可在 loss 里接入
-    parser.add_argument("--w_grad", type=float, default=0.1)
+    parser.add_argument("--noise_prob", type=float, default=1.0)
+    parser.add_argument("--beta_start", type=float, default=0)
+    parser.add_argument("--beta_end", type=float, default=0)
+    parser.add_argument("--anneal_steps", type=int, default=100)
+    parser.add_argument("--w_phy", type=float, default=0)
 
     parser.add_argument("--fig_root", type=str, default="results")
 

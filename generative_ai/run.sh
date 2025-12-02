@@ -32,8 +32,8 @@ for T in "${latent_size_list[@]}"; do
                 python step2_train_vae.py \
                     --noise_prob "$N" \
                     --latent_size "$T" \
-                    --w_kl "$G" \
-                    --w_grad "$W" \
+                    --beta_start "$G" \
+                    --w_phy "$W" \
 #                    --w_con "$K"
 #              done
             done

@@ -5,7 +5,10 @@ import torch.nn as nn
 
 from src.dataloader import smooth_scale
 
-# 定义初始化函数
+
+# ---------------------------
+# 通用初始化
+# ---------------------------
 def init_weights(model):
     for name, m in model.named_modules():  # 递归遍历所有模块
         if isinstance(m, nn.Linear):
@@ -16,9 +19,29 @@ def init_weights(model):
             nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.ConvTranspose2d):
+            nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+
+
+# ---------------------------
+# 一个小工具：安全创建 GroupNorm
+# ---------------------------
+def make_gn(num_channels, max_groups=32):
+    """
+    自动选择一个能整除 num_channels 的 group 数。
+    优先 32,16,8,4,2,1 这些典型值。
+    """
+    for g in [32, 16, 8, 4, 2, 1]:
+        if g <= max_groups and num_channels % g == 0:
+            return nn.GroupNorm(g, num_channels)
+    # 兜底：1 组，相当于 LayerNorm on channel
+    return nn.GroupNorm(1, num_channels)
+
 
 # ==========================================================
-# Multi-kernel Residual Block
+# Multi-kernel Residual Block (Encoder/Decoder 共用)
 # ==========================================================
 class MultiKernelResBlock(nn.Module):
     """
@@ -34,7 +57,8 @@ class MultiKernelResBlock(nn.Module):
         self.conv5 = nn.Conv2d(in_channels, out_channels, 5, stride, 2, bias=False)
         self.conv7 = nn.Conv2d(in_channels, out_channels, 7, stride, 3, bias=False)
 
-        self.bn = nn.BatchNorm2d(out_channels)
+        # 原来是 BatchNorm2d(out_channels)
+        self.gn = make_gn(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
         # Shortcut connection
@@ -42,7 +66,7 @@ class MultiKernelResBlock(nn.Module):
         if downsample or in_channels != out_channels:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, 1, stride, bias=False),
-                nn.BatchNorm2d(out_channels)
+                make_gn(out_channels)
             )
 
     def forward(self, x):
@@ -53,7 +77,7 @@ class MultiKernelResBlock(nn.Module):
 
         # Aggregate + residual connection
         out = (out3 + out5 + out7) / 3.0
-        out = self.bn(out)
+        out = self.gn(out)
         out += self.shortcut(x)
         return self.relu(out)
 
@@ -83,8 +107,9 @@ class ResEncoder(nn.Module):
         logvar = self.fc_logvar(x)
         return mu, logvar
 
+
 # ==========================================================
-# Residual Upsampling Block (for decoder)
+# Residual Upsampling Block (for decoder)  使用 GN
 # ==========================================================
 class ResUpBlock(nn.Module):
     """
@@ -95,24 +120,24 @@ class ResUpBlock(nn.Module):
 
         # 主路径：上采样 + 卷积
         self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.gn1 = make_gn(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
         self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.gn2 = make_gn(out_channels)
 
         # Shortcut（调整通道 + 上采样）
         self.shortcut = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(out_channels)
+            make_gn(out_channels)
         )
 
     def forward(self, x):
         out = self.deconv1(x)
-        out = self.bn1(out)
+        out = self.gn1(out)
         out = self.relu(out)
         out = self.conv(out)
-        out = self.bn2(out)
+        out = self.gn2(out)
 
         shortcut = self.shortcut(x)
         out += shortcut
@@ -127,15 +152,16 @@ class ChannelWiseBlock(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv2d(channels, channels, 3, 1, 1, groups=groups, bias=False),
-            nn.BatchNorm2d(channels),
+            make_gn(channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(channels, channels, 3, 1, 1, groups=groups, bias=False),
-            nn.BatchNorm2d(channels),
+            make_gn(channels),
             nn.ReLU(inplace=True),
         )
 
     def forward(self, x):
         return self.layers(x)
+
 
 class GroupResUpBlock(nn.Module):
     """
@@ -148,28 +174,29 @@ class GroupResUpBlock(nn.Module):
             in_channels, out_channels, kernel_size=4, stride=2, padding=1,
             groups=groups, bias=False
         )
-        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.gn1 = make_gn(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
         self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, groups=groups, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.gn2 = make_gn(out_channels)
 
         # 残差支路：分组反卷积保持通道独立
         self.short = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, groups=groups, bias=False),
-            nn.BatchNorm2d(out_channels)
+            make_gn(out_channels)
         )
 
     def forward(self, x):
         out = self.deconv(x)
-        out = self.bn1(out)
+        out = self.gn1(out)
         out = self.relu(out)
         out = self.conv(out)
-        out = self.bn2(out)
+        out = self.gn2(out)
 
         sc = self.short(x)
         out = out + sc
         return self.relu(out)
+
 
 class ResDecoder(nn.Module):
     """
@@ -199,7 +226,7 @@ class ResDecoder(nn.Module):
         ch_per_group = math.ceil(base_channels / out_channels)
         self.group_channels = ch_per_group * out_channels
         self.align_proj = nn.Conv2d(base_channels, self.group_channels, kernel_size=1, bias=False)
-        self.align_bn = nn.BatchNorm2d(self.group_channels)
+        self.align_gn = make_gn(self.group_channels)
 
         # 3) 分组上采样：64→128（在上采样阶段就分离通道）
         self.group_up = GroupResUpBlock(
@@ -222,12 +249,14 @@ class ResDecoder(nn.Module):
         x = x.view(x.size(0), -1, self.H // 8, self.W // 8)  # [B, 4C, 16, 16]
 
         x = self.shared_up(x)                                # [B, C, 64, 64]
-        x = self.align_bn(self.align_proj(x))                # [B, G*CpG, 64, 64]
+        x = self.align_proj(x)
+        x = self.align_gn(x)                                 # [B, G*CpG, 64, 64]
         x = self.group_up(x)                                 # [B, G*CpG, 128, 128]
         x = self.refine(x)                                   # [B, G*CpG, 128, 128]
         x = self.head(x)                                     # [B, out_channels, 128, 128]
 
         return smooth_scale(x)
+
 
 # ==========================================================
 # Full Model
@@ -239,15 +268,7 @@ class VAE(nn.Module):
       - Additive coupling between z and c in the decoder
       - Coordinate channels concatenated to input
       - Downsampling 8x (128 -> 16)
-
-    训练时：
-      x → encoder → (mu_x, logvar_x)
-      ctr → cMLP → (mu_c, logvar_c)
-      通过 mu_x + mu_c, logvar_x + logvar_c 采样 z
-      loss 里额外约束 N(mu_x, logvar_x) 和 N(mu_c, logvar_c) 接近
-
-    推理时（只有 ctr）：
-      ctr → (mu_c, logvar_c) → z → decoder → image
+      - 使用 GroupNorm 代替 BatchNorm
     """
     def __init__(self, image_size=(3, 128, 128), latent_size=64, hidden_dimension=64, num_params=0):
         super().__init__()
@@ -283,36 +304,24 @@ class VAE(nn.Module):
         return mu + eps * std
 
     def forward(self, x, ctr=None):
-        """
-        返回：
-            recon:    重建图像
-            mu_x, logvar_x: 从图像编码得到的分布
-            z:        最终采样 latent
-            mu_c, logvar_c: 仅由 ctr 决定的分布（用于 distribution consistency loss）
-        """
         B, _, H, W = x.shape
 
-        # 图像 encoder
-        mu_x, logvar_x = self.encoder(x)
+        mu, logvar = self.encoder(x)
 
-        # ctr 分支：仅依赖 ctr
+        # Additive coupling: z' = z + f(c)
         if ctr is not None:
             c = self.cMLP(ctr).view(B, self.latent_size, 2)
-            mu_c = c[..., 0]
-            logvar_c = c[..., 1]
+            mu_ = mu + c[..., 0]
+            logvar_ = logvar + c[..., 1]
         else:
-            mu_c = None
-            logvar_c = None
-
-        # 采样
-        z = self.reparameterize(mu_x, logvar_x)
-
-        # 额外 attention 融合 ctr
+            mu_ = mu
+            logvar_ = logvar
+        z = self.reparameterize(mu_, logvar_)
         if ctr is not None:
             z = self.zAttn(torch.cat([z, self.zMLP(ctr)], dim=-1))
 
         recon = self.decoder(z)
-        return recon, mu_x, logvar_x, z, mu_c, logvar_c
+        return recon, mu, logvar, z
 
     @torch.no_grad()
     def inference(self, ctr: torch.Tensor = None, num_samples: int = 1, device=None):
@@ -320,14 +329,6 @@ class VAE(nn.Module):
         推理（生成）函数：
           - 若提供 ctr（条件向量），则生成条件图像
           - 若不提供 ctr，则随机采样生成图像
-
-        参数:
-            ctr: torch.Tensor [B, num_params]，可选的控制向量
-            num_samples: int，若无条件输入时生成的样本数
-            device: torch.device，可选
-
-        返回:
-            recon: [B, C, H, W] 生成图像
         """
         device = device or next(self.parameters()).device
         self.eval()
@@ -337,17 +338,14 @@ class VAE(nn.Module):
             B = ctr.size(0)
             ctr = ctr.to(device)
 
-            # 条件映射：这里直接用 ctr 分布
+            # 条件映射
             c = self.cMLP(ctr).view(B, self.latent_size, 2)
-            mu_c = c[..., 0]
-            logvar_c = c[..., 1]
+            mu = c[..., 0]
+            logvar = c[..., 1]
 
             # 采样
-            z = self.reparameterize(mu_c, logvar_c)
-
-            # 再通过 zMLP + zAttn 融合一遍 ctr
+            z = self.reparameterize(mu, logvar)
             z = self.zAttn(torch.cat([z, self.zMLP(ctr)], dim=-1))
-
         else:
             # 无条件生成（随机采样）
             B = num_samples
@@ -356,24 +354,3 @@ class VAE(nn.Module):
         # 解码生成图像
         recon = self.decoder(z)
         return recon
-
-# ==========================================================
-# Quick Test
-# ==========================================================
-if __name__ == "__main__":
-    model = VAE(
-        image_size=(3, 64, 64),
-        latent_size=32,
-        hidden_dimension=256,
-        num_params=15
-    )
-
-    x = torch.randn(2, 3, 64, 64)
-    c = torch.randn(2, 15)
-    recon, mu_x, logvar_x, z, mu_c, logvar_c = model(x, c)
-
-    print("Input:", x.shape)
-    print("Reconstruction:", recon.shape)
-    print("Latent:", z.shape)
-    print("mu_x:", mu_x.shape, "mu_c:", mu_c.shape)
-    print("Total parameters: %.2f M" % (sum(p.numel() for p in model.parameters()) / 1e6))

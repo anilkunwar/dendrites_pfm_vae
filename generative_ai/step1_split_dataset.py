@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     # # split dataset
     # for vn in os.listdir(data_root):
-    filenames = glob.glob(os.path.join(data_root, "case_00*", "npy_files", "*.npy"))
+    filenames = glob.glob(os.path.join(data_root, "*", "npy_files", "*.npy"))
     files = list(filenames)
     random.shuffle(files)
 
