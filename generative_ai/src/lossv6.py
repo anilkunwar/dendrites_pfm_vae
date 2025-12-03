@@ -38,7 +38,7 @@ def multiscale_recon_loss(
 
     for scale in range(num_scales):
 
-        loss = F.mse_loss(cur_pred, cur_true, reduction="sum")
+        loss = F.mse_loss(cur_pred, cur_true, reduction="mean")
 
         total_loss += cur_weight * loss
         weight_sum += cur_weight
@@ -128,8 +128,8 @@ class PhysicsConstrainedVAELoss(nn.Module):
         target_dy_norm = (target_dy - dy_min) / dy_scale
 
         # 归一化后做 L1
-        dx_loss = torch.abs(input_dx_norm - target_dx_norm).sum()
-        dy_loss = torch.abs(input_dy_norm - target_dy_norm).sum()
+        dx_loss = torch.abs(input_dx_norm - target_dx_norm).mean()
+        dy_loss = torch.abs(input_dy_norm - target_dy_norm).mean()
 
         return dx_loss + dy_loss
 
@@ -152,17 +152,14 @@ class PhysicsConstrainedVAELoss(nn.Module):
         recon_norm = (recon_x - x_min) / scale
 
         # 重建损失（在归一化空间中算 L1）
-        recon_loss = multiscale_recon_loss(recon_norm, x_norm) / batch_size
+        recon_loss = multiscale_recon_loss(recon_norm, x_norm)
 
         # KL 损失
         kl = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / batch_size
         kl_loss = beta * kl
 
         # 梯度损失（逐通道 normalization）
-        grad_loss = (self.grad_loss(recon_x, x) / batch_size) * self.w_grad
-
-        # 相场变量损失
-        # eta_loss = F.binary_cross_entropy(high_order_interp(recon_x[:, 0]).clamp(0, 1), (high_order_interp(x[:, 0]) > 0.5).float(), reduction="sum") / batch_size * self.w_eta
+        grad_loss = self.grad_loss(recon_x, x) * self.w_grad
 
         total_loss = recon_loss + kl_loss + grad_loss
 

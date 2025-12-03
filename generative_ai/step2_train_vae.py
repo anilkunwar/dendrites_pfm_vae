@@ -15,6 +15,27 @@ from src.lossv6 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv4 import VAE
 
+import numpy as np
+class ChannelDropout(A.ImageOnlyTransform):
+    """
+    随机将一个或多个通道置零（或掩码掉）
+    """
+
+    def __init__(self, drop_prob=0.5, num_drop_channels=1, always_apply=False, p=0.5):
+        super(ChannelDropout, self).__init__(always_apply, p)
+        self.drop_prob = drop_prob
+        self.num_drop_channels = num_drop_channels
+
+    def apply(self, img, **params):
+        # img: H x W x C
+        h, w, c = img.shape
+
+        # 每个通道被选为drop的概率
+        if np.random.rand() < self.drop_prob:
+            drop_channels = np.random.choice(c, self.num_drop_channels, replace=False)
+            img = img.copy()
+            img[:, :, drop_channels] = 0  # 掩码
+        return img
 
 def main(args):
 
@@ -58,6 +79,7 @@ def main(args):
                 p=0.1
             ),
             A.PixelDropout(dropout_prob=0.05, p=0.1),
+            ChannelDropout(p=0.5, num_drop_channels=1),
             A.GaussNoise(p=args.noise_prob),
         ])
     )
@@ -249,8 +271,8 @@ if __name__ == "__main__":
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--beta_start", type=float, default=0.2)
-    parser.add_argument("--beta_end", type=float, default=5.0)
+    parser.add_argument("--beta_start", type=float, default=0.01)
+    parser.add_argument("--beta_end", type=float, default=0.1)
     parser.add_argument("--anneal_steps", type=int, default=500)
     parser.add_argument("--w_phy", type=float, default=0.00)
 
