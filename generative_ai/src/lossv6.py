@@ -7,7 +7,7 @@ def multiscale_recon_loss(
     x_recon_logits,
     x_true,
     num_scales=4,
-    scale_weight=0.5
+    scale_weight=0.2
 ):
     """
     多尺度重建损失
@@ -38,7 +38,7 @@ def multiscale_recon_loss(
 
     for scale in range(num_scales):
 
-        loss = F.mse_loss(cur_pred, cur_true, reduction="mean")
+        loss = F.mse_loss(cur_pred, cur_true, reduction="sum")
 
         total_loss += cur_weight * loss
         weight_sum += cur_weight
@@ -96,7 +96,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
         归一化区间来自 target 的每个通道的 min/max。
         """
 
-        eps = 1e-6
         C = input.shape[1]
 
         # dx: (B, C, H, W-1)
@@ -107,30 +106,29 @@ class PhysicsConstrainedVAELoss(nn.Module):
         input_dy = F.conv2d(input, self.kernel_grady, padding=0, groups=C)
         target_dy = F.conv2d(target, self.kernel_grady, padding=0, groups=C)
 
-        # --------------------------------------------------
-        # 每通道: 用 target_dx/target_dy 的 min/max 做 0-1 归一化
-        # --------------------------------------------------
-        # dx 通道的 min/max
-        dx_min = target_dx.amin(dim=(2, 3), keepdim=True)
-        dx_max = target_dx.amax(dim=(2, 3), keepdim=True)
-        dx_scale = (dx_max - dx_min).clamp_min(1e-6)
-
-        # dy 通道的 min/max
-        dy_min = target_dy.amin(dim=(2, 3), keepdim=True)
-        dy_max = target_dy.amax(dim=(2, 3), keepdim=True)
-        dy_scale = (dy_max - dy_min).clamp_min(1e-6)
-
-        # 归一化
-        input_dx_norm = (input_dx - dx_min) / dx_scale
-        target_dx_norm = (target_dx - dx_min) / dx_scale
-
-        input_dy_norm = (input_dy - dy_min) / dy_scale
-        target_dy_norm = (target_dy - dy_min) / dy_scale
+        # # --------------------------------------------------
+        # # 每通道: 用 target_dx/target_dy 的 min/max 做 0-1 归一化
+        # # --------------------------------------------------
+        # # dx 通道的 min/max
+        # dx_min = target_dx.amin(dim=(2, 3), keepdim=True)
+        # dx_max = target_dx.amax(dim=(2, 3), keepdim=True)
+        # dx_scale = (dx_max - dx_min).clamp_min(1e-6)
+        #
+        # # dy 通道的 min/max
+        # dy_min = target_dy.amin(dim=(2, 3), keepdim=True)
+        # dy_max = target_dy.amax(dim=(2, 3), keepdim=True)
+        # dy_scale = (dy_max - dy_min).clamp_min(1e-6)
+        #
+        # # 归一化
+        # input_dx_norm = (input_dx - dx_min) / dx_scale
+        # target_dx_norm = (target_dx - dx_min) / dx_scale
+        #
+        # input_dy_norm = (input_dy - dy_min) / dy_scale
+        # target_dy_norm = (target_dy - dy_min) / dy_scale
 
         # 归一化后做 L1
-        dx_loss = torch.abs(input_dx_norm - target_dx_norm).mean()
-        dy_loss = torch.abs(input_dy_norm - target_dy_norm).mean()
-
+        dx_loss = F.mse_loss(input_dx, target_dx, reduction="sum")
+        dy_loss = F.mse_loss(input_dy, target_dy, reduction="sum")
         return dx_loss + dy_loss
 
     def forward(self, recon_x, x, mean, log_var, freeze=False):
@@ -140,19 +138,24 @@ class PhysicsConstrainedVAELoss(nn.Module):
 
         beta = self.compute_beta()
 
-        # ---------------------------------------
-        # 逐通道 0-1 归一化（参考 ground truth）
-        # x_norm, recon_norm : [B,C,H,W]
-        # ---------------------------------------
-        x_min = x.amin(dim=(2, 3), keepdim=True)  # [B,C,1,1]
-        x_max = x.amax(dim=(2, 3), keepdim=True)  # [B,C,1,1]
-        scale = (x_max - x_min).clamp_min(1e-6)
-
-        x_norm = (x - x_min) / scale
-        recon_norm = (recon_x - x_min) / scale
+        # # ---------------------------------------
+        # # 逐通道 0-1 归一化（参考 ground truth）
+        # # x_norm, recon_norm : [B,C,H,W]
+        # # ---------------------------------------
+        # x_min = x.amin(dim=(2, 3), keepdim=True)  # [B,C,1,1]
+        # x_max = x.amax(dim=(2, 3), keepdim=True)  # [B,C,1,1]
+        #
+        # range_ = x_max - x_min  # [B,C,1,1]
+        # is_const = (range_ < 1e-12)  # 判断是否是常数通道（max==min）
+        #
+        # # 常数通道 scale = 1，否则正常 scale
+        # scale = torch.where(is_const, torch.ones_like(range_), range_.clamp_min(1e-6))
+        #
+        # x_norm = (x - x_min) / scale
+        # recon_norm = (recon_x - x_min) / scale
 
         # 重建损失（在归一化空间中算 L1）
-        recon_loss = multiscale_recon_loss(recon_norm, x_norm)
+        recon_loss = multiscale_recon_loss(recon_x, x)
 
         # KL 损失
         kl = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / batch_size
