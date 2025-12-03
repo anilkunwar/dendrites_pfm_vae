@@ -265,14 +265,14 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=128)
-    parser.add_argument("--latent_size", type=int, default=64)  # 128 -> 64
+    parser.add_argument("--latent_size", type=int, default=32)  # 128 -> 64
     parser.add_argument("--num_params", type=int, default=15)
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--beta_start", type=float, default=1e-3)
-    parser.add_argument("--beta_end", type=float, default=1e-2)
+    parser.add_argument("--beta_start", type=float, default=0.1)
+    parser.add_argument("--beta_end", type=float, default=1.0)
     parser.add_argument("--anneal_steps", type=int, default=1000)
     parser.add_argument("--w_phy", type=float, default=0.1)
 

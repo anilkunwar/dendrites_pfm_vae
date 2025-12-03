@@ -7,7 +7,7 @@ def multiscale_recon_loss(
     x_recon_logits,
     x_true,
     num_scales=4,
-    scale_weight=0.2
+    scale_weight=1
 ):
     """
     多尺度重建损失
