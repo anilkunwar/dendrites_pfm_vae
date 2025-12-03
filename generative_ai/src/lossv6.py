@@ -3,6 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def high_order_interp(phi):
+    """
+    五次多项式（quintic）高阶插值，相场法常用
+    h(phi) = 6φ^5 − 15φ^4 + 10φ^3
+    """
+    return 6*phi**5 - 15*phi**4 + 10*phi**3
+
 class PhysicsConstrainedVAELoss(nn.Module):
     """
     Physics-constrained loss with annealed beta-VAE KL term.
@@ -13,6 +20,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
                  beta_end=4.0,           # 最终 β
                  anneal_steps=1000,     # β 从 start 增到 end 的步数
                  w_grad=0.01,
+                 w_eta=1,
                  device="cuda"):
         super().__init__()
 
@@ -22,6 +30,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         self.current_step = 0
 
         self.w_grad = w_grad
+        self.w_eta = w_eta
 
         # gradient kernels
         self.kernel_grady = torch.tensor(
@@ -110,7 +119,10 @@ class PhysicsConstrainedVAELoss(nn.Module):
         # 梯度损失（逐通道 normalization）
         grad_loss = (self.grad_loss(recon_x, x) / batch_size) * self.w_grad
 
-        total_loss = recon_loss + kl_loss + grad_loss
+        # 相场变量损失
+        eta_loss = F.binary_cross_entropy(high_order_interp(recon_x[0]), high_order_interp(x[0]) > 0.5) * self.w_eta
+
+        total_loss = recon_loss + kl_loss + grad_loss + eta_loss
 
         return total_loss, {
             "total": total_loss.item(),
@@ -118,4 +130,5 @@ class PhysicsConstrainedVAELoss(nn.Module):
             "kl": kl.item(),
             "beta": beta,
             "grad": grad_loss.item(),
+            "eta": eta_loss.item()
         }

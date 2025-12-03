@@ -138,7 +138,7 @@ def main(args):
                       f"Loss = {total_loss.item():.4f} "
                       f"Recon = {loss_dict['recon']:.4f} "
                       f"KL = {loss_dict['kl']:.4f} "
-                      # f"Phy = {loss_dict['grad']:.4f}"
+                      f"Phy = {loss_dict['grad']:.4f}"
                 )
 
         # ==================================================
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     parser.add_argument("--beta_start", type=float, default=0.2)
     parser.add_argument("--beta_end", type=float, default=5.0)
     parser.add_argument("--anneal_steps", type=int, default=500)
-    parser.add_argument("--w_phy", type=float, default=0.01)
+    parser.add_argument("--w_phy", type=float, default=0.00)
 
     parser.add_argument("--fig_root", type=str, default="results")
 
