@@ -101,7 +101,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         recon_norm = (recon_x - x_min) / scale
 
         # 重建损失（在归一化空间中算 L1）
-        recon_loss = F.l1_loss(recon_norm, x_norm, reduction="sum") / batch_size
+        recon_loss = F.l1_loss(recon_x, x, reduction="sum") / batch_size
 
         # KL 损失
         kl = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / batch_size

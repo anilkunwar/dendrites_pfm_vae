@@ -13,7 +13,7 @@ import pandas as pd
 
 from src.lossv4 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
-from src.modelv5 import VAE
+from src.modelv4 import VAE
 
 
 def main(args):
@@ -50,16 +50,16 @@ def main(args):
         args.image_size,
         os.path.join("data", "dataset_split.json"),
         split="train",
-        # transform=A.Compose([
-        #     A.CoarseDropout(
-        #         num_holes_range=(1, 8),
-        #         hole_height_range=(0.01, 0.1),
-        #         hole_width_range=(0.01, 0.1),
-        #         p=0.1
-        #     ),
-        #     A.PixelDropout(dropout_prob=0.05, p=0.1),
-        #     A.GaussNoise(p=args.noise_prob),
-        # ])
+        transform=A.Compose([
+            A.CoarseDropout(
+                num_holes_range=(1, 8),
+                hole_height_range=(0.01, 0.1),
+                hole_width_range=(0.01, 0.1),
+                p=0.1
+            ),
+            A.PixelDropout(dropout_prob=0.05, p=0.1),
+            A.GaussNoise(p=args.noise_prob),
+        ])
     )
 
     valid_dataset = DendritePFMDataset(
@@ -116,7 +116,7 @@ def main(args):
         for it, (x, y, did, xo) in enumerate(train_loader):
             x, y, xo = x.to(device), y.to(device), xo.to(device)
 
-            recon_x, mu_x, log_var_x, z = vae(x, y)
+            recon_x, mu_x, log_var_x, z = vae(x)
 
             total_loss, loss_dict = loss_fn(
                 recon_x.view(xo.shape),
@@ -151,7 +151,7 @@ def main(args):
             for it, (x, y, did, xo) in enumerate(valid_loader):
                 x, y, xo = x.to(device), y.to(device), xo.to(device)
 
-                recon_x, mu_x, log_var_x, z = vae(x, y)
+                recon_x, mu_x, log_var_x, z = vae(x)
 
                 total_loss, loss_dict = loss_fn(
                     recon_x.view(xo.shape),
@@ -239,20 +239,20 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--batch_size", type=int, default=192)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=256)
-    parser.add_argument("--latent_size", type=int, default=32)
+    parser.add_argument("--latent_size", type=int, default=128)  # 128 -> 64
     parser.add_argument("--num_params", type=int, default=15)
     parser.add_argument("--print_every", type=int, default=10)
 
     # 动态参数
-    parser.add_argument("--noise_prob", type=float, default=1.0)
-    parser.add_argument("--beta_start", type=float, default=0)
-    parser.add_argument("--beta_end", type=float, default=0)
-    parser.add_argument("--anneal_steps", type=int, default=100)
-    parser.add_argument("--w_phy", type=float, default=0)
+    parser.add_argument("--noise_prob", type=float, default=0.8)
+    parser.add_argument("--beta_start", type=float, default=0.2)
+    parser.add_argument("--beta_end", type=float, default=5.0)
+    parser.add_argument("--anneal_steps", type=int, default=500)
+    parser.add_argument("--w_phy", type=float, default=0.01)
 
     parser.add_argument("--fig_root", type=str, default="results")
 

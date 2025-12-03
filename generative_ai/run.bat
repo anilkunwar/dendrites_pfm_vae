@@ -6,13 +6,13 @@ setlocal enabledelayedexpansion
 :: ============================
 
 :: 隐空间大小
-set latent_size=4 8 16 32
+set latent_size=64 128 256
 
 :: 图像噪声概率
-set noise_list=0.1 0.3 0.7 0.9
+set noise_list=0.5 0.7 0.9
 
 :: kl 权重
-set kl_weights=0.01 0.1 0.5
+set kl_weights=0.1 0.2 0.5 0.7
 
 :: Grad 权重
 set grad_weights=0.01 0.1 0.5 1.0
@@ -42,6 +42,7 @@ for %%N in (%noise_list%) do (
                 python step2_train_vae.py ^
                     --noise_prob %%N ^
                     --latent_size %%T ^
+                    --beta_start %%F ^
                     --w_grad %%G ^
                     --fig_root !OUTROOT!
 
