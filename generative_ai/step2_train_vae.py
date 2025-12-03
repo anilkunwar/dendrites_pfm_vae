@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from collections import defaultdict
 import pandas as pd
 
-from src.lossv4 import PhysicsConstrainedVAELoss
+from src.lossv6 import PhysicsConstrainedVAELoss
 from src.dataloader import DendritePFMDataset
 from src.modelv4 import VAE
 

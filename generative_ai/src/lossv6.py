@@ -3,12 +3,56 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def high_order_interp(phi):
+def multiscale_recon_loss(
+    x_recon_logits,
+    x_true,
+    num_scales=4,
+    scale_weight=0.5
+):
     """
-    五次多项式（quintic）高阶插值，相场法常用
-    h(phi) = 6φ^5 − 15φ^4 + 10φ^3
+    多尺度重建损失
+    - 每往下采样一倍，分辨率变为上一层的一半
+    - 低分辨率 -> 强调形状 / 连通性
+    - 高分辨率 -> 保留局部细节
+
+    参数：
+        x_recon_logits: B x 1 x H x W  (你的模型输出 logits)
+        x_true:         B x 1 x H x W  (ground truth)
+        num_scales:     一共使用多少尺度
+        loss_type:      "bce" 或 "mse"
+        scale_weight:   (0~1) coarse 层权重随尺度递减的倍数
+                        e.g. 0.5 → coarse 层权重要比细层大
     """
-    return 6*phi**5 - 15*phi**4 + 10*phi**3
+
+    # 初始损失
+    total_loss = 0.0
+    weight_sum = 0.0
+
+    # 当前尺度输入
+    cur_pred = x_recon_logits
+    cur_true = x_true
+
+    # 权重：粗尺度更重要（形态），细尺度稍弱（像素对齐）
+    # e.g. scale_weight = 0.5 → 权重依次：1, 0.5, 0.25, 0.125 ...
+    cur_weight = 1.0
+
+    for scale in range(num_scales):
+
+        loss = F.mse_loss(cur_pred, cur_true, reduction="sum")
+
+        total_loss += cur_weight * loss
+        weight_sum += cur_weight
+
+        # 下一个尺度：尺寸减半
+        # 注意：这里我们用 avg_pool 下采样
+        cur_pred = F.avg_pool2d(cur_pred, kernel_size=2, stride=2)
+        cur_true = F.avg_pool2d(cur_true, kernel_size=2, stride=2)
+
+        # 更新权重
+        cur_weight *= scale_weight
+
+    # 平均化权重
+    return total_loss / weight_sum
 
 class PhysicsConstrainedVAELoss(nn.Module):
     """
@@ -20,7 +64,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
                  beta_end=4.0,           # 最终 β
                  anneal_steps=1000,     # β 从 start 增到 end 的步数
                  w_grad=0.01,
-                 w_eta=1,
                  device="cuda"):
         super().__init__()
 
@@ -30,7 +73,6 @@ class PhysicsConstrainedVAELoss(nn.Module):
         self.current_step = 0
 
         self.w_grad = w_grad
-        self.w_eta = w_eta
 
         # gradient kernels
         self.kernel_grady = torch.tensor(
@@ -110,7 +152,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         recon_norm = (recon_x - x_min) / scale
 
         # 重建损失（在归一化空间中算 L1）
-        recon_loss = F.l1_loss(recon_norm, x_norm, reduction="sum") / batch_size
+        recon_loss = multiscale_recon_loss(recon_norm, x_norm) / batch_size
 
         # KL 损失
         kl = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp()) / batch_size
@@ -120,15 +162,14 @@ class PhysicsConstrainedVAELoss(nn.Module):
         grad_loss = (self.grad_loss(recon_x, x) / batch_size) * self.w_grad
 
         # 相场变量损失
-        eta_loss = F.binary_cross_entropy(high_order_interp(recon_x[0]), high_order_interp(x[0]) > 0.5) * self.w_eta
+        # eta_loss = F.binary_cross_entropy(high_order_interp(recon_x[:, 0]).clamp(0, 1), (high_order_interp(x[:, 0]) > 0.5).float(), reduction="sum") / batch_size * self.w_eta
 
-        total_loss = recon_loss + kl_loss + grad_loss + eta_loss
+        total_loss = recon_loss + kl_loss + grad_loss
 
         return total_loss, {
             "total": total_loss.item(),
             "recon": recon_loss.item(),
             "kl": kl.item(),
             "beta": beta,
-            "grad": grad_loss.item(),
-            "eta": eta_loss.item()
+            "grad": grad_loss.item()
         }
