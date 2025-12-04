@@ -36,7 +36,7 @@ PARAM_RANGES = {
     "Noise": (5e-4, 5e-3)
 }
 
-# results num
+# old_results_exp8 num
 NUM_CASES = 100
 
 # ====== 2️⃣ generate and replace ======

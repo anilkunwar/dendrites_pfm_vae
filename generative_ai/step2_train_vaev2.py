@@ -99,6 +99,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
                  beta_end=4.0,           # 最终 β
                  anneal_steps=1000,     # β 从 start 增到 end 的步数
                  w_grad=0.01,
+                 scale_weight=1,
                  device="cuda"):
         super().__init__()
 
@@ -108,6 +109,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         self.current_step = 0
 
         self.w_grad = w_grad
+        self.scale_weight = scale_weight
 
         # gradient kernels
         self.kernel_grady = torch.tensor(
@@ -190,7 +192,7 @@ class PhysicsConstrainedVAELoss(nn.Module):
         # recon_norm = (recon_x - x_min) / scale
 
         # 重建损失（在归一化空间中算 L1）
-        recon_loss = multiscale_recon_loss(recon_x, x)
+        recon_loss = multiscale_recon_loss(recon_x, x, scale_weight=self.scale_weight)
 
         # KL 损失
         kl = kl.mean()
@@ -221,12 +223,14 @@ def main(args):
     # 输出目录
     # --------------------------
     exp_name = (
-        f"V5_"
+        f"V6_"
         f"latent_size{args.latent_size}_"
         f"noise{args.noise_prob}_"
         f"beta_start{args.beta_start}_"
         f"beta_end{args.beta_end}_"
         f"phy{args.w_phy}_"
+        f"ncomp{args.n_components}_"
+        f"scale_weight{args.scale_weight}_"
         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
@@ -251,7 +255,7 @@ def main(args):
                 p=0.1
             ),
             A.PixelDropout(dropout_prob=0.05, p=0.1),
-            # ChannelDropout(p=0.5, num_drop_channels=1),
+            ChannelDropout(p=0.5, num_drop_channels=1),
             A.GaussNoise(p=args.noise_prob),
         ])
     )
@@ -272,7 +276,8 @@ def main(args):
         image_size=args.image_size,
         latent_size=args.latent_size,
         hidden_dimension=args.hidden_dimension,
-        num_params=args.num_params
+        num_params=args.num_params,
+        n_components=args.n_components
     ).to(device)
 
     # --------------------------
@@ -281,10 +286,12 @@ def main(args):
     loss_fn = PhysicsConstrainedVAELoss(
         beta_start=args.beta_start,
         beta_end=args.beta_end,
-        w_grad=args.w_phy
+        w_grad=args.w_phy,
+        scale_weight=args.scale_weight
     )
 
     optimizer = torch.optim.Adam(vae.parameters(), lr=args.learning_rate)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=args.anneal_steps)
 
     # --------------------------
     # 日志结构（记录全部损失）
@@ -381,6 +388,8 @@ def main(args):
         avg_val = sum(val_epoch_losses) / len(val_epoch_losses)
         print(f"[Valid] Epoch {epoch} AvgLoss = {avg_val:.4f}")
 
+        lr_scheduler.step()
+
         # ==================================================
         #                    Early Stopping
         # ==================================================
@@ -431,7 +440,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=192)
+    parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=128)
@@ -445,6 +454,9 @@ if __name__ == "__main__":
     parser.add_argument("--beta_end", type=float, default=1.0)
     parser.add_argument("--anneal_steps", type=int, default=1000)
     parser.add_argument("--w_phy", type=float, default=0.1)
+
+    parser.add_argument("--n_components", type=int, default=5)
+    parser.add_argument("--scale_weight", type=float, default=1)
 
     parser.add_argument("--fig_root", type=str, default="results")
 
