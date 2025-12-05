@@ -1,54 +1,57 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ============================
-:: 批量实验参数范围
-:: ============================
+REM =====================================
+REM 参数空间
+REM =====================================
 
-:: 隐空间大小
-set latent_size=64 128 256
+set latent_size=4 8 16 32 128
+set component_num=16 32 48 64
+set scale_weight=1 0.5 1.5 0.25
 
-:: 图像噪声概率
-set noise_list=0.5 0.7 0.9
+REM 最大并行任务数
+set MAX_JOBS=2
 
-:: kl 权重
-set kl_weights=0.1 0.2 0.5 0.7
+echo 开始批量实验（并行=%MAX_JOBS%）...
 
-:: Grad 权重
-set grad_weights=0.01 0.1 0.5 1.0
+for %%N in (%latent_size%) do (
+    for %%G in (%component_num%) do (
+        for %%W in (%scale_weight%) do (
 
-:: 输出根目录
-set OUTROOT=results
-mkdir %OUTROOT%
+            echo 启动任务: latent_size=%%N component_num=%%G scale_weight=%%W
 
-:: ============================
-:: 依次启动实验
-:: ============================
+            REM ------------------------------
+            REM 后台运行任务
+            REM ------------------------------
+            start "" /B python step2_train_vaev2.py ^
+                --latent_size %%N ^
+                --n_components %%G ^
+                --scale_weight %%W
 
-for %%N in (%noise_list%) do (
-    for %%F in (%kl_weights%) do (
-        for %%T in (%latent_size%) do (
-            for %%G in (%grad_weights%) do (
+            REM ------------------------------
+            REM 控制并行任务数 = MAX_JOBS
+            REM ------------------------------
+            :WAIT_SLOT_%%N_%%G_%%W
+            for /f "tokens=2" %%P in ('tasklist ^| find /C "python.exe"') do set JOB_COUNT=%%P
 
-                echo -----------------------------------------
-                echo  启动实验:
-                echo     Noise  = %%N
-                echo     KL    = %%F
-                echo     latent_size     = %%T
-                echo     Grad   = %%G
-                echo     输出目录 = !OUTROOT!
-                echo -----------------------------------------
-
-                python step2_train_vae.py ^
-                    --noise_prob %%N ^
-                    --latent_size %%T ^
-                    --beta_start %%F ^
-                    --w_grad %%G ^
-                    --fig_root !OUTROOT!
-
+            if !JOB_COUNT! GEQ %MAX_JOBS% (
+                timeout /t 1 >nul
+                goto WAIT_SLOT_%%N_%%G_%%W
             )
+
         )
     )
 )
 
-pause
+echo 等待所有任务结束...
+
+:WAIT_ALL
+for /f "tokens=2" %%P in ('tasklist ^| find /C "python.exe"') do set JOB_COUNT=%%P
+if !JOB_COUNT! EQU 0 goto END_WAIT
+timeout /t 2 >nul
+goto WAIT_ALL
+
+:END_WAIT
+echo 全部任务完成！
+
+endlocal
