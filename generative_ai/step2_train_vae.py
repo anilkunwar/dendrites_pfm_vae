@@ -123,7 +123,7 @@ def main(args):
     }
 
     best_val = float("inf")
-    patience = 30
+    patience = 50
     no_imp = 0
 
     # ======================================================
@@ -271,7 +271,7 @@ if __name__ == "__main__":
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--beta_start", type=float, default=0.1)
+    parser.add_argument("--beta_start", type=float, default=1.0)
     parser.add_argument("--beta_end", type=float, default=1.0)
     parser.add_argument("--anneal_steps", type=int, default=1000)
     parser.add_argument("--w_phy", type=float, default=0.1)

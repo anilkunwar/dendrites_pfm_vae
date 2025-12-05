@@ -263,7 +263,7 @@ def main(args):
     valid_dataset = DendritePFMDataset(
         args.image_size,
         os.path.join("data", "dataset_split.json"),
-        split="test"
+        split="val"
     )
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
@@ -302,7 +302,7 @@ def main(args):
     }
 
     best_val = float("inf")
-    patience = 30
+    patience = 50
     no_imp = 0
 
     # ======================================================
@@ -439,8 +439,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--epochs", type=int, default=2000)
+    parser.add_argument("--batch_size", type=int, default=192)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=128)
@@ -451,12 +451,12 @@ if __name__ == "__main__":
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
     parser.add_argument("--beta_start", type=float, default=0.1)
-    parser.add_argument("--beta_end", type=float, default=1.0)
-    parser.add_argument("--anneal_steps", type=int, default=1000)
-    parser.add_argument("--w_phy", type=float, default=0.1)
+    parser.add_argument("--beta_end", type=float, default=500.0)
+    parser.add_argument("--anneal_steps", type=int, default=1500)
+    parser.add_argument("--w_phy", type=float, default=0.25)
 
-    parser.add_argument("--n_components", type=int, default=5)
-    parser.add_argument("--scale_weight", type=float, default=1)
+    parser.add_argument("--n_components", type=int, default=64)
+    parser.add_argument("--scale_weight", type=float, default=0.5)
 
     parser.add_argument("--fig_root", type=str, default="results")
 
