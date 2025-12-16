@@ -50,6 +50,56 @@ def soft_dice_loss(pred, target, eps=1e-6):
     dice = (2.0 * inter + eps) / (union + eps)
     return 1.0 - dice.mean()
 
+def multiscale_recon_loss(
+    x_recon_logits,
+    x_true,
+    num_scales=4,
+    scale_weight=1.0
+):
+    """
+    多尺度重建损失
+    - 每往下采样一倍，分辨率变为上一层的一半
+    - 低分辨率 -> 强调形状 / 连通性
+    - 高分辨率 -> 保留局部细节
+
+    参数：
+        x_recon_logits: B x 1 x H x W  (你的模型输出 logits)
+        x_true:         B x 1 x H x W  (ground truth)
+        num_scales:     一共使用多少尺度
+        loss_type:      "bce" 或 "mse"
+        scale_weight:   (0~1) coarse 层权重随尺度递减的倍数
+                        e.g. 0.5 → coarse 层权重要比细层大
+    """
+
+    # 初始损失
+    total_loss = 0.0
+    weight_sum = 0.0
+
+    # 当前尺度输入
+    cur_pred = x_recon_logits
+    cur_true = x_true
+
+    # 权重：粗尺度更重要（形态），细尺度稍弱（像素对齐）
+    # e.g. scale_weight = 0.5 → 权重依次：1, 0.5, 0.25, 0.125 ...
+    cur_weight = 1.0
+
+    for scale in range(num_scales):
+
+        loss = F.mse_loss(cur_pred, cur_true, reduction="sum")
+
+        total_loss += cur_weight * loss
+        weight_sum += cur_weight
+
+        # 下一个尺度：尺寸减半
+        # 注意：这里我们用 avg_pool 下采样
+        cur_pred = F.avg_pool2d(cur_pred, kernel_size=2, stride=2)
+        cur_true = F.avg_pool2d(cur_true, kernel_size=2, stride=2)
+
+        # 更新权重
+        cur_weight *= scale_weight
+
+    # 平均化权重
+    return total_loss / weight_sum
 
 # --------------------------------------------------
 # VAE Loss
@@ -65,8 +115,7 @@ class VAELoss(nn.Module):
         beta_end=4.0,
         anneal_steps=1000,
         dice_weight=1.0,
-        smooth_kernel=5,
-        smooth_sigma=1.0,
+        scale_weight=1.0
     ):
         super().__init__()
 
@@ -76,8 +125,7 @@ class VAELoss(nn.Module):
         self.current_step = 0
 
         self.dice_weight = dice_weight
-        self.smooth_kernel = smooth_kernel
-        self.smooth_sigma = smooth_sigma
+        self.scale_weight = scale_weight
 
     def compute_beta(self):
         t = min(self.current_step / self.anneal_steps, 1.0)
@@ -93,7 +141,7 @@ class VAELoss(nn.Module):
         # --------------------------------------------------
         # 1. L2 reconstruction loss
         # --------------------------------------------------
-        recon_loss = F.mse_loss(recon_x, x, reduction="mean")
+        recon_loss = multiscale_recon_loss(recon_x, x, scale_weight=self.scale_weight)
 
         # --------------------------------------------------
         # 2. KL loss
@@ -361,8 +409,8 @@ if __name__ == "__main__":
 
     # 动态参数
     parser.add_argument("--noise_prob", type=float, default=0.8)
-    parser.add_argument("--beta_start", type=float, default=0.001)
-    parser.add_argument("--beta_end", type=float, default=1.0)
+    parser.add_argument("--beta_start", type=float, default=0.1)
+    parser.add_argument("--beta_end", type=float, default=100)
     parser.add_argument("--anneal_steps", type=int, default=1500)
     parser.add_argument("--w_phy", type=float, default=1.0)
 
