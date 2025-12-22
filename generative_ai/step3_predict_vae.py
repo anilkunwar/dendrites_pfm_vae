@@ -7,9 +7,7 @@ import argparse
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader, ConcatDataset
-from collections import defaultdict
 
 from src.dataloader import DendritePFMDataset
 
@@ -20,7 +18,10 @@ def main(args):
     test_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="test")
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=True)
 
-    vae = torch.load(os.path.join(args.model_root, "ckpt", "CVAE.ckpt")).to(device)
+    vae = torch.load(os.path.join(
+        "results/VQALIGN_V7_latent_size4__noise0.8__codebook512__commit0.25__ema0.99__vqW0.5__alignW0.5__anneal_steps100__scale_weight0.25__20251222_221105",
+        "ckpt", "VQALIGN.ckpt"
+    ), weights_only=False).to(device)
 
     save_fig_path = os.path.join(args.model_root, "figures")
     if not os.path.exists(save_fig_path):
@@ -31,6 +32,9 @@ def main(args):
     # evaluate
     with torch.no_grad():
         for iteration, (x, y, did, _) in enumerate(test_dataloader):
+
+            x = x.to(device)
+            y = y.to(device)
 
             ys.append(y[0])
             dids.append(did[0])
