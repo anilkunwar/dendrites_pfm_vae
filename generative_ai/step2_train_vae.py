@@ -49,7 +49,7 @@ def main(args):
     # 输出目录
     # --------------------------
     exp_name = (
-        f"V5_"
+        f"V4_"
         f"latent_size{args.latent_size}_"
         f"noise{args.noise_prob}_"
         f"beta_start{args.beta_start}_"
@@ -261,7 +261,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=384)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
     parser.add_argument("--hidden_dimension", type=int, default=128)
