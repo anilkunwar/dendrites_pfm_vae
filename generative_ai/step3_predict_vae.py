@@ -9,6 +9,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, ConcatDataset
 
+from generative_ai.src.modelv8 import VAE
 from src.dataloader import DendritePFMDataset
 
 def main(args):
@@ -18,10 +19,20 @@ def main(args):
     test_dataset = DendritePFMDataset(args.image_size, os.path.join("data", "dataset_split.json"), split="test")
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=True)
 
-    vae = torch.load(os.path.join(
-        "results/VQALIGN_V7_latent_size4__noise0.8__codebook512__commit0.25__ema0.99__vqW0.5__alignW0.5__anneal_steps100__scale_weight0.25__20251222_221105",
-        "ckpt", "VQALIGN.ckpt"
-    ), weights_only=False).to(device)
+    # vae = torch.load(os.path.join(
+    #     args.model_root,
+    #     "ckpt", "best.pt"
+    # ), weights_only=False).to(device)
+
+    vae = VAE(
+        image_size=args.image_size,
+        latent_size=8,
+        hidden_dimension=128,
+        n_components=32,
+        num_params=15
+    ).to(device)
+    vae.load_state_dict(torch.load(os.path.join(args.model_root, "ckpt", "best.pt"), map_location=device))
+    vae.eval()
 
     save_fig_path = os.path.join(args.model_root, "figures")
     if not os.path.exists(save_fig_path):
@@ -40,7 +51,7 @@ def main(args):
             dids.append(did[0])
 
             # image and control variables
-            recon_x = vae.inference(y)
+            recon_x = vae.inference()
 
             plt.figure()
             plt.title(f"t={y[0][0].item()}_did={did[0]}")
@@ -66,7 +77,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--model_root", type=str, default='old_results_exp8/V4_noise0.1_edge0.001_fft0.001_tv0.0005_smooth0.005_grad0.05_20251114_115424')
+    parser.add_argument("--model_root", type=str, default=r'E:\PhDProject\dendrites_pfm_vae\generative_ai\results\V8_lat=8_K=32_beta=0.25_warm=0.2_ctr=2.0_smooth=0.1_time=20260103_161539')
 
     args = parser.parse_args()
 

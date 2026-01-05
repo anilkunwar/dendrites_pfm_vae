@@ -1,39 +1,37 @@
 #!/bin/bash
 
 # =====================================
-# 参数空间
+# 参数空间（当前模型使用）
 # =====================================
 
-#latent_size=("4" "8" "16" "32")
-#component_num=("16" "32" "48" "64")
-
-scale_weight=("1" "0.5" "1.5" "0.25")
-vq_weight=("0.5" "1.0" "2.0")
-align_weight=("0.5" "1.0" "2.0")
-anneal_steps=("100" "500" "1000" "2000")
+beta=("0.1" "1.0" "2.0")
+beta_warmup_ratio=("0.2" "0.3" "0.4")
+ctr_weight=("0.5" "1.0" "2.0")
+smooth_weight=("0.05" "1.0" "2.0")
 
 # 最大并行数
 MAX_JOBS=2
 
 echo "开始批量实验（并行=${MAX_JOBS}）..."
+echo "Sweep parameters: beta × beta_warmup_ratio × ctr_weight × smooth_weight"
 
-for T in "${align_weight[@]}"; do
-    for N in "${vq_weight[@]}"; do
-        for G in "${anneal_steps[@]}"; do
-            for W in "${scale_weight[@]}"; do
+for B in "${beta[@]}"; do
+    for W in "${beta_warmup_ratio[@]}"; do
+        for C in "${ctr_weight[@]}"; do
+            for S in "${smooth_weight[@]}"; do
 
-                echo "启动任务: align_weight=$T vq_weight=$N anneal_steps=$G scale_weight=$W"
+                echo "启动任务: beta=$B warmup_ratio=$W ctr_weight=$C smooth_weight=$S"
 
                 # ------------------------------ #
                 # 后台执行任务（并行）
                 # ------------------------------ #
-                python step2_train_vaev5.py \
-                    --align_weight "$T" \
-                    --vq_weight "$N" \
-                    --scale_weight "$W" \
-                    --anneal_steps "$G" &
+                python step2_train_vaev9.py \
+                    --beta "$B" \
+                    --beta_warmup_ratio "$W" \
+                    --ctr_weight "$C" \
+                    --smooth_weight "$S" &
 
-                # 控制并行度为 2
+                # 控制并行度
                 while [ "$(jobs -rp | wc -l)" -ge "$MAX_JOBS" ]; do
                     wait -n   # 等任意一个后台任务结束
                 done
