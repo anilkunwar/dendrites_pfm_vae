@@ -286,11 +286,15 @@ class VAE(nn.Module):
         return recon, mu_q, logvar_q, ctr_pred, z
 
     @torch.no_grad()
-    def inference(self, num_samples=1):
-        self.eval()
+    def inference(self, num_samples=1, full_output=False):
 
         device = next(self.parameters()).device
+
         z = torch.randn(num_samples, self.latent_size, device=device)
         imgs = self.decoder(z)
 
-        return imgs
+        if full_output:
+            ctr_pred = self.ctr_head(z)
+            return imgs, ctr_pred, z
+        else:
+            return imgs

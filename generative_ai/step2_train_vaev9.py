@@ -302,7 +302,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--latent_size", type=int, default=8)
+    parser.add_argument("--latent_size", type=int, default=2)
     parser.add_argument("--hidden_dim", type=int, default=128)
     parser.add_argument("--num_params", type=int, default=15)
 
