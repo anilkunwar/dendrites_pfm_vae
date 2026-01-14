@@ -9,9 +9,9 @@ file_list = glob.glob("../data/case_*/*.json")
 print(f"读取到 {len(file_list)} 个 JSON 文件")
 
 # 判断是否出现重复的模拟
-for case in os.listdir("../data"):
-    if os.path.isdir(os.path.join("../data", case)):
-        print(glob.glob(f"../data/{case}/exodus_files/*.e")[0] + ":" + str(len(os.listdir(f"../data/{case}/npy_files"))))
+# for case in os.listdir("../data"):
+#     if os.path.isdir(os.path.join("../data", case)):
+#         print(glob.glob(f"../data/{case}/exodus_files/*.e")[0] + ":" + str(len(os.listdir(f"../data/{case}/npy_files"))))
 
 # 2️⃣ 逐个加载 JSON 文件为字典并组成 DataFrame
 data_list = []

@@ -311,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--ctr_weight", type=float, default=1.0)
     parser.add_argument("--smooth_weight", type=float, default=0.75)
 
-    parser.add_argument("--patience", type=int, default=50)
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")
 
     args = parser.parse_args()
