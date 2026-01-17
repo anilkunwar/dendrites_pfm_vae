@@ -1,205 +1,223 @@
+import json
 import os
+
+import cv2
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
 from sklearn.neighbors import NearestNeighbors
-from sklearn.decomposition import PCA
 
-from src.tools import *
+from src.dataloader import DendritePFMDataset
 
-# =========================
-# 配置
-# =========================
-image_size = (3, 64, 64)
-model_root = 'results/V9_lat=8_beta=0.1_warm=0.3_ctr=2.0_smooth=1.0_time=20260105_114337'
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# ====== Utils ======
+def ensure_dir(p):
+    os.makedirs(p, exist_ok=True)
+    return p
 
-POOL_SIZE = 8000         # latent 候选库
-KNN_K = 80               # 每步近邻候选数
-DIST_MIN = 0.03          # cosine distance 最小移动量（防抖）
-CTR_START_MAX = 0.01     # 起点 ctr 阈值
-MAX_STEPS = 300          # 单条路径最大步数（防无限）
-REPEATS = 60             # 搜索次数：越大越容易找到更长路
-PICK_MODE = "stochastic" # "greedy" or "stochastic"
-TEMPERATURE = 0.10       # stochastic 采样温度，越小越接近 greedy
+def get_init_tensor(image_size=(64, 64)):
 
-# =========================
-# 模型
-# =========================
-vae = torch.load(os.path.join(model_root, "ckpt", "best.pt"), map_location=device, weights_only=False)
-vae.eval()
+    arr = np.load("data/case_000/npy_files/0.000000.npy")  # shape (H, W, 3)
 
-def heuristic(ctr_pred):
-    # 越大越好：你也可以加入 fractal / novelty / distance 等
-    return float(ctr_pred[0])
+    # assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
+    arr = cv2.resize(arr, image_size)
+    tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
 
-def show_im(im, ctr_pred):
-    _im = im
-    if _im.ndim == 4:
-        _im = _im[0]
-    if _im.shape[0] in (1, 3):
-        _im_vis = np.transpose(_im, (1, 2, 0))
-    else:
-        _im_vis = _im
+    # build control variable
+    c = [0.0]
 
-    v, _, _ = fractal_dimension_boxcount(_im_vis)
-    v = np.nanmean(v)
+    # find meta
+    meta_path = "data/case_000/case_000.json"
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    c += meta
 
-    print(f"ctr_pred[0]={ctr_pred[0]}")
-    print(f"full ctr_pred={ctr_pred}")
-    plt.title(f"fractal_dimension_boxcount: {v:.4f}")
-    plt.imshow(_im_vis)
+    return tensor_t
+
+def decode_single_channel(model, device, z_vec):
+    z = torch.tensor(z_vec, device=device).unsqueeze(0)
+    img = model.decoder(z)[0, 0]  # (H,W)
+    img = img.detach().cpu().float()
+    # 如果你的 decoder 输出是 [-1,1]，可以转到 [0,1]
+    if img.min() < 0:
+        img = (img + 1) / 2
+    return img.numpy()
+
+# ====== CONFIG ======
+MODEL_ROOT = "results/V10_ADV_lat=32_beta=0.1_warm=0.3_ctr=1.0_smooth=1.0_adv=1.0_d=0.0001_g=0.0001_time=20260116_174051"
+CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
+OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search_continuous")
+
+IMAGE_SIZE = 64
+BATCH_SIZE = 64
+NUM_WORKERS = 4
+SPLIT_JSON = "data/dataset_split.json"
+SPLIT = "train"
+
+TIME_IDX = 0
+
+STEPS = 200
+SEED = 0
+
+# objective weights
+W_TIME = 1.0
+W_FD   = 1.0
+
+# --- naive random walk params ---
+RW_SIGMA = 0.25          # 扰动幅度（大一点就更容易崩）
+NUM_CAND = 32            # 每步试多少个候选
+
+# --- safe guards ---
+PRIOR_L2_W = 0.03        # 惩罚 ||z||^2
+MAX_NORM   = 3.5         # 限制 z 的范数（粗暴但有效）
+PIX_CLIP_MIN = -0.2      # 用于检测异常 decode
+PIX_CLIP_MAX =  1.2
+
+# optional projection to dataset manifold
+USE_PROJ = True
+PROJ_EVERY = 5           # 每隔几步投影一次
+PROJ_ALPHA = 0.5         # z <- alpha*z + (1-alpha)*z_nn
+KNN_K = 1
+
+MODE = "naive"           # "naive" or "safe"
+
+def fractal_dimension(img):
+    bw = img > img.mean()
+    sizes = [2, 4, 8, 16, 32]
+    counts = []
+    for s in sizes:
+        cnt = 0
+        for i in range(0, bw.shape[0], s):
+            for j in range(0, bw.shape[1], s):
+                if bw[i:i+s, j:j+s].any():
+                    cnt += 1
+        counts.append(cnt)
+    x = np.log(1 / np.array(sizes))
+    y = np.log(np.array(counts) + 1e-6)
+    return np.polyfit(x, y, 1)[0]
+
+def predict_time(model, device, z_vec):
+    # 用回归头预测 time（你模型里 ctr_head 接 latent）
+    z = torch.tensor(z_vec, device=device).unsqueeze(0)
+    with torch.no_grad():
+        ctr = model.ctr_head(z)
+    return float(ctr[0, TIME_IDX].detach().cpu().float())
+
+def is_decode_weird(img):
+    # 简单异常检测：像素范围/饱和
+    mn, mx = float(img.min()), float(img.max())
+    if mn < PIX_CLIP_MIN or mx > PIX_CLIP_MAX:
+        return True
+    # 太接近常数也算异常
+    if float(img.std()) < 1e-3:
+        return True
+    return False
+
+def save_step(out_dir, step, img, z, t, fd, score):
+    plt.figure(figsize=(6, 5))
+    plt.imshow(img, cmap="coolwarm")
+    plt.colorbar(fraction=0.046)
+    plt.title(f"step={step}  score={score:.3f}\nt={t:.3f}, FD={fd:.3f}, ||z||={np.linalg.norm(z):.2f}")
     plt.axis("off")
-    plt.show()
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
+    plt.close()
 
-# =========================
-# 1) 建候选库
-# =========================
-Z_pool, ctr_pool, im_pool = [], [], []
-with torch.no_grad():
-    for _ in range(POOL_SIZE):
-        im, ctr_pred, z = vae.inference(full_output=True)
-        im = im[0].detach().cpu().numpy()
-        ctr_pred = ctr_pred[0].detach().cpu().numpy()
-        z = z[0].detach().cpu().numpy()
-        Z_pool.append(z)
-        ctr_pool.append(ctr_pred)
-        im_pool.append(im)
 
-Z_pool = np.stack(Z_pool, axis=0)        # (N, latent_dim)
-ctr_pool = np.stack(ctr_pool, axis=0)    # (N, ?)
-im_pool = np.stack(im_pool, axis=0)      # (N, C,H,W)
+def main():
+    ensure_dir(OUT_DIR)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
 
-knn = NearestNeighbors(n_neighbors=min(KNN_K, len(Z_pool)), metric="cosine")
-knn.fit(Z_pool)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = torch.load(CKPT_PATH, map_location=device)
+    model.eval()
 
-# 起点集合：满足 ctr_start_max
-start_candidates = np.where(ctr_pool[:, 0] < CTR_START_MAX)[0]
-if len(start_candidates) == 0:
-    raise RuntimeError("候选库中没有找到 ctr_pred[0] < CTR_START_MAX 的起点；调大 POOL_SIZE 或放宽 CTR_START_MAX")
+    # === （可选）加载 dataset latent，用于投影回流形 ===
+    Z_data = None
+    knn = None
+    if USE_PROJ:
+        dataset = DendritePFMDataset((3, IMAGE_SIZE, IMAGE_SIZE), SPLIT_JSON, split=SPLIT)
+        loader = DataLoader(dataset, BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+        Z = []
+        with torch.no_grad():
+            for batch in loader:
+                x = batch[0].to(device)
+                out = model(x)
+                # 兼容你之前的返回：(_, mu, _, ctr, z) 这种
+                z = out[-1]
+                Z.append(z.detach().cpu().numpy())
+        Z_data = np.concatenate(Z, axis=0)
+        knn = NearestNeighbors(n_neighbors=KNN_K, metric="euclidean").fit(Z_data)
 
-# =========================
-# 2) 单次搜索：从某个起点走到不能走为止
-# =========================
-def run_one_path(start_idx, rng: np.random.Generator):
-    path_idx = [int(start_idx)]
-    z_cur = Z_pool[start_idx]
-    ctr_cur = float(ctr_pool[start_idx][0])
+    run_dir = ensure_dir(os.path.join(OUT_DIR, f"run_{MODE}"))
 
-    # 防止回头：记录已经走过的点
-    visited = set(path_idx)
+    # === 初始化：直接从 prior 采样 ===
+    # 这一步本身就可能生成很差的图（取决于你的 VAE prior match 是否好）
+    with torch.no_grad():
+        z = model(get_init_tensor().unsqueeze(0).to(device))[-1][0].detach().cpu()
 
-    for _ in range(MAX_STEPS):
-        dists, idxs = knn.kneighbors(z_cur.reshape(1, -1), n_neighbors=min(KNN_K, len(Z_pool)), return_distance=True)
-        dists = dists[0]
-        idxs = idxs[0]
+    # 记录初始
+    img = decode_single_channel(model, device, z)
+    t = predict_time(model, device, z)
+    fd = fractal_dimension(img)
+    score = W_TIME * t + W_FD * fd - (PRIOR_L2_W * (np.linalg.norm(z) ** 2) if MODE == "safe" else 0.0)
+    save_step(run_dir, 0, img, z, t, fd, score)
 
-        # 候选：ctr 单调增加 + 距离足够大 + 没访问过
-        cand = []
-        for dis, j in zip(dists, idxs):
-            j = int(j)
-            if j in visited:
+    for step in range(1, STEPS + 1):
+        best = None
+        best_score = -1e18
+        best_img = None
+        best_t = None
+        best_fd = None
+
+        # 生成候选
+        for _ in range(NUM_CAND):
+            dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA
+            z_cand = z + dz
+
+            # safe: 限 norm，避免飞太远
+            if MODE == "safe":
+                nrm = np.linalg.norm(z_cand)
+                if nrm > MAX_NORM:
+                    z_cand = z_cand / (nrm + 1e-12) * MAX_NORM
+
+            img_cand = decode_single_channel(model, device, z_cand)
+
+            # safe: 拒绝明显崩坏的 decode
+            if MODE == "safe" and is_decode_weird(img_cand):
                 continue
-            ctr_j = float(ctr_pool[j][0])
-            if ctr_j > ctr_cur and dis >= DIST_MIN:
-                cand.append((j, dis, heuristic(ctr_pool[j])))
 
-        if not cand:
-            # 尝试扩大检索范围（兜底）
-            K_try = min(len(Z_pool), KNN_K * 4)
-            d2, i2 = knn.kneighbors(z_cur.reshape(1, -1), n_neighbors=K_try, return_distance=True)
-            d2 = d2[0]
-            i2 = i2[0]
-            for dis, j in zip(d2, i2):
-                j = int(j)
-                if j in visited:
-                    continue
-                ctr_j = float(ctr_pool[j][0])
-                if ctr_j > ctr_cur and dis >= DIST_MIN:
-                    cand.append((j, dis, heuristic(ctr_pool[j])))
+            t_cand = predict_time(model, device, z_cand)
+            fd_cand = fractal_dimension(img_cand)
 
-        if not cand:
-            break  # 走不动了
+            s = W_TIME * t_cand + W_FD * fd_cand
+            if MODE == "safe":
+                s = s - PRIOR_L2_W * (np.linalg.norm(z_cand) ** 2)
 
-        # 选点策略：greedy 或 stochastic（更容易找到更长路径）
-        if PICK_MODE == "greedy":
-            # 以 heuristic 最大优先；可加 dis 次级排序
-            cand.sort(key=lambda x: x[2], reverse=True)
-            j, dis, _h = cand[0]
-        else:
-            # softmax(heuristic/T) 采样
-            hs = np.array([c[2] for c in cand], dtype=np.float64)
-            hs = hs - hs.max()
-            probs = np.exp(hs / max(TEMPERATURE, 1e-6))
-            probs = probs / probs.sum()
-            pick = rng.choice(len(cand), p=probs)
-            j, dis, _h = cand[pick]
+            if s > best_score:
+                best_score = s
+                best = z_cand
+                best_img = img_cand
+                best_t = t_cand
+                best_fd = fd_cand
 
-        path_idx.append(j)
-        visited.add(j)
+        if best is None:
+            print("[Stop] no valid candidate (all rejected).")
+            break
 
-        z_cur = Z_pool[j]
-        ctr_cur = float(ctr_pool[j][0])
+        z = best
 
-    return path_idx
+        # safe: 定期投影回 dataset latent 的最近邻附近（非常有效）
+        if MODE == "safe" and USE_PROJ and (step % PROJ_EVERY == 0):
+            _, idx = knn.kneighbors(z.reshape(1, -1))
+            z_nn = Z_data[idx[0, 0]]
+            z = PROJ_ALPHA * z + (1 - PROJ_ALPHA) * z_nn
 
-# =========================
-# 3) 多次搜索，挑最长
-# =========================
-rng = np.random.default_rng(0)
+        save_step(run_dir, step, best_img, z, best_t, best_fd, best_score)
 
-best_path = None
-best_len = -1
-best_end_ctr = -np.inf
+    print("Done. Saved to:", run_dir)
 
-all_paths = []
-for r in range(REPEATS):
-    start_idx = int(rng.choice(start_candidates))
-    path_idx = run_one_path(start_idx, rng)
-    all_paths.append(path_idx)
 
-    L = len(path_idx)
-    end_ctr = float(ctr_pool[path_idx[-1]][0])
-    # 先比长度，再比终点 ctr（可选）
-    if (L > best_len) or (L == best_len and end_ctr > best_end_ctr):
-        best_path = path_idx
-        best_len = L
-        best_end_ctr = end_ctr
-
-print(f"Best path length = {best_len}, end ctr_pred[0] = {best_end_ctr:.6f}")
-
-# =========================
-# 4) 可视化：搜索空间 + 最长路径（PCA 2D）
-# =========================
-pca = PCA(n_components=2, random_state=0)
-Z_2d = pca.fit_transform(Z_pool)                     # (N,2)
-path_2d = Z_2d[np.array(best_path, dtype=int)]       # (L,2)
-
-# 用 ctr 作为颜色（不指定具体颜色，matplotlib 默认 colormap）
-plt.figure(figsize=(9, 7))
-sc = plt.scatter(Z_2d[:, 0], Z_2d[:, 1], s=6, c=ctr_pool[:, 0], alpha=0.25)
-plt.colorbar(sc, label="ctr_pred[0]")
-
-# 画路径（点 + 线）
-plt.plot(path_2d[:, 0], path_2d[:, 1], linewidth=2)
-plt.scatter(path_2d[:, 0], path_2d[:, 1], s=40)
-
-plt.title(f"Latent search space (PCA) + longest path (L={best_len})")
-plt.xlabel("PC1")
-plt.ylabel("PC2")
-plt.tight_layout()
-plt.show()
-
-# =========================
-# 5) 展示最长路径上的若干关键帧（可选）
-# =========================
-# 例如：只看起点/中间/终点，避免太多图
-if best_len >= 3:
-    key_steps = [0, best_len // 2, best_len - 1]
-else:
-    key_steps = list(range(best_len))
-
-for t in key_steps:
-    idx = best_path[t]
-    print(f"[path step {t}/{best_len-1}] idx={idx}, ctr_pred[0]={ctr_pool[idx][0]:.6f}")
-    show_im(im_pool[idx], ctr_pool[idx])
+if __name__ == "__main__":
+    main()

@@ -25,7 +25,7 @@ for B in "${beta[@]}"; do
                 # ------------------------------ #
                 # 后台执行任务（并行）
                 # ------------------------------ #
-                python step2_train_vaev9.py \
+                python step2_train_vaev10.py \
                     --beta "$B" \
                     --beta_warmup_ratio "$W" \
                     --ctr_weight "$C" \

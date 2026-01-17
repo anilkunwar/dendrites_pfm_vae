@@ -29,3 +29,66 @@ def fractal_dimension_boxcount(img, threshold=None, n_scales=8, min_box_size=2):
     log_N = np.log(counts.astype(float))
     coeffs = np.polyfit(log_inv_eps, log_N, 1)
     return coeffs[0], sizes, counts
+
+import matplotlib.pyplot as plt
+
+def show_image_no_frame(
+    img,
+    cmap='coolwarm',
+    scatter_black=None,
+    scatter_white=None,
+    scatter_kw=None,
+    title=None,
+    figsize=(6, 6)
+):
+    """
+    Display a single image without axes/frame, optionally with scatter overlays.
+
+    Parameters
+    ----------
+    img : array-like
+        Image to display.
+    cmap : str
+        Colormap for imshow.
+    scatter_black : tuple (x, y), optional
+        Coordinates for black scatter points.
+    scatter_white : tuple (x, y), optional
+        Coordinates for white scatter points.
+    scatter_kw : dict, optional
+        Keyword arguments for plt.scatter (e.g. s, alpha).
+    title : str, optional
+        Figure title.
+    figsize : tuple
+        Figure size.
+    """
+
+    if scatter_kw is None:
+        scatter_kw = dict(s=20)
+
+    fig = plt.figure(figsize=figsize)
+    ax = plt.gca()
+
+    # show image
+    ax.imshow(img, cmap=cmap)
+
+    # scatter overlays
+    if scatter_black is not None:
+        x, y = scatter_black
+        ax.scatter(x, y, color='black', **scatter_kw)
+
+    if scatter_white is not None:
+        x, y = scatter_white
+        ax.scatter(x, y, color='white', **scatter_kw)
+
+    # remove frame / ticks
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_frame_on(False)
+
+    # optional title
+    if title is not None:
+        ax.set_title(title, fontsize=12, weight='bold')
+
+    # make image fill the figure
+    plt.tight_layout(pad=0)
+    plt.show()

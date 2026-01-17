@@ -367,7 +367,7 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x, ctr):
+    def forward(self, x, ctr=None):
         """
         x:   [B,C,H,W]
         ctr: [B,num_params]，条件（比如材料成分/工艺参数/目标属性等）
@@ -382,15 +382,18 @@ class VAE(nn.Module):
         mu_q, logvar_q = self.encoder(x)
         z = self.reparameterize(mu_q, logvar_q)
 
-        # 2) 条件先验 p(z|c)
-        pis, mus, logvars = self.prior(ctr)
+        if ctr is not None:
+            # 2) 条件先验 p(z|c)
+            pis, mus, logvars = self.prior(ctr)
 
-        # 3) KL(q||p)
-        kl = kl_q_vs_gmm(mu_q, logvar_q, pis, mus, logvars)  # [B]
+            # 3) KL(q||p)
+            kl = kl_q_vs_gmm(mu_q, logvar_q, pis, mus, logvars)  # [B]
+        else:
+            kl = 0.
 
         # 4) 解码
         recon = self.decoder(z)
-        return recon, mu_q, logvar_q, kl
+        return recon, mu_q, logvar_q, kl, z
 
     @torch.no_grad()
     def inference(self, ctr, num_samples_per_cond=1, use_component_mean=False):
