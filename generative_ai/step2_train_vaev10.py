@@ -379,7 +379,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-4)      # G lr
     parser.add_argument("--d_lr", type=float, default=1e-4)    # D lr
     parser.add_argument("--seed", type=int, default=0)
