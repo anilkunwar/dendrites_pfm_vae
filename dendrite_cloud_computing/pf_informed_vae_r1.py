@@ -1,22 +1,25 @@
 import os
+import io
+import sys
+import math
+import types
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import streamlit as st
-from PIL import Image
 import torchvision.transforms as transforms
 import numpy as np
-import sys
-import types
-import math
-import io
+from PIL import Image
 
 # ==========================================================
-# 1. ARCHITECTURE DEFINITIONS (Synced with modelv9)
+# 1. ARCHITECTURE DEFINITIONS (MODEL-SAFE)
 # ==========================================================
 
 def smooth_scale(x):
-    return torch.sigmoid(x) 
+    return torch.sigmoid(x)
+
+# ------------------------------
+# Residual Blocks
+# ------------------------------
 
 class MultiKernelResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, downsample=False):
@@ -27,6 +30,7 @@ class MultiKernelResBlock(nn.Module):
         self.conv7 = nn.Conv2d(in_channels, out_channels, 7, stride, 3, bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
+
         self.shortcut = nn.Sequential()
         if downsample or in_channels != out_channels:
             self.shortcut = nn.Sequential(
@@ -40,15 +44,26 @@ class MultiKernelResBlock(nn.Module):
         out = out + self.shortcut(x)
         return self.relu(out)
 
+# ------------------------------
+# Encoder (FIXED)
+# ------------------------------
+
 class ResEncoder(nn.Module):
     def __init__(self, img_size, in_channels, base_channels, latent_size):
         super().__init__()
+
         self.layers = nn.Sequential(
             MultiKernelResBlock(in_channels, base_channels, downsample=True),
             MultiKernelResBlock(base_channels, base_channels * 2, downsample=True),
             MultiKernelResBlock(base_channels * 2, base_channels * 4, downsample=True),
         )
-        conv_dim = int(img_size[0] * img_size[1] * base_channels * 4 / (8 * 8))
+
+        # 🔑 FIX: infer conv_dim dynamically
+        with torch.no_grad():
+            dummy = torch.zeros(1, in_channels, img_size[0], img_size[1])
+            out = self.layers(dummy)
+            conv_dim = out.flatten(1).shape[1]
+
         self.fc_mu = nn.Linear(conv_dim, latent_size)
         self.fc_logvar = nn.Linear(conv_dim, latent_size)
 
@@ -57,34 +72,43 @@ class ResEncoder(nn.Module):
         x = torch.flatten(x, 1)
         return self.fc_mu(x), self.fc_logvar(x)
 
+# ------------------------------
+# Decoder Blocks
+# ------------------------------
+
 class ResUpBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False)
+        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
         self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
         self.shortcut = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False),
             nn.BatchNorm2d(out_channels)
         )
 
     def forward(self, x):
-        out = self.relu(self.bn1(self.deconv1(x)))
+        out = self.relu(self.bn1(self.deconv(x)))
         out = self.bn2(self.conv(out))
         return self.relu(out + self.shortcut(x))
 
 class GroupResUpBlock(nn.Module):
     def __init__(self, in_channels, out_channels, groups):
         super().__init__()
-        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, groups=groups, bias=False)
+        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1,
+                                         groups=groups, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, groups=groups, bias=False)
+        self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1,
+                              groups=groups, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
         self.short = nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, groups=groups, bias=False),
+            nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1,
+                               groups=groups, bias=False),
             nn.BatchNorm2d(out_channels)
         )
 
@@ -104,28 +128,40 @@ class ChannelWiseBlock(nn.Module):
             nn.BatchNorm2d(channels),
             nn.ReLU(inplace=True),
         )
-    def forward(self, x): return self.layers(x)
+
+    def forward(self, x):
+        return self.layers(x)
 
 class ResDecoder(nn.Module):
     def __init__(self, out_channels, base_channels, latent_size, H, W):
         super().__init__()
         self.H, self.W = H, W
         init_h, init_w = H // 8, W // 8
+
         self.fc = nn.Linear(latent_size, base_channels * 4 * init_h * init_w)
+
         self.shared_up = nn.Sequential(
             ResUpBlock(base_channels * 4, base_channels * 2),
             ResUpBlock(base_channels * 2, base_channels),
         )
+
         ch_per_group = math.ceil(base_channels / out_channels)
         self.group_channels = ch_per_group * out_channels
-        self.align_proj = nn.Conv2d(base_channels, self.group_channels, kernel_size=1, bias=False)
+
+        self.align_proj = nn.Conv2d(base_channels, self.group_channels, 1, bias=False)
         self.align_bn = nn.BatchNorm2d(self.group_channels)
-        self.group_up = GroupResUpBlock(self.group_channels, self.group_channels, groups=out_channels)
+
+        self.group_up = GroupResUpBlock(
+            self.group_channels, self.group_channels, groups=out_channels
+        )
+
         self.refine = nn.Sequential(
             ChannelWiseBlock(self.group_channels, groups=out_channels),
             ChannelWiseBlock(self.group_channels, groups=out_channels),
         )
-        self.head = nn.Conv2d(self.group_channels, out_channels, 1, groups=out_channels, bias=True)
+
+        self.head = nn.Conv2d(self.group_channels, out_channels, 1,
+                              groups=out_channels, bias=True)
 
     def forward(self, z):
         x = self.fc(z).view(z.size(0), -1, self.H // 8, self.W // 8)
@@ -135,12 +171,24 @@ class ResDecoder(nn.Module):
         x = self.refine(x)
         return smooth_scale(self.head(x))
 
+# ------------------------------
+# VAE
+# ------------------------------
+
 class VAE(nn.Module):
-    def __init__(self, image_size=(3, 128, 128), latent_size=64, hidden_dimension=64, num_params=15, ctr_head_hidden=256):
+    def __init__(self, image_size=(3, 128, 128),
+                 latent_size=64, hidden_dimension=64,
+                 num_params=15, ctr_head_hidden=256):
         super().__init__()
         self.C, self.H, self.W = image_size
-        self.encoder = ResEncoder((self.H, self.W), self.C, hidden_dimension, latent_size)
-        self.decoder = ResDecoder(self.C, hidden_dimension, latent_size, self.H, self.W)
+
+        self.encoder = ResEncoder(
+            (self.H, self.W), self.C, hidden_dimension, latent_size
+        )
+        self.decoder = ResDecoder(
+            self.C, hidden_dimension, latent_size, self.H, self.W
+        )
+
         self.ctr_head = nn.Sequential(
             nn.Linear(latent_size, ctr_head_hidden),
             nn.ReLU(inplace=True),
@@ -154,99 +202,83 @@ class VAE(nn.Module):
         return mu + torch.randn_like(std) * std
 
     def forward(self, x):
-        mu_q, logvar_q = self.encoder(x)
-        z = self.reparameterize(mu_q, logvar_q)
-        ctr_pred = self.ctr_head(z)
+        mu, logvar = self.encoder(x)
+        z = self.reparameterize(mu, logvar)
         recon = self.decoder(z)
-        return recon, mu_q, logvar_q, ctr_pred, z
+        ctr_pred = self.ctr_head(z)
+        return recon, mu, logvar, ctr_pred, z
 
 # ==========================================================
-# 2. DUMMY MODULE SETUP (Fixes "No module named src")
+# 2. DUMMY MODULE PATCH (UNPICKLING FIX)
 # ==========================================================
+
 m = types.ModuleType("src")
 m.modelv9 = types.ModuleType("modelv9")
-m.modelv9.VAE = VAE 
-m.modelv9.ResEncoder = ResEncoder
-m.modelv9.ResDecoder = ResDecoder
-m.modelv9.MultiKernelResBlock = MultiKernelResBlock
-m.modelv9.ResUpBlock = ResUpBlock
-m.modelv9.GroupResUpBlock = GroupResUpBlock
-m.modelv9.ChannelWiseBlock = ChannelWiseBlock
+
+for cls in [
+    VAE, ResEncoder, ResDecoder,
+    MultiKernelResBlock, ResUpBlock,
+    GroupResUpBlock, ChannelWiseBlock
+]:
+    setattr(m.modelv9, cls.__name__, cls)
 
 sys.modules["src"] = m
 sys.modules["src.modelv9"] = m.modelv9
 
 # ==========================================================
-# 3. STREAMLIT LOADING (Split File Version - Robust Path)
+# 3. STREAMLIT MODEL LOADING
 # ==========================================================
+
 @st.cache_resource
 def load_model():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    possible_folders = ["knowledge_base", "knowledge-base", "."]
-    folder_found = None
-    
-    for f in possible_folders:
-        test_path = os.path.join(current_dir, f)
-        if os.path.exists(test_path) and os.path.isdir(test_path):
-            if os.path.exists(os.path.join(test_path, "vae_model.pt.part1")):
-                folder_found = test_path
-                break
-    
-    if folder_found is None:
-        st.error(f"❌ Could not find model parts in: {possible_folders}")
-        return None
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    folders = ["knowledge_base", "knowledge-base", "."]
 
-    base_name = "vae_model.pt"
-    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, 5)]
-
-    try:
-        combined_data = io.BytesIO()
-        with st.spinner(f"Merging model parts..."):
+    for folder in folders:
+        path = os.path.join(base_dir, folder)
+        if os.path.exists(os.path.join(path, "vae_model.pt.part1")):
+            parts = [os.path.join(path, f"vae_model.pt.part{i}") for i in range(1, 5)]
+            buffer = io.BytesIO()
             for p in parts:
-                with open(p, 'rb') as f:
-                    combined_data.write(f.read())
-        
-        combined_data.seek(0)
-        # Load from buffer
-        model = torch.load(combined_data, map_location=torch.device('cpu'), weights_only=False)
-        model.eval()
-        st.success("✅ Model loaded successfully!")
-        return model
-    except Exception as e:
-        st.error(f"Error reassembling or loading: {str(e)}")
-        return None
-        
+                with open(p, "rb") as f:
+                    buffer.write(f.read())
+            buffer.seek(0)
+            model = torch.load(buffer, map_location="cpu", weights_only=False)
+            model.eval()
+            return model
+
+    st.error("❌ Model parts not found")
+    return None
+
 # ==========================================================
-# 4. STREAMLIT UI & INFERENCE
+# 4. STREAMLIT UI
 # ==========================================================
+
 st.title("VAE Image Reconstruction App")
-st.write("Upload an image (128x128) to reconstruct and predict control parameters.")
 
 model = load_model()
 if model is None:
     st.stop()
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
+uploaded_file = st.file_uploader("Upload an image", ["png", "jpg", "jpeg"])
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_container_width=True)
-    
-    transform = transforms.Compose([
+if uploaded_file:
+    img = Image.open(uploaded_file).convert("RGB")
+    st.image(img, caption="Input", use_container_width=True)
+
+    x = transforms.Compose([
         transforms.Resize((128, 128)),
-        transforms.ToTensor(),
-    ])
-    x = transform(image).unsqueeze(0) 
-    
+        transforms.ToTensor()
+    ])(img).unsqueeze(0)
+
     with torch.no_grad():
-        # Correctly unpacking 5 outputs based on modelv9.py
-        recon, mu, logvar, ctr_pred, z = model(x)
-    
-    recon_img = recon.squeeze(0)
-    recon_pil = transforms.ToPILImage()(recon_img)
-    
-    st.image(recon_pil, caption="Reconstructed Image", use_container_width=True)
-    
+        recon, _, _, ctr, _ = model(x)
+
+    st.image(
+        transforms.ToPILImage()(recon.squeeze(0)),
+        caption="Reconstruction",
+        use_container_width=True
+    )
+
     st.subheader("Predicted Control Parameters")
-    ctr_array = ctr_pred.squeeze(0).cpu().numpy()
-    st.table(ctr_array)
+    st.table(ctr.squeeze(0).numpy())
