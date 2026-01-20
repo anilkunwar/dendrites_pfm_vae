@@ -298,7 +298,10 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg
 if uploaded_file is not None:
     try:
         image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(image, caption="Uploaded Image", use_column_width=True)
         
         # Transform to match model's expected input size
         transform = transforms.Compose([
@@ -315,26 +318,33 @@ if uploaded_file is not None:
         recon_img = torch.clamp(recon.squeeze(0), 0, 1)
         recon_pil = transforms.ToPILImage()(recon_img)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(image, caption="Original", use_column_width=True)
         with col2:
-            st.image(recon_pil, caption="Reconstructed", use_column_width=True)
+            st.image(recon_pil, caption="Reconstructed Image", use_column_width=True)
         
         st.subheader("Predicted Control Parameters")
         ctr_array = ctr_pred.squeeze(0).numpy()
         
         # Display as a table with parameter indices
-        st.table([{"Parameter": i, "Value": f"{val:.4f}"} for i, val in enumerate(ctr_array)])
+        import pandas as pd
+        df = pd.DataFrame({
+            "Parameter Index": list(range(len(ctr_array))),
+            "Value": ctr_array
+        })
+        st.table(df)
         
-        # Also show as bar chart
+        # Show as bar chart using Streamlit's built-in chart
         st.subheader("Parameter Visualization")
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.bar(range(len(ctr_array)), ctr_array)
-        ax.set_xlabel("Parameter Index")
-        ax.set_ylabel("Value")
-        ax.set_title("Control Parameters Distribution")
-        st.pyplot(fig)
+        st.bar_chart(ctr_array)
+        
+        # Optionally show statistics
+        st.subheader("Parameter Statistics")
+        col_stats1, col_stats2, col_stats3 = st.columns(3)
+        with col_stats1:
+            st.metric("Mean", f"{np.mean(ctr_array):.4f}")
+        with col_stats2:
+            st.metric("Std Dev", f"{np.std(ctr_array):.4f}")
+        with col_stats3:
+            st.metric("Range", f"{np.max(ctr_array)-np.min(ctr_array):.4f}")
         
     except Exception as e:
         st.error(f"Error processing image: {str(e)}")
@@ -349,3 +359,16 @@ This app uses a Variational Autoencoder (VAE) to:
 
 The model expects images of size 128x128 pixels.
 """)
+
+# Add download option for reconstructed image
+if 'recon_pil' in locals():
+    st.sidebar.header("Download")
+    buf = io.BytesIO()
+    recon_pil.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    st.sidebar.download_button(
+        label="Download Reconstructed Image",
+        data=byte_im,
+        file_name="reconstructed.png",
+        mime="image/png"
+    )
