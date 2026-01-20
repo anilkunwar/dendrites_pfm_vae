@@ -205,7 +205,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--model_root", type=str, default='results/V9_lat=8_beta=0.1_warm=0.3_ctr=1.0_smooth=0.05_time=20260105_012629')
+    parser.add_argument("--model_root", type=str, default='results/V10_ADV_lat=32_beta=0.1_warm=0.3_ctr=0.5_smooth=2.0_adv=1.0_d=0.0001_g=0.0001_time=20260117_115614')
 
     # regression eval options
     parser.add_argument("--batch_size", type=int, default=32)

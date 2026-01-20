@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from sklearn.neighbors import NearestNeighbors
 
-from src.dataloader import DendritePFMDataset
+from src.dataloader import DendritePFMDataset, smooth_scale
+
 
 # ====== Utils ======
 def ensure_dir(p):
@@ -22,6 +23,7 @@ def get_init_tensor(image_size=(64, 64)):
     # assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
     arr = cv2.resize(arr, image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
+    tensor_t = smooth_scale(tensor_t)
 
     # build control variable
     c = [0.0]
@@ -43,8 +45,12 @@ def decode_single_channel(model, device, z_vec):
         img = (img + 1) / 2
     return img.numpy()
 
+def heuristic_score(img):
+    # return  W_TIME * t + W_FD * fd - (PRIOR_L2_W * (np.linalg.norm(z) ** 2) if MODE == "safe" else 0.0)
+    return img.sum()
+
 # ====== CONFIG ======
-MODEL_ROOT = "results/V10_ADV_lat=32_beta=0.1_warm=0.3_ctr=1.0_smooth=1.0_adv=1.0_d=0.0001_g=0.0001_time=20260116_174051"
+MODEL_ROOT = "/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/results_expV9/V9_lat=8_beta=0.1_warm=0.3_ctr=2.0_smooth=0.05_time=20260105_071004/"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search_continuous")
 
@@ -74,12 +80,12 @@ PIX_CLIP_MIN = -0.2      # 用于检测异常 decode
 PIX_CLIP_MAX =  1.2
 
 # optional projection to dataset manifold
-USE_PROJ = True
+USE_PROJ = False
 PROJ_EVERY = 5           # 每隔几步投影一次
 PROJ_ALPHA = 0.5         # z <- alpha*z + (1-alpha)*z_nn
 KNN_K = 1
 
-MODE = "naive"           # "naive" or "safe"
+MODE = "safe"           # "naive" or "safe"
 
 def fractal_dimension(img):
     bw = img > img.mean()
@@ -103,15 +109,15 @@ def predict_time(model, device, z_vec):
         ctr = model.ctr_head(z)
     return float(ctr[0, TIME_IDX].detach().cpu().float())
 
-def is_decode_weird(img):
-    # 简单异常检测：像素范围/饱和
-    mn, mx = float(img.min()), float(img.max())
-    if mn < PIX_CLIP_MIN or mx > PIX_CLIP_MAX:
-        return True
-    # 太接近常数也算异常
-    if float(img.std()) < 1e-3:
-        return True
-    return False
+# def is_decode_weird(img):
+#     # 简单异常检测：像素范围/饱和
+#     mn, mx = float(img.min()), float(img.max())
+#     if mn < PIX_CLIP_MIN or mx > PIX_CLIP_MAX:
+#         return True
+#     # 太接近常数也算异常
+#     if float(img.std()) < 1e-3:
+#         return True
+#     return False
 
 def save_step(out_dir, step, img, z, t, fd, score):
     plt.figure(figsize=(6, 5))
@@ -130,7 +136,7 @@ def main():
     torch.manual_seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = torch.load(CKPT_PATH, map_location=device)
+    model = torch.load(CKPT_PATH, map_location=device, weights_only=False)
     model.eval()
 
     # === （可选）加载 dataset latent，用于投影回流形 ===
@@ -155,13 +161,14 @@ def main():
     # === 初始化：直接从 prior 采样 ===
     # 这一步本身就可能生成很差的图（取决于你的 VAE prior match 是否好）
     with torch.no_grad():
-        z = model(get_init_tensor().unsqueeze(0).to(device))[-1][0].detach().cpu()
+        out = model(get_init_tensor().unsqueeze(0).to(device))
+    img = out[0][0, 0].detach().cpu().numpy()
+    z = out[-1][0].detach().cpu()
 
     # 记录初始
-    img = decode_single_channel(model, device, z)
     t = predict_time(model, device, z)
     fd = fractal_dimension(img)
-    score = W_TIME * t + W_FD * fd - (PRIOR_L2_W * (np.linalg.norm(z) ** 2) if MODE == "safe" else 0.0)
+    score = heuristic_score(img)
     save_step(run_dir, 0, img, z, t, fd, score)
 
     for step in range(1, STEPS + 1):
@@ -173,6 +180,7 @@ def main():
 
         # 生成候选
         for _ in range(NUM_CAND):
+
             dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA
             z_cand = z + dz
 
@@ -184,14 +192,14 @@ def main():
 
             img_cand = decode_single_channel(model, device, z_cand)
 
-            # safe: 拒绝明显崩坏的 decode
-            if MODE == "safe" and is_decode_weird(img_cand):
-                continue
+            # # safe: 拒绝明显崩坏的 decode
+            # if MODE == "safe" and is_decode_weird(img_cand):
+            #     continue
 
             t_cand = predict_time(model, device, z_cand)
             fd_cand = fractal_dimension(img_cand)
 
-            s = W_TIME * t_cand + W_FD * fd_cand
+            s = heuristic_score(img_cand)
             if MODE == "safe":
                 s = s - PRIOR_L2_W * (np.linalg.norm(z_cand) ** 2)
 
