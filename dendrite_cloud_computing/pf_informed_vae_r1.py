@@ -12,7 +12,7 @@ import math
 import io
 
 # ==========================================================
-# 1. ARCHITECTURE DEFINITIONS (Required for Unpickling)
+# 1. ARCHITECTURE DEFINITIONS (Synced with modelv9)
 # ==========================================================
 
 def smooth_scale(x):
@@ -139,8 +139,7 @@ class VAE(nn.Module):
     def __init__(self, image_size=(3, 128, 128), latent_size=64, hidden_dimension=64, num_params=15, ctr_head_hidden=256):
         super().__init__()
         self.C, self.H, self.W = image_size
-        self.latent_size = latent_size
-        self.encoder = ResEncoder((image_size[1], image_size[2]), self.C, hidden_dimension, latent_size)
+        self.encoder = ResEncoder((self.H, self.W), self.C, hidden_dimension, latent_size)
         self.decoder = ResDecoder(self.C, hidden_dimension, latent_size, self.H, self.W)
         self.ctr_head = nn.Sequential(
             nn.Linear(latent_size, ctr_head_hidden),
@@ -157,7 +156,9 @@ class VAE(nn.Module):
     def forward(self, x):
         mu_q, logvar_q = self.encoder(x)
         z = self.reparameterize(mu_q, logvar_q)
-        return self.decoder(z), mu_q, logvar_q, self.ctr_head(z), z
+        ctr_pred = self.ctr_head(z)
+        recon = self.decoder(z)
+        return recon, mu_q, logvar_q, ctr_pred, z
 
 # ==========================================================
 # 2. DUMMY MODULE SETUP (Fixes "No module named src")
@@ -180,55 +181,46 @@ sys.modules["src.modelv9"] = m.modelv9
 # ==========================================================
 @st.cache_resource
 def load_model():
-    # Get the directory where THIS script (prediction.py) is located
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Try common folder names (underscore vs dash)
     possible_folders = ["knowledge_base", "knowledge-base", "."]
     folder_found = None
     
     for f in possible_folders:
         test_path = os.path.join(current_dir, f)
         if os.path.exists(test_path) and os.path.isdir(test_path):
-            # Check if part1 is actually inside this folder
             if os.path.exists(os.path.join(test_path, "vae_model.pt.part1")):
                 folder_found = test_path
                 break
     
     if folder_found is None:
-        st.error(f"❌ Could not find the model parts. Searched in: {possible_folders}")
-        st.info("Ensure your files are uploaded to GitHub in a folder named 'knowledge_base'.")
+        st.error(f"❌ Could not find model parts in: {possible_folders}")
         return None
 
     base_name = "vae_model.pt"
-    num_parts = 4
-    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
+    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, 5)]
 
     try:
         combined_data = io.BytesIO()
-        with st.spinner(f"Merging model parts from {os.path.basename(folder_found)}..."):
+        with st.spinner(f"Merging model parts..."):
             for p in parts:
-                if not os.path.exists(p):
-                    st.error(f"Missing: {p}")
-                    return None
                 with open(p, 'rb') as f:
                     combined_data.write(f.read())
         
         combined_data.seek(0)
-        # Load the full object
+        # Load from buffer
         model = torch.load(combined_data, map_location=torch.device('cpu'), weights_only=False)
         model.eval()
         st.success("✅ Model loaded successfully!")
         return model
     except Exception as e:
-        st.error(f"Error reassembling or loading model: {str(e)}")
+        st.error(f"Error reassembling or loading: {str(e)}")
         return None
         
 # ==========================================================
 # 4. STREAMLIT UI & INFERENCE
 # ==========================================================
 st.title("VAE Image Reconstruction App")
-st.write("Upload an image to reconstruct it and predict control parameters.")
+st.write("Upload an image (128x128) to reconstruct and predict control parameters.")
 
 model = load_model()
 if model is None:
@@ -238,9 +230,8 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
     
-    # Transform to 128x128 (matches VAE training size)
     transform = transforms.Compose([
         transforms.Resize((128, 128)),
         transforms.ToTensor(),
@@ -248,13 +239,14 @@ if uploaded_file is not None:
     x = transform(image).unsqueeze(0) 
     
     with torch.no_grad():
-        recon, _, _, ctr_pred, _ = model(x)
+        # Correctly unpacking 5 outputs based on modelv9.py
+        recon, mu, logvar, ctr_pred, z = model(x)
     
     recon_img = recon.squeeze(0)
     recon_pil = transforms.ToPILImage()(recon_img)
     
-    st.image(recon_pil, caption="Reconstructed Image", use_column_width=True)
+    st.image(recon_pil, caption="Reconstructed Image", use_container_width=True)
     
     st.subheader("Predicted Control Parameters")
-    ctr_array = ctr_pred.squeeze(0).numpy()
+    ctr_array = ctr_pred.squeeze(0).cpu().numpy()
     st.table(ctr_array)
