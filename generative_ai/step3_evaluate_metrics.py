@@ -7,6 +7,8 @@
 2. 文献标准指标（材料科学/电化学/神经科学）
 3. 综合评估和可视化
 """
+import glob
+import random
 
 import numpy as np
 import cv2
@@ -1275,14 +1277,18 @@ if __name__ == "__main__":
         pixel_size = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
         save_dir = sys.argv[3] if len(sys.argv) > 3 else './output'
 
-        for imagef in os.listdir(image_path):
+        ps = glob.glob(image_path + "/**/*.npy", recursive=True)
+        while True:
+
             analyzer, metrics, scores = analyze_dendrite_comprehensive(
-                os.path.join(image_path, imagef),
+                random.choice(ps),
                 pixel_size_um=pixel_size,
                 generate_visualization=True,
                 generate_report=True,
                 save_dir=save_dir
             )
+
+            print()
 
         print("\n" + "=" * 80)
         print("分析完成！所有结果已保存到:", save_dir)
