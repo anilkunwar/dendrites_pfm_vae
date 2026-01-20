@@ -1,22 +1,21 @@
 import os
+import io
+import sys
+import math
+import types
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import streamlit as st
 from PIL import Image
 import torchvision.transforms as transforms
-import numpy as np
-import sys
-import types
-import math  # Added import for math operations
-import io
 
 # ==========================================================
-# 1. ARCHITECTURE DEFINITIONS (Required for Unpickling)
+# 1. ARCHITECTURE DEFINITIONS (modelv9 – FIXED)
 # ==========================================================
 
 def smooth_scale(x):
-    return torch.sigmoid(x) 
+    return torch.sigmoid(x)
+
 
 class MultiKernelResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, downsample=False):
@@ -27,7 +26,8 @@ class MultiKernelResBlock(nn.Module):
         self.conv7 = nn.Conv2d(in_channels, out_channels, 7, stride, 3, bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
-        self.shortcut = nn.Sequential()
+
+        self.shortcut = nn.Identity()
         if downsample or in_channels != out_channels:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, 1, stride, bias=False),
@@ -40,15 +40,26 @@ class MultiKernelResBlock(nn.Module):
         out = out + self.shortcut(x)
         return self.relu(out)
 
+
 class ResEncoder(nn.Module):
+    """
+    🔥 FIXED: conv_dim inferred dynamically
+    """
     def __init__(self, img_size, in_channels, base_channels, latent_size):
         super().__init__()
+
         self.layers = nn.Sequential(
             MultiKernelResBlock(in_channels, base_channels, downsample=True),
             MultiKernelResBlock(base_channels, base_channels * 2, downsample=True),
             MultiKernelResBlock(base_channels * 2, base_channels * 4, downsample=True),
         )
-        conv_dim = int(img_size[0] * img_size[1] * base_channels * 4 / (8 * 8))
+
+        # ---- dynamic conv_dim inference (CRITICAL FIX) ----
+        with torch.no_grad():
+            dummy = torch.zeros(1, in_channels, img_size[0], img_size[1])
+            out = self.layers(dummy)
+            conv_dim = out.flatten(1).shape[1]
+
         self.fc_mu = nn.Linear(conv_dim, latent_size)
         self.fc_logvar = nn.Linear(conv_dim, latent_size)
 
@@ -57,46 +68,57 @@ class ResEncoder(nn.Module):
         x = torch.flatten(x, 1)
         return self.fc_mu(x), self.fc_logvar(x)
 
+
 class ResUpBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False)
+        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
         self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
         self.shortcut = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, bias=False),
             nn.BatchNorm2d(out_channels)
         )
 
     def forward(self, x):
-        out = self.relu(self.bn1(self.deconv1(x)))
+        out = self.relu(self.bn1(self.deconv(x)))
         out = self.bn2(self.conv(out))
         return self.relu(out + self.shortcut(x))
+
 
 class GroupResUpBlock(nn.Module):
     def __init__(self, in_channels, out_channels, groups):
         super().__init__()
-        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, groups=groups, bias=False)
+        self.deconv = nn.ConvTranspose2d(
+            in_channels, out_channels, 4, 2, 1, groups=groups, bias=False
+        )
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv = nn.Conv2d(out_channels, out_channels, 3, 1, 1, groups=groups, bias=False)
+        self.conv = nn.Conv2d(
+            out_channels, out_channels, 3, 1, 1, groups=groups, bias=False
+        )
         self.bn2 = nn.BatchNorm2d(out_channels)
-        self.short = nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, 4, 2, 1, groups=groups, bias=False),
+        self.relu = nn.ReLU(inplace=True)
+
+        self.shortcut = nn.Sequential(
+            nn.ConvTranspose2d(
+                in_channels, out_channels, 4, 2, 1, groups=groups, bias=False
+            ),
             nn.BatchNorm2d(out_channels)
         )
 
     def forward(self, x):
         out = self.relu(self.bn1(self.deconv(x)))
         out = self.bn2(self.conv(out))
-        return self.relu(out + self.short(x))
+        return self.relu(out + self.shortcut(x))
+
 
 class ChannelWiseBlock(nn.Module):
     def __init__(self, channels, groups):
         super().__init__()
-        self.layers = nn.Sequential(
+        self.block = nn.Sequential(
             nn.Conv2d(channels, channels, 3, 1, 1, groups=groups, bias=False),
             nn.BatchNorm2d(channels),
             nn.ReLU(inplace=True),
@@ -104,44 +126,69 @@ class ChannelWiseBlock(nn.Module):
             nn.BatchNorm2d(channels),
             nn.ReLU(inplace=True),
         )
-    def forward(self, x): return self.layers(x)
+
+    def forward(self, x):
+        return self.block(x)
+
 
 class ResDecoder(nn.Module):
     def __init__(self, out_channels, base_channels, latent_size, H, W):
         super().__init__()
         self.H, self.W = H, W
-        init_h, init_w = H // 8, W // 8
-        self.fc = nn.Linear(latent_size, base_channels * 4 * init_h * init_w)
+        h0, w0 = H // 8, W // 8
+
+        self.fc = nn.Linear(latent_size, base_channels * 4 * h0 * w0)
+
         self.shared_up = nn.Sequential(
             ResUpBlock(base_channels * 4, base_channels * 2),
             ResUpBlock(base_channels * 2, base_channels),
         )
+
         ch_per_group = math.ceil(base_channels / out_channels)
         self.group_channels = ch_per_group * out_channels
-        self.align_proj = nn.Conv2d(base_channels, self.group_channels, kernel_size=1, bias=False)
-        self.align_bn = nn.BatchNorm2d(self.group_channels)
-        self.group_up = GroupResUpBlock(self.group_channels, self.group_channels, groups=out_channels)
+
+        self.align = nn.Sequential(
+            nn.Conv2d(base_channels, self.group_channels, 1, bias=False),
+            nn.BatchNorm2d(self.group_channels)
+        )
+
+        self.group_up = GroupResUpBlock(
+            self.group_channels, self.group_channels, groups=out_channels
+        )
+
         self.refine = nn.Sequential(
             ChannelWiseBlock(self.group_channels, groups=out_channels),
             ChannelWiseBlock(self.group_channels, groups=out_channels),
         )
-        self.head = nn.Conv2d(self.group_channels, out_channels, 1, groups=out_channels, bias=True)
+
+        self.head = nn.Conv2d(
+            self.group_channels, out_channels, 1, groups=out_channels
+        )
 
     def forward(self, z):
         x = self.fc(z).view(z.size(0), -1, self.H // 8, self.W // 8)
         x = self.shared_up(x)
-        x = self.align_bn(self.align_proj(x))
+        x = self.align(x)
         x = self.group_up(x)
         x = self.refine(x)
         return smooth_scale(self.head(x))
 
+
 class VAE(nn.Module):
-    def __init__(self, image_size=(3, 128, 128), latent_size=64, hidden_dimension=64, num_params=15, ctr_head_hidden=256):
+    def __init__(
+        self,
+        image_size=(3, 128, 128),
+        latent_size=64,
+        hidden_dimension=64,
+        num_params=15,
+        ctr_head_hidden=256,
+    ):
         super().__init__()
-        self.C, self.H, self.W = image_size
-        self.latent_size = latent_size
-        self.encoder = ResEncoder((image_size[1], image_size[2]), self.C, hidden_dimension, latent_size)
-        self.decoder = ResDecoder(self.C, hidden_dimension, latent_size, self.H, self.W)
+        C, H, W = image_size
+
+        self.encoder = ResEncoder((H, W), C, hidden_dimension, latent_size)
+        self.decoder = ResDecoder(C, hidden_dimension, latent_size, H, W)
+
         self.ctr_head = nn.Sequential(
             nn.Linear(latent_size, ctr_head_hidden),
             nn.ReLU(inplace=True),
@@ -155,16 +202,20 @@ class VAE(nn.Module):
         return mu + torch.randn_like(std) * std
 
     def forward(self, x):
-        mu_q, logvar_q = self.encoder(x)
-        z = self.reparameterize(mu_q, logvar_q)
-        return self.decoder(z), mu_q, logvar_q, self.ctr_head(z), z
+        mu, logvar = self.encoder(x)
+        z = self.reparameterize(mu, logvar)
+        recon = self.decoder(z)
+        ctr = self.ctr_head(z)
+        return recon, mu, logvar, ctr, z
+
 
 # ==========================================================
-# 2. DUMMY MODULE SETUP (Fixes "No module named src")
+# 2. DUMMY MODULE (pickle compatibility)
 # ==========================================================
+
 m = types.ModuleType("src")
 m.modelv9 = types.ModuleType("modelv9")
-m.modelv9.VAE = VAE 
+m.modelv9.VAE = VAE
 m.modelv9.ResEncoder = ResEncoder
 m.modelv9.ResDecoder = ResDecoder
 m.modelv9.MultiKernelResBlock = MultiKernelResBlock
@@ -175,140 +226,68 @@ m.modelv9.ChannelWiseBlock = ChannelWiseBlock
 sys.modules["src"] = m
 sys.modules["src.modelv9"] = m.modelv9
 
+
 # ==========================================================
-# 3. STREAMLIT LOADING (Split File Version - Robust Path)
+# 3. STREAMLIT MODEL LOADING
 # ==========================================================
+
 @st.cache_resource
 def load_model():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    possible_folders = ["knowledge_base", "knowledge-base", "."]
-    folder_found = None
-    
-    for f in possible_folders:
-        test_path = os.path.join(current_dir, f)
-        if os.path.exists(test_path) and os.path.isdir(test_path):
-            if os.path.exists(os.path.join(test_path, "vae_model.pt.part1")):
-                folder_found = test_path
-                break
-    
-    if folder_found is None:
-        st.error(f"❌ Could not find the model parts. Searched in: {possible_folders}")
-        st.info("Ensure your files are uploaded to GitHub in a folder named 'knowledge_base'.")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    folders = ["knowledge_base", "knowledge-base", "."]
+
+    folder = None
+    for f in folders:
+        p = os.path.join(base_dir, f)
+        if os.path.exists(os.path.join(p, "vae_model.pt.part1")):
+            folder = p
+            break
+
+    if folder is None:
+        st.error("❌ Model parts not found")
         return None
 
-    base_name = "vae_model.pt"
-    num_parts = 4
-    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
+    buf = io.BytesIO()
+    for i in range(1, 5):
+        with open(os.path.join(folder, f"vae_model.pt.part{i}"), "rb") as f:
+            buf.write(f.read())
 
-    try:
-        combined_data = io.BytesIO()
-        with st.spinner(f"Merging model parts from {os.path.basename(folder_found)}..."):
-            for p in parts:
-                if not os.path.exists(p):
-                    st.error(f"Missing: {p}")
-                    return None
-                with open(p, 'rb') as f:
-                    combined_data.write(f.read())
-        
-        combined_data.seek(0)
-        model = torch.load(combined_data, map_location=torch.device('cpu'), weights_only=False)
-        model.eval()
-        st.success("✅ Model loaded successfully!")
-        return model
-    except Exception as e:
-        st.error(f"Error reassembling or loading model: {str(e)}")
-        return None
+    buf.seek(0)
+    model = torch.load(buf, map_location="cpu", weights_only=False)
+    model.eval()
+    st.success("✅ Model loaded")
+    return model
+
 
 # ==========================================================
-# 4. STREAMLIT UI & INFERENCE (FIXED DYNAMIC SIZE HANDLING)
+# 4. STREAMLIT UI
 # ==========================================================
-st.title("VAE Image Reconstruction App")
-st.write("Upload an image to reconstruct it and predict control parameters.")
+
+st.title("VAE Image Reconstruction")
 
 model = load_model()
 if model is None:
     st.stop()
 
-# ====================== CRITICAL FIX START ======================
-# Dynamically determine expected input size from model architecture
-try:
-    # Get number of input features for encoder's fc_mu layer
-    in_features = model.encoder.fc_mu.in_features
-    
-    # Model uses base_channels=64 -> final channels = 64*4 = 256
-    end_channels = 256
-    
-    # Validate feature dimensions
-    if in_features % end_channels != 0:
-        st.error(f"Feature dimension mismatch: {in_features} not divisible by {end_channels}")
-        st.stop()
-    
-    # Calculate spatial dimensions after downsampling
-    spatial_area = in_features // end_channels
-    spatial_side = math.isqrt(spatial_area)
-    
-    if spatial_side * spatial_side != spatial_area:
-        st.error(f"Invalid spatial dimensions: {spatial_area} is not a perfect square")
-        st.stop()
-    
-    # Calculate original image size (3 downsampling steps = 8x reduction)
-    expected_size = spatial_side * 8
-    
-    # Update decoder dimensions to match training configuration
-    model.decoder.H = expected_size
-    model.decoder.W = expected_size
-    
-    # Determine expected input channels
-    expected_channels = model.encoder.layers[0].conv3.in_channels
-    
-    st.info(f"Model configured for {expected_channels}-channel {expected_size}x{expected_size} images")
-    
-except Exception as e:
-    st.error(f"Error configuring model dimensions: {str(e)}")
-    st.stop()
-# ====================== CRITICAL FIX END ======================
+file = st.file_uploader("Upload image", ["png", "jpg", "jpeg"])
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
+if file:
+    img = Image.open(file).convert("RGB")
+    st.image(img, caption="Input", use_container_width=True)
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    
-    # ====================== DYNAMIC PREPROCESSING ======================
-    # Create transform pipeline based on model's expected input
-    transforms_list = [
-        transforms.Resize((expected_size, expected_size)),
-    ]
-    
-    # Handle grayscale vs RGB based on model's first layer
-    if expected_channels == 1 and image.mode != 'L':
-        transforms_list.append(transforms.Grayscale(num_output_channels=1))
-    elif expected_channels == 3 and image.mode == 'L':
-        image = image.convert('RGB')
-    
-    transforms_list.extend([
+    x = transforms.Compose([
+        transforms.Resize((128, 128)),
         transforms.ToTensor(),
-    ])
-    
-    transform = transforms.Compose(transforms_list)
-    # ====================== END DYNAMIC PREPROCESSING ======================
-    
-    # Display original image
-    st.image(image, caption="Uploaded Image", use_column_width=True)
-    
-    # Preprocess image
-    x = transform(image).unsqueeze(0)
-    
-    # Run inference
+    ])(img).unsqueeze(0)
+
     with torch.no_grad():
-        recon, _, _, ctr_pred, _ = model(x)
-    
-    # Convert reconstruction to image
-    recon_img = recon.squeeze(0)
-    recon_pil = transforms.ToPILImage()(recon_img)
-    
-    st.image(recon_pil, caption="Reconstructed Image", use_column_width=True)
-    
-    # Display control parameters
+        recon, _, _, ctr, _ = model(x)
+
+    st.image(
+        transforms.ToPILImage()(recon.squeeze(0)),
+        caption="Reconstruction",
+        use_container_width=True,
+    )
+
     st.subheader("Predicted Control Parameters")
-    ctr_array = ctr_pred.squeeze(0).numpy()
-    st.table(ctr_array.reshape(1, -1))  # Ensure proper table formatting
+    st.table(ctr.squeeze(0).numpy())
