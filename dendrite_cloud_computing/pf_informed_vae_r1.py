@@ -9,13 +9,15 @@ import numpy as np
 import sys
 import types
 import math
+import io
 
-# --- 1. Helper Function from training script ---
+# ==========================================================
+# 1. ARCHITECTURE DEFINITIONS (Required for Unpickling)
+# ==========================================================
+
 def smooth_scale(x):
-    # This matches the 'smooth_scale' import in your modelv9.py
     return torch.sigmoid(x) 
 
-# --- 2. All required classes from modelv9.py ---
 class MultiKernelResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, downsample=False):
         super().__init__()
@@ -157,11 +159,11 @@ class VAE(nn.Module):
         z = self.reparameterize(mu_q, logvar_q)
         return self.decoder(z), mu_q, logvar_q, self.ctr_head(z), z
 
-# --- 3. DUMMY MODULE SETUP ---
-# This is the "brain transplant" that makes torch.load work
+# ==========================================================
+# 2. DUMMY MODULE SETUP (Fixes "No module named src")
+# ==========================================================
 m = types.ModuleType("src")
 m.modelv9 = types.ModuleType("modelv9")
-# Register ALL classes that were in modelv9.py
 m.modelv9.VAE = VAE 
 m.modelv9.ResEncoder = ResEncoder
 m.modelv9.ResDecoder = ResDecoder
@@ -173,58 +175,69 @@ m.modelv9.ChannelWiseBlock = ChannelWiseBlock
 sys.modules["src"] = m
 sys.modules["src.modelv9"] = m.modelv9
 
-# --- 4. Streamlit Load Function ---
+# ==========================================================
+# 3. STREAMLIT LOADING (Split File Version)
+# ==========================================================
 @st.cache_resource
 def load_model():
-    model_path = os.path.join("knowledge-base", "vae_model.pt")
-    if not os.path.exists(model_path):
-        st.error(f"File not found: {model_path}")
-        return None
+    folder = "knowledge_base"
+    base_name = "vae_model.pt"
+    num_parts = 4
+    
+    parts = [os.path.join(folder, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
+    
+    for p in parts:
+        if not os.path.exists(p):
+            st.error(f"Missing part: {p}. Make sure all parts are in the 'knowledge_base' folder.")
+            return None
+
     try:
-        # Load the full object now that all components are registered
-        model = torch.load(model_path, map_location=torch.device('cpu'), weights_only=False)
+        combined_data = io.BytesIO()
+        with st.spinner("Assembling model from knowledge_base..."):
+            for p in parts:
+                with open(p, 'rb') as f:
+                    combined_data.write(f.read())
+        
+        combined_data.seek(0)
+        # weights_only=False is required to load the full class structure
+        model = torch.load(combined_data, map_location=torch.device('cpu'), weights_only=False)
         model.eval()
         return model
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None
 
-# Streamlit app
+# ==========================================================
+# 4. STREAMLIT UI & INFERENCE
+# ==========================================================
 st.title("VAE Image Reconstruction App")
+st.write("Upload an image to reconstruct it and predict control parameters.")
 
-# Instructions
-st.write("Upload a 64x64 image (or it will be resized) to reconstruct it using the trained VAE model. The app will also predict control parameters (regression output).")
-
-# Load model
 model = load_model()
 if model is None:
     st.stop()
 
-# Image upload
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Open and process image
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
     
-    # Transform: resize to 64x64, to tensor, normalize (assuming [0,1] range as in training)
+    # Transform to 128x128 (matches VAE training size)
     transform = transforms.Compose([
-        transforms.Resize((64, 64)),
+        transforms.Resize((128, 128)),
         transforms.ToTensor(),
     ])
-    x = transform(image).unsqueeze(0)  # Add batch dim
+    x = transform(image).unsqueeze(0) 
     
-    # Run inference
     with torch.no_grad():
         recon, _, _, ctr_pred, _ = model(x)
     
-    # Display reconstructed image
-    recon_img = recon.squeeze(0)  # Remove batch dim
+    recon_img = recon.squeeze(0)
     recon_pil = transforms.ToPILImage()(recon_img)
+    
     st.image(recon_pil, caption="Reconstructed Image", use_column_width=True)
     
-    # Display regression output (control predictions)
     st.subheader("Predicted Control Parameters")
-    ctr_array = ctr_pred.squeeze(0).numpy()  # Assuming batch size 1
-    st.write(ctr_array)  # Or format as a table/list if needed
+    ctr_array = ctr_pred.squeeze(0).numpy()
+    st.table(ctr_array)
