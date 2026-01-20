@@ -176,37 +176,54 @@ sys.modules["src"] = m
 sys.modules["src.modelv9"] = m.modelv9
 
 # ==========================================================
-# 3. STREAMLIT LOADING (Split File Version)
+# 3. STREAMLIT LOADING (Split File Version - Robust Path)
 # ==========================================================
 @st.cache_resource
 def load_model():
-    folder = "knowledge_base"
+    # Get the directory where THIS script (prediction.py) is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Try common folder names (underscore vs dash)
+    possible_folders = ["knowledge_base", "knowledge-base", "."]
+    folder_found = None
+    
+    for f in possible_folders:
+        test_path = os.path.join(current_dir, f)
+        if os.path.exists(test_path) and os.path.isdir(test_path):
+            # Check if part1 is actually inside this folder
+            if os.path.exists(os.path.join(test_path, "vae_model.pt.part1")):
+                folder_found = test_path
+                break
+    
+    if folder_found is None:
+        st.error(f"❌ Could not find the model parts. Searched in: {possible_folders}")
+        st.info("Ensure your files are uploaded to GitHub in a folder named 'knowledge_base'.")
+        return None
+
     base_name = "vae_model.pt"
     num_parts = 4
-    
-    parts = [os.path.join(folder, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
-    
-    for p in parts:
-        if not os.path.exists(p):
-            st.error(f"Missing part: {p}. Make sure all parts are in the 'knowledge_base' folder.")
-            return None
+    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
 
     try:
         combined_data = io.BytesIO()
-        with st.spinner("Assembling model from knowledge_base..."):
+        with st.spinner(f"Merging model parts from {os.path.basename(folder_found)}..."):
             for p in parts:
+                if not os.path.exists(p):
+                    st.error(f"Missing: {p}")
+                    return None
                 with open(p, 'rb') as f:
                     combined_data.write(f.read())
         
         combined_data.seek(0)
-        # weights_only=False is required to load the full class structure
+        # Load the full object
         model = torch.load(combined_data, map_location=torch.device('cpu'), weights_only=False)
         model.eval()
+        st.success("✅ Model loaded successfully!")
         return model
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
+        st.error(f"Error reassembling or loading model: {str(e)}")
         return None
-
+        
 # ==========================================================
 # 4. STREAMLIT UI & INFERENCE
 # ==========================================================
