@@ -344,7 +344,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--latent_size", type=int, default=16)
+    parser.add_argument("--latent_size", type=int, default=32)
     parser.add_argument("--hidden_dim", type=int, default=128)
     parser.add_argument("--num_params", type=int, default=15)
 
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
 
     # weights
-    parser.add_argument("--ctr_weight", type=float, default=1.0)
+    parser.add_argument("--ctr_weight", type=float, default=0.8)
     parser.add_argument("--smooth_weight", type=float, default=2.0)
 
     # confidence scaling

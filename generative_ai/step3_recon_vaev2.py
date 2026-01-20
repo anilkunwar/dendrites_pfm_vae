@@ -293,23 +293,23 @@ def main():
 
             all_y.append(_to_numpy(y))
 
-            all_pred_det.append(_to_numpy(theta_hat_d))
-            all_conf_param_det.append(_to_numpy(conf_param_d))
-            all_conf_global_det.append(_to_numpy(conf_global_d))
+            all_pred_det.append(_to_numpy(theta_hat_d).tolist())
+            all_conf_param_det.append(_to_numpy(conf_param_d).tolist())
+            all_conf_global_det.append(_to_numpy(conf_global_d).tolist())
             # modes: 保存 topk 的 (pi, mu) 便于分析（体积会大一点，按需）
             all_modes_det.append({
-                "pi_topk": _to_numpy(modes_d["pi_topk"]),
-                "mu_topk": _to_numpy(modes_d["mu_topk"]),
-                "idx_topk": _to_numpy(modes_d["idx_topk"]),
+                "pi_topk": _to_numpy(modes_d["pi_topk"]).tolist(),
+                "mu_topk": _to_numpy(modes_d["mu_topk"]).tolist(),
+                "idx_topk": _to_numpy(modes_d["idx_topk"]).tolist(),
             })
 
-            all_pred_sto.append(_to_numpy(theta_hat_s))
-            all_conf_param_sto.append(_to_numpy(conf_param_s))
-            all_conf_global_sto.append(_to_numpy(conf_global_s))
+            all_pred_sto.append(_to_numpy(theta_hat_s).tolist())
+            all_conf_param_sto.append(_to_numpy(conf_param_s).tolist())
+            all_conf_global_sto.append(_to_numpy(conf_global_s).tolist())
             all_modes_sto.append({
-                "pi_topk": _to_numpy(modes_s["pi_topk"]),
-                "mu_topk": _to_numpy(modes_s["mu_topk"]),
-                "idx_topk": _to_numpy(modes_s["idx_topk"]),
+                "pi_topk": _to_numpy(modes_s["pi_topk"]).tolist(),
+                "mu_topk": _to_numpy(modes_s["mu_topk"]).tolist(),
+                "idx_topk": _to_numpy(modes_s["idx_topk"]).tolist(),
             })
 
             # save a few recon examples
