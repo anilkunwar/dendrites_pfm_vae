@@ -349,11 +349,11 @@ if __name__ == "__main__":
     parser.add_argument("--num_params", type=int, default=15)
 
     # MDN
-    parser.add_argument("--mdn_components", type=int, default=8)
+    parser.add_argument("--mdn_components", type=int, default=16)
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=5.0)
+    parser.add_argument("--beta", type=float, default=2.0)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
 
     # weights
