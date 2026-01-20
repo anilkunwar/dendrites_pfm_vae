@@ -7,7 +7,7 @@
 
 # Generative Machine Learning (Conditional VAE)
 
-(The description of the codes related to AI model development and optimization will be provided here)
+[![vaemodel](https://img.shields.io/badge/dendritevae1-streamlit-red)](https://phase-field-informed-vae1.streamlit.app/) (basic model)
 
 # Postprocessing the Results 
 - Radar charts
