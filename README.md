@@ -7,7 +7,7 @@
 
 # Generative Machine Learning (Conditional VAE)
 
-[![vaemodel](https://img.shields.io/badge/dendritevae1-streamlit-red)](https://phase-field-informed-vae1.streamlit.app/) (basic model)
+[![vaemodel](https://img.shields.io/badge/dendritevae1-streamlit-red)](https://phase-field-informed-vae1.streamlit.app/) (inerfacial microstructure construction app)
 
 # Postprocessing the Results 
 - Radar charts
