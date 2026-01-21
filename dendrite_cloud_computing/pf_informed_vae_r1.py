@@ -10,9 +10,11 @@ import sys
 import types
 import math
 import io
+import pandas as pd
+from pathlib import Path
 
 # ==========================================================
-# 1. ARCHITECTURE DEFINITIONS (Fixed Version)
+# 1. ARCHITECTURE DEFINITIONS
 # ==========================================================
 def smooth_scale(x):
     return torch.sigmoid(x)
@@ -276,11 +278,93 @@ def load_model():
         return None
 
 # ==========================================================
-# 4. STREAMLIT UI & INFERENCE
+# 4. HELPER FUNCTIONS FOR IMAGE HANDLING
 # ==========================================================
-st.title("VAE Image Reconstruction App")
-st.write("Upload an image to reconstruct it and predict control parameters.")
+def get_test_images():
+    """Scan for test_input folder and return available images"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Try different possible folder names
+    possible_folders = ["test_input", "test_images", "images", "test"]
+    
+    for folder_name in possible_folders:
+        test_folder = os.path.join(current_dir, folder_name)
+        if os.path.exists(test_folder) and os.path.isdir(test_folder):
+            # Find all image files
+            image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
+            image_files = []
+            
+            for ext in image_extensions:
+                image_files.extend(Path(test_folder).glob(f"*{ext}"))
+                image_files.extend(Path(test_folder).glob(f"*{ext.upper()}"))
+            
+            if image_files:
+                return test_folder, sorted(image_files)
+    
+    return None, []
 
+def load_image_from_path(image_path):
+    """Load image from file path"""
+    try:
+        image = Image.open(image_path).convert("RGB")
+        return image
+    except Exception as e:
+        st.error(f"Error loading image {image_path}: {str(e)}")
+        return None
+
+def process_image(image, model, expected_h=128, expected_w=128):
+    """Process image through the model"""
+    # Transform to match model's expected input size
+    transform = transforms.Compose([
+        transforms.Resize((expected_h, expected_w)),
+        transforms.ToTensor(),
+    ])
+    
+    x = transform(image).unsqueeze(0)
+    
+    with torch.no_grad():
+        recon, _, _, ctr_pred, _ = model(x)
+    
+    # Ensure reconstruction is in valid range
+    recon_img = torch.clamp(recon.squeeze(0), 0, 1)
+    recon_pil = transforms.ToPILImage()(recon_img)
+    
+    # Get control parameters
+    ctr_array = ctr_pred.squeeze(0).numpy()
+    
+    return recon_pil, ctr_array
+
+# ==========================================================
+# 5. STREAMLIT UI & INFERENCE
+# ==========================================================
+st.set_page_config(layout="wide", page_title="VAE Image Reconstruction")
+
+st.title("🎨 VAE Image Reconstruction & Analysis")
+st.markdown("Upload an image or select from test images to reconstruct it and analyze predicted control parameters.")
+
+# Sidebar for model info and controls
+with st.sidebar:
+    st.header("⚙️ Controls & Information")
+    
+    st.markdown("### Model Information")
+    st.info("""
+    This VAE model:
+    - Reconstructs 128×128 RGB images
+    - Predicts 15 control parameters
+    - Uses a multi-kernel residual architecture
+    """)
+    
+    # Check for test images
+    test_folder, test_images = get_test_images()
+    
+    if test_images:
+        st.markdown("### Available Test Images")
+        test_image_names = [img.name for img in test_images]
+        st.info(f"Found {len(test_images)} images in '{os.path.basename(test_folder)}' folder")
+    else:
+        st.warning("No test images found. Create a 'test_input' folder with images.")
+
+# Load model
 model = load_model()
 
 if model is None:
@@ -290,85 +374,285 @@ if model is None:
 if hasattr(model, 'H') and hasattr(model, 'W'):
     expected_h, expected_w = model.H, model.W
 else:
-    # Default to 128x128 if not specified
     expected_h, expected_w = 128, 128
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
+# Main interface with tabs
+tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis"])
 
-if uploaded_file is not None:
-    try:
-        image = Image.open(uploaded_file).convert("RGB")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-        
-        # Transform to match model's expected input size
-        transform = transforms.Compose([
-            transforms.Resize((expected_h, expected_w)),
-            transforms.ToTensor(),
-        ])
-        
-        x = transform(image).unsqueeze(0)
-        
-        with torch.no_grad():
-            recon, _, _, ctr_pred, _ = model(x)
-        
-        # Ensure reconstruction is in valid range
-        recon_img = torch.clamp(recon.squeeze(0), 0, 1)
-        recon_pil = transforms.ToPILImage()(recon_img)
-        
-        with col2:
-            st.image(recon_pil, caption="Reconstructed Image", use_column_width=True)
-        
-        st.subheader("Predicted Control Parameters")
-        ctr_array = ctr_pred.squeeze(0).numpy()
-        
-        # Display as a table with parameter indices
-        import pandas as pd
-        df = pd.DataFrame({
-            "Parameter Index": list(range(len(ctr_array))),
-            "Value": ctr_array
-        })
-        st.table(df)
-        
-        # Show as bar chart using Streamlit's built-in chart
-        st.subheader("Parameter Visualization")
-        st.bar_chart(ctr_array)
-        
-        # Optionally show statistics
-        st.subheader("Parameter Statistics")
-        col_stats1, col_stats2, col_stats3 = st.columns(3)
-        with col_stats1:
-            st.metric("Mean", f"{np.mean(ctr_array):.4f}")
-        with col_stats2:
-            st.metric("Std Dev", f"{np.std(ctr_array):.4f}")
-        with col_stats3:
-            st.metric("Range", f"{np.max(ctr_array)-np.min(ctr_array):.4f}")
-        
-    except Exception as e:
-        st.error(f"Error processing image: {str(e)}")
-        st.info("Please try another image or check the model compatibility.")
+with tab1:
+    st.header("Upload Your Own Image")
+    uploaded_file = st.file_uploader("Choose an image file...", type=["jpg", "png", "jpeg", "bmp", "tiff"])
+    
+    if uploaded_file is not None:
+        try:
+            image = Image.open(uploaded_file).convert("RGB")
+            
+            # Display original image
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Original Image")
+                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True)
+                st.caption(f"Size: {image.size[0]}×{image.size[1]}, Mode: {image.mode}")
+            
+            # Process image
+            recon_pil, ctr_array = process_image(image, model, expected_h, expected_w)
+            
+            # Display reconstruction
+            with col2:
+                st.subheader("Reconstructed Image")
+                st.image(recon_pil, caption="VAE Reconstruction", use_column_width=True)
+                st.caption(f"Resized to: {expected_w}×{expected_h}")
+            
+            # Display control parameters
+            st.subheader("📈 Predicted Control Parameters")
+            
+            # Create parameter table
+            param_df = pd.DataFrame({
+                "Parameter": [f"P{i:02d}" for i in range(len(ctr_array))],
+                "Value": ctr_array,
+                "Normalized": (ctr_array - ctr_array.min()) / (ctr_array.max() - ctr_array.min() + 1e-8)
+            })
+            
+            col_table, col_chart = st.columns([1, 2])
+            
+            with col_table:
+                st.dataframe(param_df.style.format({"Value": "{:.4f}", "Normalized": "{:.3f}"}))
+            
+            with col_chart:
+                st.bar_chart(param_df.set_index("Parameter")["Value"])
+            
+            # Parameter statistics
+            st.subheader("📊 Parameter Statistics")
+            stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+            
+            with stats_col1:
+                st.metric("Mean", f"{np.mean(ctr_array):.4f}")
+            with stats_col2:
+                st.metric("Std Dev", f"{np.std(ctr_array):.4f}")
+            with stats_col3:
+                st.metric("Min", f"{np.min(ctr_array):.4f}")
+            with stats_col4:
+                st.metric("Max", f"{np.max(ctr_array):.4f}")
+            
+            # Download button
+            st.markdown("---")
+            buf = io.BytesIO()
+            recon_pil.save(buf, format="PNG")
+            st.download_button(
+                label="📥 Download Reconstructed Image",
+                data=buf.getvalue(),
+                file_name="reconstructed_image.png",
+                mime="image/png"
+            )
+            
+        except Exception as e:
+            st.error(f"Error processing image: {str(e)}")
 
-# Add some helpful information
-st.sidebar.header("About")
-st.sidebar.info("""
-This app uses a Variational Autoencoder (VAE) to:
-1. Reconstruct uploaded images
-2. Predict control parameters from image features
+with tab2:
+    st.header("Select from Test Images")
+    
+    if test_images:
+        # Create image selector
+        image_names = [img.name for img in test_images]
+        selected_image_name = st.selectbox("Choose a test image:", image_names)
+        
+        if selected_image_name:
+            # Find the selected image path
+            selected_idx = image_names.index(selected_image_name)
+            selected_path = test_images[selected_idx]
+            
+            # Load and display the image
+            image = load_image_from_path(selected_path)
+            
+            if image:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Test Image")
+                    st.image(image, caption=f"Selected: {selected_image_name}", use_column_width=True)
+                    st.caption(f"Path: {selected_path}")
+                
+                # Process image
+                recon_pil, ctr_array = process_image(image, model, expected_h, expected_w)
+                
+                with col2:
+                    st.subheader("Reconstructed Image")
+                    st.image(recon_pil, caption="VAE Reconstruction", use_column_width=True)
+                
+                # Display control parameters
+                st.subheader("📈 Predicted Control Parameters")
+                
+                param_df = pd.DataFrame({
+                    "Parameter": [f"P{i:02d}" for i in range(len(ctr_array))],
+                    "Value": ctr_array
+                })
+                
+                col_chart1, col_chart2 = st.columns(2)
+                
+                with col_chart1:
+                    st.bar_chart(param_df.set_index("Parameter")["Value"])
+                
+                with col_chart2:
+                    # Create a line chart for parameter trends
+                    st.line_chart(param_df.set_index("Parameter")["Value"])
+                
+                # Show parameter table
+                st.dataframe(param_df.style.format({"Value": "{:.4f}"}))
+                
+                # Quick comparison if multiple images have been processed
+                if 'previous_params' not in st.session_state:
+                    st.session_state.previous_params = {}
+                
+                if st.button("💾 Save these parameters for comparison"):
+                    st.session_state.previous_params[selected_image_name] = ctr_array
+                    st.success(f"Saved parameters for {selected_image_name}")
+                
+                # Show saved parameters for comparison
+                if st.session_state.previous_params:
+                    st.subheader("📋 Saved Parameter Comparisons")
+                    
+                    # Create comparison DataFrame
+                    compare_data = {}
+                    for img_name, params in st.session_state.previous_params.items():
+                        compare_data[img_name] = params
+                    
+                    compare_df = pd.DataFrame(compare_data)
+                    compare_df.index = [f"P{i:02d}" for i in range(len(ctr_array))]
+                    
+                    st.dataframe(compare_df.style.format("{:.4f}"))
+                    
+                    if len(st.session_state.previous_params) > 1:
+                        st.line_chart(compare_df.T)
+    else:
+        st.warning("No test images found. Please create a 'test_input' folder with images.")
+        st.info("""
+        To use this feature:
+        1. Create a folder named 'test_input' in the same directory as this script
+        2. Add some images (jpg, png, etc.) to the folder
+        3. Refresh the app
+        """)
 
-The model expects images of size 128x128 pixels.
-""")
+with tab3:
+    st.header("Batch Image Analysis")
+    
+    if test_images:
+        st.info(f"Found {len(test_images)} images in test folder. Select which ones to analyze.")
+        
+        # Multi-select for batch processing
+        selected_images = st.multiselect(
+            "Select images for batch analysis:",
+            options=[img.name for img in test_images],
+            default=[img.name for img in test_images[:3]] if len(test_images) >= 3 else []
+        )
+        
+        if selected_images and st.button("🚀 Run Batch Analysis"):
+            with st.spinner("Processing images..."):
+                results = []
+                progress_bar = st.progress(0)
+                
+                for idx, img_name in enumerate(selected_images):
+                    # Find and load image
+                    img_path = test_images[[img.name for img in test_images].index(img_name)]
+                    image = load_image_from_path(img_path)
+                    
+                    if image:
+                        # Process image
+                        recon_pil, ctr_array = process_image(image, model, expected_h, expected_w)
+                        
+                        # Store results
+                        result = {
+                            "Image": img_name,
+                            "Mean": np.mean(ctr_array),
+                            "Std": np.std(ctr_array),
+                            "Min": np.min(ctr_array),
+                            "Max": np.max(ctr_array),
+                            "Params": ctr_array
+                        }
+                        results.append(result)
+                    
+                    progress_bar.progress((idx + 1) / len(selected_images))
+                
+                if results:
+                    st.success(f"✅ Processed {len(results)} images")
+                    
+                    # Display summary statistics
+                    st.subheader("📊 Batch Summary Statistics")
+                    
+                    summary_df = pd.DataFrame([{
+                        "Image": r["Image"],
+                        "Mean": r["Mean"],
+                        "Std": r["Std"],
+                        "Range": r["Max"] - r["Min"]
+                    } for r in results])
+                    
+                    st.dataframe(summary_df.style.format({"Mean": "{:.4f}", "Std": "{:.4f}", "Range": "{:.4f}"}))
+                    
+                    # Create parameter matrix
+                    st.subheader("🔢 Full Parameter Matrix")
+                    
+                    param_matrix = pd.DataFrame([r["Params"] for r in results], 
+                                               index=[r["Image"] for r in results],
+                                               columns=[f"P{i:02d}" for i in range(len(ctr_array))])
+                    
+                    st.dataframe(param_matrix.style.format("{:.4f}"))
+                    
+                    # Heatmap visualization
+                    st.subheader("🔥 Parameter Heatmap")
+                    
+                    # Normalize for visualization
+                    param_matrix_normalized = (param_matrix - param_matrix.min().min()) / \
+                                            (param_matrix.max().max() - param_matrix.min().min())
+                    
+                    # Display as a styled table (heatmap approximation)
+                    st.dataframe(param_matrix_normalized.style.format("{:.2f}").background_gradient(cmap="viridis"))
+                    
+                    # Download results as CSV
+                    csv = param_matrix.to_csv()
+                    st.download_button(
+                        label="📥 Download Results as CSV",
+                        data=csv,
+                        file_name="batch_analysis_results.csv",
+                        mime="text/csv"
+                    )
+    else:
+        st.warning("No test images found for batch analysis.")
 
-# Add download option for reconstructed image
-if 'recon_pil' in locals():
-    st.sidebar.header("Download")
-    buf = io.BytesIO()
-    recon_pil.save(buf, format="PNG")
-    byte_im = buf.getvalue()
-    st.sidebar.download_button(
-        label="Download Reconstructed Image",
-        data=byte_im,
-        file_name="reconstructed.png",
-        mime="image/png"
-    )
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; color: gray;">
+    <p>VAE Image Reconstruction App • Built with PyTorch & Streamlit</p>
+</div>
+""", unsafe_allow_html=True)
+
+# ==========================================================
+# 6. APP CONFIGURATION NOTES
+# ==========================================================
+"""
+APP CONFIGURATION:
+
+Folder Structure Expected:
+├── app.py (this file)
+├── knowledge_base/ (or knowledge-base/)
+│   ├── vae_model.pt.part1
+│   ├── vae_model.pt.part2
+│   ├── vae_model.pt.part3
+│   └── vae_model.pt.part4
+├── test_input/ (optional)
+│   ├── image1.jpg
+│   ├── image2.png
+│   └── ...
+└── (other project files)
+
+To Run:
+1. Install requirements: pip install torch torchvision streamlit pillow numpy pandas
+2. Run the app: streamlit run app.py
+3. Open browser to http://localhost:8501
+
+Features:
+- Upload custom images
+- Select from test images in test_input folder
+- Batch process multiple images
+- View parameter visualizations
+- Download results
+"""
