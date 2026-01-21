@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import cv2
 import numpy as np
@@ -65,7 +66,8 @@ def save_step(out_dir, step, img, z, t, fd, score):
 
 def main():
 
-    os.makedirs(os.path.join(OUT_DIR, str(time.time())), exist_ok=True)
+    run_dir = os.path.join(OUT_DIR, str(time.time()))
+    os.makedirs(run_dir, exist_ok=True)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
 
@@ -96,6 +98,9 @@ def main():
 
         # 生成候选
         for _ in range(NUM_CAND):
+
+            # 记录
+
 
             dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA
             z_cand = z + dz
@@ -133,7 +138,7 @@ def main():
 
         save_step(run_dir, step, best_img, z, best_t, best_fd, best_score)
 
-    print("Done. Saved to:", out)
+    print("Done. Saved to:", run_dir)
 
 
 if __name__ == "__main__":
