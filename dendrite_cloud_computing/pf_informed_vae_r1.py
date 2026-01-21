@@ -644,10 +644,7 @@ Folder Structure Expected:
 │   └── ...
 └── (other project files)
 
-To Run:
-1. Install requirements: pip install torch torchvision streamlit pillow numpy pandas
-2. Run the app: streamlit run app.py
-3. Open browser to http://localhost:8501
+
 
 Features:
 - Upload custom images
