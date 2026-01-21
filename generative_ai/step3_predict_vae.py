@@ -51,7 +51,7 @@ def main(args):
             dids.append(did[0])
 
             # image and control variables
-            recon_x = vae.inference()
+            recon_x = vae(x)
 
             plt.figure()
             plt.title(f"t={y[0][0].item()}_did={did[0]}")
