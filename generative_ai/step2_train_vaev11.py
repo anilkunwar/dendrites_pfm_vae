@@ -102,7 +102,15 @@ def main(args):
         args.image_size,
         os.path.join("data", "dataset_split.json"),
         split="train",
-        transform=A.Compose([A.GaussNoise(p=0.5)])
+        transform=A.Compose([
+            A.CoarseDropout(
+                num_holes_range=(1, 8),
+                hole_height_range=(0.01, 0.1),
+                hole_width_range=(0.01, 0.1),
+                p=0.1
+            ),
+            A.GaussNoise(p=0.8),
+        ])
     )
     val_ds = DendritePFMDataset(
         args.image_size,
@@ -175,7 +183,7 @@ def main(args):
                 )
                 ctr_mse_monitor = F.mse_loss(theta_hat, y)
 
-            # prior smoothness（保持你原始正则）
+            # prior smoothness
             bsz = x.size(0)
             z_prior = torch.randn(bsz, args.latent_size, device=device)
             prior_img = model.decoder(z_prior)
@@ -358,7 +366,7 @@ if __name__ == "__main__":
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
 
     # weights
-    parser.add_argument("--ctr_weight", type=float, default=0.8)
+    parser.add_argument("--ctr_weight", type=float, default=0.001)
     parser.add_argument("--smooth_weight", type=float, default=2.0)
     parser.add_argument("--scale_weight", type=float, default=1.0)
 

@@ -14,11 +14,12 @@ from scipy.stats import spearmanr
 import seaborn as sns
 
 from src.dataloader import DendritePFMDataset, PARAM_RANGES
+from src.evaluate_metrics import ComprehensiveDendriteAnalyzer
 
-
+SEVER_MAP = ["None", "Mild", "Moderate", "Severe", "Extreme"]
 @torch.no_grad()
 def collect_latents(model, loader, device, latent_source="mu"):
-    feats, ys, dids = [], [], []
+    feats, ys, dids, severities = [], [], [], []
 
     for batch in loader:
         if len(batch) == 4:
@@ -28,20 +29,30 @@ def collect_latents(model, loader, device, latent_source="mu"):
             did = np.arange(len(x))
 
         x = x.to(device)
-        y_t = y.to(device)
 
-        recon_x, mu_q, logvar_q, ctr_pred, z = model(x)
+        recon, mu_q, logvar_q, mdn_out, z = model(x)
 
         latent = mu_q if latent_source == "mu" else z
         feats.append(latent.detach().cpu().numpy())
         ys.append(y.detach().cpu().numpy())
+        # 统计分数
+        ss = []
+        for i in range(recon.shape[0]):
+            analyzer = ComprehensiveDendriteAnalyzer(recon.detach().cpu().numpy()[i, 0])
+            metrics = analyzer.compute_all_metrics()
+            scores = analyzer.calculate_severity_score(metrics)
+            severity = analyzer.get_severity_level(scores["empirical_score"])
+            ss.append(SEVER_MAP.index(severity))
+        severities.append(ss)
+        #
         dids.append(np.asarray(did, dtype=np.float32))
 
     feats = np.concatenate(feats, axis=0)
     ys = np.concatenate(ys, axis=0)
     dids = np.concatenate(dids, axis=0)[:, None]
+    severities = np.concatenate(severities, axis=0)[:, None]
 
-    all_ys = np.concatenate([ys, dids], axis=1)
+    all_ys = np.concatenate([ys, dids, severities], axis=1)
     return feats, all_ys
 
 
@@ -49,31 +60,15 @@ def smooth_on_knn_graph(y, knn_idx):
     return np.array([y[n].mean() for n in knn_idx])
 
 
-# ===== 判断是否为“离散整数类别” =====
-def is_discrete_integer_values(arr, max_unique_for_discrete=30):
-    a = np.asarray(arr).reshape(-1)
-    a = a[~np.isnan(a)]
-
-    if a.size == 0:
-        return False
-
-    # 是否接近整数
-    if not np.allclose(a, np.round(a)):
-        return False
-
-    # unique 数量是否合理
-    uniq = np.unique(a.astype(np.int64))
-    return len(uniq) <= max_unique_for_discrete
-
-
 # ===== 构造离散 colormap + norm =====
 def get_discrete_cmap_and_norm(values, cmap_name="tab20"):
+
     values = np.asarray(values)
     uniq = np.unique(np.round(values).astype(np.int64))
     uniq = np.sort(uniq)
 
     class_to_idx = {c: i for i, c in enumerate(uniq)}
-    mapped = np.vectorize(lambda x: class_to_idx[int(np.round(x))])(values)
+    mapped = np.vectorize(lambda x: class_to_idx[x])(values)
 
     n_cls = len(uniq)
     cmap = plt.get_cmap(cmap_name, n_cls)
@@ -89,11 +84,11 @@ def main():
 
     # ===== basic =====
     parser.add_argument("--model_root", type=str,
-                        default='results/V10_ADV_lat=16_beta=0.1_warm=0.3_ctr=1.0_smooth=0.05_adv=0.1_d=0.0001_g=0.0001_time=20260116_123955')
+                        default='results/VAEv11_MDN_lat=32_K=8_beta=2.0_warm=0.3_ctr=1.0_smooth=2.0_time=20260120_202159')
 
     parser.add_argument("--image_size", type=int, default=64)
     parser.add_argument("--split_json", type=str, default="data/dataset_split.json")
-    parser.add_argument("--split", type=str, default="val")
+    parser.add_argument("--split", type=str, default="test")
 
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=4)
@@ -111,8 +106,8 @@ def main():
     parser.add_argument("--knn_k", type=int, default=15)
 
     # ===== output =====
-    parser.add_argument("--out_dir", type=str, default="latent_viz_test")
-    parser.add_argument("--cmap", type=str, default="viridis")
+    parser.add_argument("--out_dir", type=str, default="latent_viz")
+    parser.add_argument("--cmap", type=str, default="coolwarm")
 
     # ===== did visualization optimization =====
     parser.add_argument("--num_did_vis", type=int, default=-1,
@@ -150,7 +145,7 @@ def main():
         num_workers=args.num_workers
     )
 
-    out_dir = os.path.join(args.model_root, args.out_dir)
+    out_dir = os.path.join(args.model_root, args.out_dir + "_" + args.split)
     os.makedirs(out_dir, exist_ok=True)
 
     # ===== collect =====
@@ -161,9 +156,7 @@ def main():
     Y_NAMES = ["t"]
     Y_NAMES += PARAM_RANGES
     Y_NAMES.append("did")
-
-    if y_all.shape[1] != len(Y_NAMES):
-        raise ValueError("y dimension mismatch")
+    Y_NAMES.append("severity")
 
     # ===== PCA =====
     if args.pca_dim > 0 and feats.shape[1] > args.pca_dim:
@@ -206,7 +199,7 @@ def main():
             y_plot = y
         # --------------------------------------------
 
-        if is_discrete_integer_values(y_plot):
+        if name=="severity" or name=="did":
             cmap_name = args.did_discrete_cmap if name == "did" else "tab20"
 
             mapped, classes, cmap, norm = get_discrete_cmap_and_norm(
@@ -226,7 +219,7 @@ def main():
                 ticks=np.arange(len(classes)),
                 label=name
             )
-            cbar.ax.set_yticklabels([str(int(c)) for c in classes])
+            cbar.ax.set_yticklabels([str(c) for c in classes])
 
             # ===== did: 可选绘制每个组的 centroid（论文图常用）=====
             if name == "did" and args.did_show_centroids:
