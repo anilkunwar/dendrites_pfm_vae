@@ -1,12 +1,12 @@
 """
 Comprehensive dendrite analysis
 """
-
+import math
 import os
 import glob
 import random
 import warnings
-from typing import Dict, Optional, Sequence, Tuple, Union, List
+from typing import Dict, Optional, Sequence, Tuple, Union, List, Any
 
 import numpy as np
 import cv2
@@ -486,12 +486,21 @@ class ComprehensiveDendriteAnalyzer:
             metrics["num_holes"] * 1
         )
 
-        total_score = (
-            original_score * 0.3 +
-            sdas_score * 0.2 +
-            sholl_score * 0.25 +
-            tip_score * 0.15 +
-            topo_score * 0.1
+        # total_score = (
+        #     original_score * 0.3 +
+        #     sdas_score * 0.2 +
+        #     sholl_score * 0.25 +
+        #     tip_score * 0.15 +
+        #     topo_score * 0.1
+        # )
+
+        empirical_score = (
+            min(metrics["branching_density"] * 0.5, 3) +
+            # min(metrics["tip_density"] * 0.5, 3) +
+            min(metrics["sholl_ramification_index"] * 0.5, 10) +
+            metrics["sholl_max_intersections"] / 20 +
+            metrics["sholl_total_intersections"] / 200 +
+            metrics["interface_roughness"] * 2
         )
 
         return {
@@ -500,15 +509,19 @@ class ComprehensiveDendriteAnalyzer:
             "sholl_score": float(sholl_score),
             "tip_score": float(tip_score),
             "topo_score": float(topo_score),
-            "total_score": float(total_score),
+            # "total_score": float(total_score),
+            "empirical_score": empirical_score,
+            # "morphology": metrics["morphology"],
         }
 
     def get_severity_level(self, total_score: float) -> str:
-        if total_score < 20:
+        if total_score < 7.5:
+            return "None"
+        if total_score < 12:
             return "Mild"
-        elif total_score < 40:
+        elif total_score < 18:
             return "Moderate"
-        elif total_score < 60:
+        elif total_score < 24:
             return "Severe"
         else:
             return "Extreme"
@@ -563,10 +576,12 @@ def _format_metrics_english(metrics: Dict[str, float], scores: Dict[str, float],
     lines.append(f"- Sholl score: {scores['sholl_score']:.2f}")
     lines.append(f"- Tip score: {scores['tip_score']:.2f}")
     lines.append(f"- Topology score: {scores['topo_score']:.2f}")
-    lines.append(f"- TOTAL score: {scores['total_score']:.2f}")
+    # lines.append(f"- TOTAL score: {scores['total_score']:.2f}")
+    lines.append(f"- Empirical score: {scores['empirical_score']:.2f}")
+    # lines.append(f"- Morphology: {scores['morphology']}")
     lines.append(f"- Severity: {severity}")
-    return "\n".join(lines)
 
+    return "\n".join(lines)
 
 def generate_analysis_figure(
     image_or_path: Union[str, np.ndarray],
@@ -619,7 +634,7 @@ def generate_analysis_figure(
     analyzer = ComprehensiveDendriteAnalyzer(img, pixel_size_um=pixel_size_um)
     metrics = analyzer.compute_all_metrics()
     scores = analyzer.calculate_severity_score(metrics)
-    severity = analyzer.get_severity_level(scores["total_score"])
+    severity = analyzer.get_severity_level(scores["empirical_score"])
 
     # Add a few display-only fields
     metrics = dict(metrics)
