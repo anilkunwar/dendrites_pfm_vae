@@ -1,14 +1,5 @@
 """
-Comprehensive dendrite analysis (figure-only version)
-
-Changes vs original:
-- No extra text report generation.
-- One single figure contains:
-  (1) the visualization panels (left)
-  (2) a metrics table (right, English)
-- Two helper functions:
-  - generate_analysis_figure(...)
-  - random_visualize_from_glob(...)
+Comprehensive dendrite analysis
 """
 
 import os
@@ -29,9 +20,6 @@ warnings.filterwarnings("ignore")
 
 
 class ComprehensiveDendriteAnalyzer:
-    """
-    Same analyzer as your original, only visualization entrypoint is changed/extended.
-    """
 
     def __init__(self, image, pixel_size_um=1.0):
         if len(image.shape) == 3:
@@ -171,8 +159,7 @@ class ComprehensiveDendriteAnalyzer:
         return float(np.mean(entropies)) if entropies else 0.0
 
     def interface_roughness(self) -> float:
-        # NOTE: keeping your original behavior, but if image_gray is already [0..255],
-        # multiplying by 255 may overflow. Consider normalizing upstream if needed.
+        # NOTE: if image_gray is already [0..255], multiplying by 255 may overflow. Consider normalizing upstream if needed.
         edges = cv2.Canny((self.image_gray * 255).astype(np.uint8), 50, 150)
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         if len(contours) == 0:
@@ -526,11 +513,6 @@ class ComprehensiveDendriteAnalyzer:
         else:
             return "Extreme"
 
-
-# ============================================================
-# NEW: Figure-only output
-# ============================================================
-
 def _format_metrics_english(metrics: Dict[str, float], scores: Dict[str, float], severity: str) -> str:
     """
     Create a compact English metrics block for rendering in a figure.
@@ -597,7 +579,7 @@ def generate_analysis_figure(
     random_seed: Optional[int] = None,
 ) -> Tuple[plt.Figure, Dict[str, float], Dict[str, float]]:
     """
-    Generate ONE figure: visualization (left) + all metrics in English (right).
+    Generate ONE figure: visualization (left) + all metrics (right).
 
     Parameters
     ----------
