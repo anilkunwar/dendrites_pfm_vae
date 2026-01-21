@@ -88,6 +88,7 @@ def main(args):
         f"K={args.mdn_components}_"
         f"beta={args.beta}_warm={args.beta_warmup_ratio}_"
         f"ctr={args.ctr_weight}_smooth={args.smooth_weight}_"
+        f"scale={args.scale_weight}_"
         f"time={datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
     save_root = os.path.join(args.save_root, exp_name)
@@ -161,7 +162,7 @@ def main(args):
             recon, mu_q, logvar_q, mdn_out, z = model(x)
             pi, mu, log_sigma = mdn_out
 
-            recon_loss = multiscale_recon_loss(recon, xo)
+            recon_loss = multiscale_recon_loss(recon, xo, scale_weight=args.scale_weight)
             kl_loss = kl_div_loss(mu_q, logvar_q)
 
             # 核心：MDN NLL 代替 MSE
@@ -218,7 +219,7 @@ def main(args):
                 recon, mu_q, logvar_q, mdn_out, z = model(x)
                 pi, mu, log_sigma = mdn_out
 
-                recon_loss = multiscale_recon_loss(recon, xo)
+                recon_loss = multiscale_recon_loss(recon, xo, scale_weight=args.scale_weight)
                 kl_loss = kl_div_loss(mu_q, logvar_q)
                 ctr_nll = mdn_nll_loss(pi, mu, log_sigma, y)
 
@@ -338,7 +339,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--epochs", type=int, default=500)
+    parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=0)
@@ -359,6 +360,7 @@ if __name__ == "__main__":
     # weights
     parser.add_argument("--ctr_weight", type=float, default=0.8)
     parser.add_argument("--smooth_weight", type=float, default=2.0)
+    parser.add_argument("--scale_weight", type=float, default=1.0)
 
     # confidence scaling
     parser.add_argument("--var_scale", type=float, default=1.0)

@@ -13,28 +13,7 @@ from sklearn.neighbors import NearestNeighbors
 from scipy.stats import spearmanr
 import seaborn as sns
 
-from src.dataloader import DendritePFMDataset
-
-
-# ===== y 维度名称（含 did）=====
-Y_NAMES = [
-    "t",
-    "POT_LEFT",
-    "fo",
-    "Al",
-    "Bl",
-    "Cl",
-    "As",
-    "Bs",
-    "Cs",
-    "cleq",
-    "cseq",
-    "L1o",
-    "L2o",
-    "ko",
-    "Noise",
-    "did"
-]
+from src.dataloader import DendritePFMDataset, PARAM_RANGES
 
 
 @torch.no_grad()
@@ -103,8 +82,6 @@ def get_discrete_cmap_and_norm(values, cmap_name="tab20"):
     norm = mcolors.BoundaryNorm(boundaries, ncolors=n_cls)
 
     return mapped, uniq, cmap, norm
-
-
 
 
 def main():
@@ -181,6 +158,9 @@ def main():
         vae, loader, device,
         latent_source=args.latent_source
     )
+    Y_NAMES = ["t"]
+    Y_NAMES += PARAM_RANGES
+    Y_NAMES.append("did")
 
     if y_all.shape[1] != len(Y_NAMES):
         raise ValueError("y dimension mismatch")

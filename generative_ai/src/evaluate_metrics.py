@@ -1,11 +1,9 @@
 """
 Comprehensive dendrite analysis
 """
-import math
 import os
 import glob
 import random
-import warnings
 from typing import Dict, Optional, Sequence, Tuple, Union, List, Any
 
 import numpy as np
@@ -15,9 +13,6 @@ from scipy.spatial.distance import pdist
 from skimage import measure, morphology
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
-
-warnings.filterwarnings("ignore")
-
 
 class ComprehensiveDendriteAnalyzer:
 
@@ -46,7 +41,7 @@ class ComprehensiveDendriteAnalyzer:
             self.centroid_y, self.centroid_x = np.array(self.binary.shape) // 2
 
     # ----------------------------
-    # Original 9 metrics
+    # Original 10 metrics
     # ----------------------------
     def branching_density(self) -> float:
         skeleton = self.skeleton
@@ -177,6 +172,15 @@ class ComprehensiveDendriteAnalyzer:
             roughness_values.extend(angle_diff.tolist())
 
         return float(np.std(roughness_values)) if roughness_values else 0.0
+
+    def shape_index(self):
+        gy, gx = np.gradient(self.image_gray)
+        gyy, gyx = np.gradient(gy)
+        gxy, gxx = np.gradient(gx)
+        H = (gxx + gyy) / 2.0
+        K = gxx * gyy - gxy * gyx
+        eta = np.arctan2(H, np.sqrt(np.abs(H ** 2 - K))) / np.pi + 0.5
+        return eta
 
     # ----------------------------
     # Literature-ish metrics
@@ -422,6 +426,7 @@ class ComprehensiveDendriteAnalyzer:
         metrics["skeleton_tortuosity"] = self.skeleton_tortuosity()
         metrics["multiscale_entropy"] = self.multiscale_entropy()
         metrics["interface_roughness"] = self.interface_roughness()
+        metrics["shape_index"] = self.shape_index()
 
         # Literature-ish
         metrics["sdas_linear_um"] = self.secondary_dendrite_arm_spacing_linear()
@@ -526,7 +531,7 @@ class ComprehensiveDendriteAnalyzer:
         else:
             return "Extreme"
 
-def _format_metrics_english(metrics: Dict[str, float], scores: Dict[str, float], severity: str) -> str:
+def _format_metrics(metrics: Dict[str, float], scores: Dict[str, float], severity: str) -> str:
     """
     Create a compact English metrics block for rendering in a figure.
     """
@@ -765,7 +770,7 @@ def generate_analysis_figure(
     # Right-side metrics panel (spans all rows)
     ax_text = fig.add_subplot(gs[:, 4])
     ax_text.axis("off")
-    metrics_text = _format_metrics_english(metrics, scores, severity)
+    metrics_text = _format_metrics(metrics, scores, severity)
     ax_text.text(
         0.0, 1.0, metrics_text,
         va="top", ha="left",
@@ -868,6 +873,175 @@ def random_visualize_from_glob(
         results.append((p, metrics, scores))
     return results
 
+def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray, eps: float = 1e-12):
+    """
+    y_true/y_pred: [N, P]
+    returns dict with per-dim and overall metrics
+    """
+    assert y_true.shape == y_pred.shape, (y_true.shape, y_pred.shape)
+    err = y_pred - y_true  # [N,P]
+
+    mae = np.mean(np.abs(err), axis=0)
+    mse = np.mean(err ** 2, axis=0)
+    rmse = np.sqrt(mse)
+
+    # R^2 per dim
+    y_mean = np.mean(y_true, axis=0, keepdims=True)
+    ss_res = np.sum((y_true - y_pred) ** 2, axis=0)
+    ss_tot = np.sum((y_true - y_mean) ** 2, axis=0) + eps
+    r2 = 1.0 - ss_res / ss_tot
+
+    # Pearson correlation per dim
+    yt = y_true - np.mean(y_true, axis=0, keepdims=True)
+    yp = y_pred - np.mean(y_pred, axis=0, keepdims=True)
+    cov = np.sum(yt * yp, axis=0)
+    std = np.sqrt(np.sum(yt ** 2, axis=0) * np.sum(yp ** 2, axis=0)) + eps
+    corr = cov / std
+
+    overall = {
+        "MAE_mean": float(np.mean(mae)),
+        "RMSE_mean": float(np.mean(rmse)),
+        "R2_mean": float(np.mean(r2)),
+        "Corr_mean": float(np.mean(corr)),
+    }
+
+    per_dim = {
+        "MAE": mae.tolist(),
+        "RMSE": rmse.tolist(),
+        "R2": r2.tolist(),
+        "Corr": corr.tolist(),
+    }
+    return {"overall": overall, "per_dim": per_dim}
+
+def plot_regression_summary(y_true: np.ndarray, y_pred: np.ndarray, prefix: str, save_dir: str=None, param_names=None):
+    """
+    Produces:
+      1) MAE bar chart per parameter
+      2) R2 bar chart per parameter
+      3) Overall scatter (flattened)
+      4) Residual histogram (flattened)
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    N, P = y_true.shape
+    if param_names is None or len(param_names) != P:
+        param_names = [f"p{i}" for i in range(P)]
+
+    m = regression_metrics(y_true, y_pred)
+    mae = np.array(m["per_dim"]["MAE"])
+    r2 = np.array(m["per_dim"]["R2"])
+
+    # 1) MAE bar
+    plt.figure(figsize=(max(10, P * 0.5), 4))
+    x = np.arange(P)
+    plt.bar(x, mae)
+    plt.xticks(x, param_names, rotation=60, ha="right")
+    plt.ylabel("MAE")
+    plt.title("Control parameter regression: MAE per parameter")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_mae_per_param.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+    # 2) R2 bar
+    plt.figure(figsize=(max(10, P * 0.5), 4))
+    plt.bar(x, r2)
+    plt.xticks(x, param_names, rotation=60, ha="right")
+    plt.ylabel("R²")
+    plt.title("Control parameter regression: R² per parameter")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_r2_per_param.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+    # 3) Overall scatter (flatten)
+    yt = y_true.reshape(-1)
+    yp = y_pred.reshape(-1)
+    lo = float(min(yt.min(), yp.min()))
+    hi = float(max(yt.max(), yp.max()))
+    plt.figure(figsize=(5, 5))
+    plt.scatter(yt, yp, s=6, alpha=0.35)
+    plt.plot([lo, hi], [lo, hi], linewidth=1)
+    plt.xlabel("True")
+    plt.ylabel("Pred")
+    plt.title("Overall true vs pred (all params flattened)")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_overall_scatter.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+    # 4) Residual histogram
+    res = (y_pred - y_true).reshape(-1)
+    plt.figure(figsize=(6, 4))
+    plt.hist(res, bins=60)
+    plt.xlabel("Residual (pred - true)")
+    plt.ylabel("Count")
+    plt.title("Residual distribution (all params flattened)")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_residual_hist.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+    return m
+
+def plot_confidence_summary(conf_param: np.ndarray, conf_global: np.ndarray, prefix: str, save_dir: str=None, param_names=None):
+    """
+    conf_param: [N, P] in (0, 1]
+    conf_global: [N]
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    N, P = conf_param.shape
+    if param_names is None or len(param_names) != P:
+        param_names = [f"p{i}" for i in range(P)]
+
+    # per-param mean confidence bar
+    mean_c = conf_param.mean(axis=0)
+    plt.figure(figsize=(max(10, P * 0.5), 4))
+    x = np.arange(P)
+    plt.bar(x, mean_c)
+    plt.xticks(x, param_names, rotation=60, ha="right")
+    plt.ylim(0.0, 1.0)
+    plt.ylabel("Mean confidence")
+    plt.title("Mean confidence per parameter")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_conf_param_mean.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+    # global confidence hist
+    plt.figure(figsize=(6, 4))
+    plt.hist(conf_global, bins=60)
+    plt.xlabel("Global confidence")
+    plt.ylabel("Count")
+    plt.title("Global confidence distribution")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_conf_global_hist.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+    # flattened param confidence hist
+    plt.figure(figsize=(6, 4))
+    plt.hist(conf_param.reshape(-1), bins=60)
+    plt.xlabel("Param confidence (flattened)")
+    plt.ylabel("Count")
+    plt.title("Param confidence distribution (all params flattened)")
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, f"{prefix}_conf_param_hist.png"), dpi=300)
+    else:
+        plt.show()
+    plt.close()
 
 # Example CLI usage:
 if __name__ == "__main__":
