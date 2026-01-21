@@ -921,7 +921,8 @@ def plot_regression_summary(y_true: np.ndarray, y_pred: np.ndarray, prefix: str,
       3) Overall scatter (flattened)
       4) Residual histogram (flattened)
     """
-    os.makedirs(save_dir, exist_ok=True)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
     N, P = y_true.shape
     if param_names is None or len(param_names) != P:
         param_names = [f"p{i}" for i in range(P)]
@@ -996,7 +997,8 @@ def plot_confidence_summary(conf_param: np.ndarray, conf_global: np.ndarray, pre
     conf_param: [N, P] in (0, 1]
     conf_global: [N]
     """
-    os.makedirs(save_dir, exist_ok=True)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
     N, P = conf_param.shape
     if param_names is None or len(param_names) != P:
         param_names = [f"p{i}" for i in range(P)]
