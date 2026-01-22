@@ -17,7 +17,7 @@ import torchvision.utils as vutils
 import albumentations as A
 
 from src.dataloader import DendritePFMDataset
-from src.modelv11 import VAE_MDN, mdn_nll_loss, mdn_point_and_confidence
+from src.modelv11 import VAE_MDN, mdn_point_and_confidence
 
 
 def save_image_grid(tensor, path, nrow=3):
@@ -35,7 +35,8 @@ def multiscale_recon_loss(x_pred, x_true, num_scales=4, scale_weight=0.5):
     cur_p, cur_t = x_pred, x_true
     w = 1.0
     for _ in range(num_scales):
-        total += w * F.mse_loss(cur_p, cur_t, reduction="sum")
+        # per-element MSE: mean over (C,H,W) and batch
+        total += w * F.mse_loss(cur_p, cur_t, reduction="mean")
         weight += w
         cur_p = F.avg_pool2d(cur_p, 2)
         cur_t = F.avg_pool2d(cur_t, 2)
@@ -44,41 +45,58 @@ def multiscale_recon_loss(x_pred, x_true, num_scales=4, scale_weight=0.5):
 
 
 def kl_div_loss(mu_q, logvar_q, prior_var=0.1):
-    # prior_var = σ_p^2
     var_q = torch.exp(logvar_q)
-
-    return 0.5 * torch.sum(
+    kl_per_sample = 0.5 * torch.sum(
         var_q / prior_var
-        + mu_q**2 / prior_var
+        + mu_q ** 2 / prior_var
         - 1.0
         + math.log(prior_var)
-        - logvar_q
-    )
+        - logvar_q,
+        dim=1
+    )  # [B]
+    return torch.mean(kl_per_sample) / mu_q.shape[1]
 
+def mdn_nll_loss(pi, mu, log_sigma, y, eps: float = 1e-9):
+    """
+    y: [B, P]
+    pi: [B, K]
+    mu/log_sigma: [B, K, P]
+    return: scalar (mean over batch)
+    """
+    B, K, P = mu.shape
+    y = y.unsqueeze(1).expand(B, K, P)  # [B, K, P]
 
+    # log N(y | mu, sigma^2) for diagonal Gaussian
+    # = -0.5 * [sum((y-mu)^2/sigma^2 + 2log(sigma) + log(2pi))]
+    sigma = torch.exp(log_sigma) + eps
+    log_prob = -0.5 * (
+        torch.sum(((y - mu) / sigma) ** 2, dim=-1)
+        + 2.0 * torch.sum(torch.log(sigma), dim=-1)
+        + P * math.log(2.0 * math.pi)
+    )  # [B, K]
+
+    log_pi = torch.log(pi + eps)  # [B, K]
+    log_mix = torch.logsumexp(log_pi + log_prob, dim=-1)  # [B]
+    nll = -torch.mean(log_mix)
+    return nll
 
 def total_variation(x):
-    dx = torch.abs(x[:, :, :, 1:] - x[:, :, :, :-1]).mean()
-    dy = torch.abs(x[:, :, 1:, :] - x[:, :, :-1, :]).mean()
-    return dx + dy
-
+    dx = torch.abs(x[:, :, :, 1:] - x[:, :, :, :-1])
+    dy = torch.abs(x[:, :, 1:, :] - x[:, :, :-1, :])
+    # mean over all elements (B,C,H,W) -> already batch-normalized
+    return dx.mean() + dy.mean()
 
 def smoothness_loss(img, var_floor=0.02):
     tv = total_variation(img)
     var = img.var(dim=(1, 2, 3), unbiased=False).mean()
     var_pen = F.relu(var_floor - var) ** 2
-    return tv + var_pen, {
-        "tv": tv.item(),
-        "var": var.item(),
-        "var_pen": var_pen.item()
-    }
+    return tv + var_pen, {"tv": tv.item(), "var": var.item(), "var_pen": var_pen.item()}
 
 
 def beta_warmup(epoch, beta_max, warmup_epochs):
     if epoch >= warmup_epochs:
         return beta_max
     return beta_max * 0.5 * (1.0 - math.cos(math.pi * epoch / warmup_epochs))
-
 
 # ==========================================================
 # Main
@@ -159,7 +177,6 @@ def main(args):
     best_val, no_imp = float("inf"), 0
 
     # 用于把“方差 -> 置信度”的尺度做个稳定参考
-    # 简单做法：固定为 1.0；更稳做法：用训练初期估个 var 中位数
     var_scale = args.var_scale
 
     # ======================================================
@@ -197,8 +214,8 @@ def main(args):
 
             total = (
                 recon_loss
-                + beta_t * kl_loss
-                + args.ctr_weight * ctr_nll
+                # + beta_t * kl_loss
+                # + args.ctr_weight * ctr_nll
                 + args.smooth_weight * sm_loss
             )
 
@@ -368,13 +385,13 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=0.01)
+    parser.add_argument("--beta", type=float, default=0.)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
 
     # weights
     parser.add_argument("--ctr_weight", type=float, default=0.)
-    parser.add_argument("--smooth_weight", type=float, default=1.0)
-    parser.add_argument("--scale_weight", type=float, default=0.5)
+    parser.add_argument("--smooth_weight", type=float, default=0.1)
+    parser.add_argument("--scale_weight", type=float, default=1.5)
 
     # confidence scaling
     parser.add_argument("--var_scale", type=float, default=0.1)

@@ -239,32 +239,6 @@ class MDNHead(nn.Module):
         log_sigma = torch.clamp(log_sigma, min=-7.0, max=7.0)
         return pi, mu, log_sigma
 
-
-def mdn_nll_loss(pi, mu, log_sigma, y, eps: float = 1e-9):
-    """
-    y: [B, P]
-    pi: [B, K]
-    mu/log_sigma: [B, K, P]
-    return: scalar (mean over batch)
-    """
-    B, K, P = mu.shape
-    y = y.unsqueeze(1).expand(B, K, P)  # [B, K, P]
-
-    # log N(y | mu, sigma^2) for diagonal Gaussian
-    # = -0.5 * [sum((y-mu)^2/sigma^2 + 2log(sigma) + log(2pi))]
-    sigma = torch.exp(log_sigma) + eps
-    log_prob = -0.5 * (
-        torch.sum(((y - mu) / sigma) ** 2, dim=-1)
-        + 2.0 * torch.sum(torch.log(sigma), dim=-1)
-        + P * math.log(2.0 * math.pi)
-    )  # [B, K]
-
-    log_pi = torch.log(pi + eps)  # [B, K]
-    log_mix = torch.logsumexp(log_pi + log_prob, dim=-1)  # [B]
-    nll = -torch.mean(log_mix)
-    return nll
-
-
 @torch.no_grad()
 def mdn_point_and_confidence(pi, mu, log_sigma, var_scale: float = 1.0, topk: int = 3):
     """
