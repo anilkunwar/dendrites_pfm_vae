@@ -113,7 +113,8 @@ def main(args):
         f"lat={args.latent_size}_"
         f"K={args.mdn_components}_"
         f"beta={args.beta}_warm={args.beta_warmup_ratio}_"
-        f"ctr={args.ctr_weight}_smooth={args.smooth_weight}_"
+        f"gamma={args.gamma}_warm={args.gamma_warmup_ratio}_"
+        f"smooth={args.smooth_weight}_"
         f"scale={args.scale_weight}_"
         f"time={datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
@@ -171,7 +172,8 @@ def main(args):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    warmup_epochs = int(args.epochs * args.beta_warmup_ratio)
+    beta_warup_epochs = int(args.epochs * args.beta_warmup_ratio)
+    gamma_warmup_epochs = int(args.epochs * args.gamma_warmup_ratio)
 
     train_logs, val_logs = [], []
     best_val, no_imp = float("inf"), 0
@@ -184,7 +186,8 @@ def main(args):
     # ======================================================
     for epoch in range(1, args.epochs+1):
 
-        beta_t = beta_warmup(epoch, args.beta, warmup_epochs)
+        beta_t = beta_warmup(epoch, args.beta, beta_warup_epochs)
+        gamma_t = beta_warmup(epoch, args.beta, gamma_warmup_epochs)
 
         # ---------------------- Train ----------------------
         model.train()
@@ -215,8 +218,8 @@ def main(args):
             total = (
                 recon_loss
                 + beta_t * kl_loss
-                # + args.ctr_weight * ctr_nll
-                # + args.smooth_weight * sm_loss
+                + gamma_t * ctr_nll
+                + args.smooth_weight * sm_loss
             )
 
             optimizer.zero_grad()
@@ -237,6 +240,7 @@ def main(args):
         train_epoch = {k: float(np.mean(v)) for k, v in tstat.items()}
         train_epoch["epoch"] = epoch
         train_epoch["beta"] = beta_t
+        train_epoch["gamma"] = gamma_t
         train_logs.append(train_epoch)
 
         # -------------------- Validation --------------------
@@ -267,7 +271,7 @@ def main(args):
                 total = (
                     recon_loss
                     + beta_t * kl_loss
-                    + args.ctr_weight * ctr_nll
+                    + gamma_t * ctr_nll
                     + args.smooth_weight * sm_loss
                 )
 
@@ -285,10 +289,11 @@ def main(args):
         val_epoch = {k: float(np.mean(v)) for k, v in vstat.items()}
         val_epoch["epoch"] = epoch
         val_epoch["beta"] = beta_t
+        val_epoch["gamma"] = gamma_t
         val_logs.append(val_epoch)
 
         print(
-            f"[Epoch {epoch:04d}] beta={beta_t:.3f} | "
+            f"[Epoch {epoch:04d}] beta={beta_t:.3f} gamma={gamma_t:.3f} | "
             f"Train total={train_epoch['total']:.4f} | "
             f"Val total={val_epoch['total']:.4f} | "
             f"Val ctr_nll={val_epoch['ctr_nll']:.4f} | "
@@ -348,8 +353,9 @@ def main(args):
 
         plt.figure()
         plt.plot(df_train["epoch"], df_train["beta"], label="beta")
-        plt.title("Beta Schedule")
-        plt.savefig(os.path.join(save_root, "beta_schedule.png"), dpi=300)
+        plt.plot(df_train["epoch"], df_train["gamma"], label="gamma")
+        plt.title("Param Schedule")
+        plt.savefig(os.path.join(save_root, "param_schedule.png"), dpi=300)
         plt.close()
 
         # -------------------- Early stopping --------------------
@@ -371,7 +377,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=384)
+    parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=0)
 
@@ -386,11 +392,13 @@ if __name__ == "__main__":
 
     # VAE losses
     parser.add_argument("--beta", type=float, default=0.001)
-    parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
+    parser.add_argument("--beta_warmup_ratio", type=float, default=0.1)
 
     # weights
-    parser.add_argument("--ctr_weight", type=float, default=0.)
-    parser.add_argument("--smooth_weight", type=float, default=0.5)
+    parser.add_argument("--gamma", type=float, default=0.0)
+    parser.add_argument("--gamma_warmup_ratio", type=float, default=0.1)
+
+    parser.add_argument("--smooth_weight", type=float, default=0.)
     parser.add_argument("--scale_weight", type=float, default=0.5)
 
     # confidence scaling

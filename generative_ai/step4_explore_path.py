@@ -96,11 +96,10 @@ def main():
         best_t = None
         best_fd = None
 
+        save_step(run_dir, step, best_img, z, best_t, best_fd, best_score)
+
         # 生成候选
         for _ in range(NUM_CAND):
-
-            # 记录
-
 
             dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA
             z_cand = z + dz
@@ -110,7 +109,8 @@ def main():
             if nrm > MAX_NORM:
                 z_cand = z_cand / (nrm + 1e-12) * MAX_NORM
 
-            img_cand = decode_single_channel(model, device, z_cand)
+            with torch.no_grad():
+                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(get_init_tensor().unsqueeze(0).to(device))
 
             t_cand = predict_time(model, device, z_cand)
             fd_cand = fractal_dimension(img_cand)
@@ -135,8 +135,6 @@ def main():
         #     _, idx = knn.kneighbors(z.reshape(1, -1))
         #     z_nn = Z_data[idx[0, 0]]
         #     z = PROJ_ALPHA * z + (1 - PROJ_ALPHA) * z_nn
-
-        save_step(run_dir, step, best_img, z, best_t, best_fd, best_score)
 
     print("Done. Saved to:", run_dir)
 
