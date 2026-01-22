@@ -43,10 +43,18 @@ def multiscale_recon_loss(x_pred, x_true, num_scales=4, scale_weight=0.5):
     return total / weight
 
 
-def kl_div_loss(mu_q, logvar_q):
+def kl_div_loss(mu_q, logvar_q, prior_var=0.1):
+    # prior_var = σ_p^2
+    var_q = torch.exp(logvar_q)
+
     return 0.5 * torch.sum(
-        torch.exp(logvar_q) + mu_q ** 2 - 1.0 - logvar_q
+        var_q / prior_var
+        + mu_q**2 / prior_var
+        - 1.0
+        + math.log(prior_var)
+        - logvar_q
     )
+
 
 
 def total_variation(x):
@@ -91,6 +99,7 @@ def main(args):
         f"scale={args.scale_weight}_"
         f"time={datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
+    print(f"Experiment name: {exp_name}")
     save_root = os.path.join(args.save_root, exp_name)
     os.makedirs(save_root, exist_ok=True)
     os.makedirs(os.path.join(save_root, "ckpt"), exist_ok=True)
@@ -156,7 +165,7 @@ def main(args):
     # ======================================================
     # Training loop
     # ======================================================
-    for epoch in range(args.epochs):
+    for epoch in range(1, args.epochs+1):
 
         beta_t = beta_warmup(epoch, args.beta, warmup_epochs)
 
@@ -171,12 +180,9 @@ def main(args):
             pi, mu, log_sigma = mdn_out
 
             recon_loss = multiscale_recon_loss(recon, xo, scale_weight=args.scale_weight)
-            kl_loss = kl_div_loss(mu_q, logvar_q)
-
-            # 核心：MDN NLL 代替 MSE
+            kl_loss = kl_div_loss(mu_q, logvar_q, prior_var=var_scale)
             ctr_nll = mdn_nll_loss(pi, mu, log_sigma, y)
 
-            # 仅用于监控：用混合均值当点估计，算一下 MSE（不反传）
             with torch.no_grad():
                 theta_hat, conf_param, conf_global, _ = mdn_point_and_confidence(
                     pi, mu, log_sigma, var_scale=var_scale, topk=3
@@ -185,7 +191,7 @@ def main(args):
 
             # prior smoothness
             bsz = x.size(0)
-            z_prior = torch.randn(bsz, args.latent_size, device=device)
+            z_prior = torch.randn(bsz, args.latent_size, device=device) * math.sqrt(var_scale)
             prior_img = model.decoder(z_prior)
             sm_loss, sm_info = smoothness_loss(prior_img)
 
@@ -228,7 +234,7 @@ def main(args):
                 pi, mu, log_sigma = mdn_out
 
                 recon_loss = multiscale_recon_loss(recon, xo, scale_weight=args.scale_weight)
-                kl_loss = kl_div_loss(mu_q, logvar_q)
+                kl_loss = kl_div_loss(mu_q, logvar_q, prior_var=var_scale)
                 ctr_nll = mdn_nll_loss(pi, mu, log_sigma, y)
 
                 theta_hat, conf_param, conf_global, _ = mdn_point_and_confidence(
@@ -237,7 +243,7 @@ def main(args):
                 ctr_mse_monitor = F.mse_loss(theta_hat, y)
 
                 bsz = x.size(0)
-                z_prior = torch.randn(bsz, args.latent_size, device=device)
+                z_prior = torch.randn(bsz, args.latent_size, device=device) * math.sqrt(var_scale)
                 prior_img = model.decoder(z_prior)
                 sm_loss, sm_info = smoothness_loss(prior_img)
 
@@ -348,11 +354,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=0)
 
-    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
+    parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
     parser.add_argument("--latent_size", type=int, default=16)
     parser.add_argument("--hidden_dim", type=int, default=128)
     parser.add_argument("--num_params", type=int, default=15)
@@ -362,16 +368,16 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=2.0)
+    parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
 
     # weights
-    parser.add_argument("--ctr_weight", type=float, default=0.001)
-    parser.add_argument("--smooth_weight", type=float, default=2.0)
-    parser.add_argument("--scale_weight", type=float, default=1.0)
+    parser.add_argument("--ctr_weight", type=float, default=0.)
+    parser.add_argument("--smooth_weight", type=float, default=1.0)
+    parser.add_argument("--scale_weight", type=float, default=0.5)
 
     # confidence scaling
-    parser.add_argument("--var_scale", type=float, default=1.0)
+    parser.add_argument("--var_scale", type=float, default=0.1)
 
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")
