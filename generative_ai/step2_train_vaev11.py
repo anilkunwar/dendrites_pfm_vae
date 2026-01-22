@@ -214,9 +214,9 @@ def main(args):
 
             total = (
                 recon_loss
-                # + beta_t * kl_loss
+                + beta_t * kl_loss
                 # + args.ctr_weight * ctr_nll
-                + args.smooth_weight * sm_loss
+                # + args.smooth_weight * sm_loss
             )
 
             optimizer.zero_grad()
@@ -371,7 +371,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=384)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=0)
 
@@ -385,13 +385,13 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=0.)
+    parser.add_argument("--beta", type=float, default=10)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.3)
 
     # weights
     parser.add_argument("--ctr_weight", type=float, default=0.)
-    parser.add_argument("--smooth_weight", type=float, default=0.1)
-    parser.add_argument("--scale_weight", type=float, default=1.5)
+    parser.add_argument("--smooth_weight", type=float, default=0.5)
+    parser.add_argument("--scale_weight", type=float, default=0.5)
 
     # confidence scaling
     parser.add_argument("--var_scale", type=float, default=0.1)
