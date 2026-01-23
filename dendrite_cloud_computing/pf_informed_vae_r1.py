@@ -197,7 +197,7 @@ with tab1:
                 image = np.load(buffer)
             else:
                 image = Image.open(uploaded_file).convert("RGB")
-            st.caption(image)
+            st.caption(image.__class__.__name__())
             # Display original image
             col1, col2 = st.columns(2)
             with col1:
