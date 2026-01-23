@@ -476,17 +476,8 @@ with tab4:
     if not st.session_state.tab4_items:
         st.info("No images added yet.")
     else:
-        # 顶部操作：清空
-        top_ops = st.columns([1, 1])
-        with top_ops[0]:
-            if st.button("🧹 Clear All", key="tab4_clear_all"):
-                st.session_state.tab4_items = []
-                st.rerun()
-        with top_ops[1]:
-            st.metric("Number of images", len(st.session_state.tab4_items))
-
+        st.metric("Number of images", len(st.session_state.tab4_items))
         st.markdown("")
-
         for idx, item in enumerate(st.session_state.tab4_items):
             container = st.container(border=True)
             with container:
