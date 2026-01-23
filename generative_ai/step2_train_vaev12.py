@@ -80,17 +80,29 @@ def mdn_nll_loss(pi, mu, log_sigma, y, eps: float = 1e-9):
     nll = -torch.mean(log_mix)
     return nll
 
-def total_variation(x):
-    dx = torch.abs(x[:, :, :, 1:] - x[:, :, :, :-1])
-    dy = torch.abs(x[:, :, 1:, :] - x[:, :, :-1, :])
-    # mean over all elements (B,C,H,W) -> already batch-normalized
-    return dx.mean() + dy.mean()
+def sharp_interface_loss(img, alpha=1.0, beta=10.0):
+    """
+    Two-phase + sharp interface loss (minimal version).
+    img: (B,C,H,W) logits or [0,1]. If logits, sigmoid is applied.
+    alpha: weight for smooth interface (gradient^2)
+    beta:  weight for two-phase (double-well)
+    """
+    # 1) get phase field m in [0,1]
+    if img.max() == img.min():
+        return 0, {"interface": 0, "two_phase": 0}
 
-def smoothness_loss(img, var_floor=0.02):
-    tv = total_variation(img)
-    var = img.var(dim=(1, 2, 3), unbiased=False).mean()
-    var_pen = F.relu(var_floor - var) ** 2
-    return tv + var_pen, {"tv": tv.item(), "var": var.item(), "var_pen": var_pen.item()}
+    m = (img - img.min()) / (img.max() - img.min())
+
+    # 2) interface term: squared differences (L2 gradient)
+    dx = m[..., 1:] - m[..., :-1]      # (B,C,H,W-1)
+    dy = m[..., 1:, :] - m[..., :-1, :]# (B,C,H-1,W)
+    interface = (dx*dx).mean() + (dy*dy).mean()
+
+    # 3) two-phase term: double-well potential
+    two_phase = (m*m*(1-m)*(1-m)).mean()
+
+    loss = alpha * interface + beta * two_phase
+    return loss, {"interface": interface.item(), "two_phase": two_phase.item()}
 
 
 def beta_warmup(epoch, beta_max, warmup_epochs):
@@ -109,12 +121,12 @@ def main(args):
     # Experiment name
     # --------------------------
     exp_name = (
-        f"VAEv11_MDN_"
+        f"VAEv12_MDN_"
         f"lat={args.latent_size}_"
         f"K={args.mdn_components}_"
         f"beta={args.beta}_warm={args.beta_warmup_ratio}_"
         f"gamma={args.gamma}_warm={args.gamma_warmup_ratio}_"
-        f"smooth={args.smooth_weight}_var_floor={args.var_floor}"
+        f"phy_weight={args.phy_weight}_phy_alpha={args.phy_alpha}_phy_beta={args.phy_beta}_"
         f"scale={args.scale_weight}_"
         f"time={datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
@@ -171,6 +183,11 @@ def main(args):
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        100,
+        eta_min=1e-4,
+    )
 
     beta_warup_epochs = int(args.epochs * args.beta_warmup_ratio)
     gamma_warmup_epochs = int(args.epochs * args.gamma_warmup_ratio)
@@ -213,13 +230,13 @@ def main(args):
             bsz = x.size(0)
             z_prior = torch.randn(bsz, args.latent_size, device=device) * math.sqrt(var_scale)
             prior_img = model.decoder(z_prior)
-            sm_loss, sm_info = smoothness_loss(prior_img, var_floor=args.var_floor)
+            sm_loss, sm_info = sharp_interface_loss(prior_img[:, 0], args.phy_alpha, args.phy_beta)
 
             total = (
                 recon_loss
                 + beta_t * kl_loss
                 + gamma_t * ctr_nll
-                + args.smooth_weight * sm_loss
+                + args.phy_weight * sm_loss
             )
 
             optimizer.zero_grad()
@@ -232,10 +249,9 @@ def main(args):
             tstat["ctr_nll"].append(ctr_nll.item())
             tstat["ctr_mse_monitor"].append(ctr_mse_monitor.item())
             tstat["conf_global_mean"].append(conf_global.mean().item())
-            tstat["smooth"].append(sm_loss.item())
-            tstat["tv"].append(sm_info["tv"])
-            tstat["var"].append(sm_info["var"])
-            tstat["var_pen"].append(sm_info["var_pen"])
+            tstat["phy"].append(sm_loss.item())
+            tstat["interface"].append(sm_info["interface"])
+            tstat["two_phase"].append(sm_info["two_phase"])
 
         train_epoch = {k: float(np.mean(v)) for k, v in tstat.items()}
         train_epoch["epoch"] = epoch
@@ -266,13 +282,13 @@ def main(args):
                 bsz = x.size(0)
                 z_prior = torch.randn(bsz, args.latent_size, device=device) * math.sqrt(var_scale)
                 prior_img = model.decoder(z_prior)
-                sm_loss, sm_info = smoothness_loss(prior_img, var_floor=args.var_floor)
+                sm_loss, sm_info = sharp_interface_loss(prior_img[:, 0], args.phy_alpha, args.phy_beta)
 
                 total = (
                     recon_loss
                     + beta_t * kl_loss
                     + gamma_t * ctr_nll
-                    + args.smooth_weight * sm_loss
+                    + args.phy_weight * sm_loss
                 )
 
                 vstat["total"].append(total.item())
@@ -281,10 +297,11 @@ def main(args):
                 vstat["ctr_nll"].append(ctr_nll.item())
                 vstat["ctr_mse_monitor"].append(ctr_mse_monitor.item())
                 vstat["conf_global_mean"].append(conf_global.mean().item())
-                vstat["smooth"].append(sm_loss.item())
-                vstat["tv"].append(sm_info["tv"])
-                vstat["var"].append(sm_info["var"])
-                vstat["var_pen"].append(sm_info["var_pen"])
+                tstat["phy"].append(sm_loss.item())
+                tstat["interface"].append(sm_info["interface"])
+                tstat["two_phase"].append(sm_info["two_phase"])
+
+        lr_scheduler.step()
 
         val_epoch = {k: float(np.mean(v)) for k, v in vstat.items()}
         val_epoch["epoch"] = epoch
@@ -344,17 +361,17 @@ def main(args):
         plt.close()
 
         plt.figure()
-        plt.plot(df_train["epoch"], df_train["smooth"], label="smooth")
-        plt.plot(df_train["epoch"], df_train["tv"], label="tv")
-        plt.plot(df_train["epoch"], df_train["var_pen"], label="var_pen")
-        plt.legend(); plt.title("Smoothness Losses")
-        plt.savefig(os.path.join(save_root, "loss_smooth.png"), dpi=300)
+        plt.plot(df_train["epoch"], df_train["phy"], label="phy")
+        plt.plot(df_train["epoch"], df_train["interface"], label="interface")
+        plt.plot(df_train["epoch"], df_train["two_phase"], label="two_phase")
+        plt.legend(); plt.title("Phy Losses")
+        plt.savefig(os.path.join(save_root, "loss_phy.png"), dpi=300)
         plt.close()
 
         plt.figure()
         plt.plot(df_train["epoch"], df_train["beta"], label="beta")
         plt.plot(df_train["epoch"], df_train["gamma"], label="gamma")
-        plt.title("Param Schedule")
+        plt.legend(); plt.title("Param Schedule")
         plt.savefig(os.path.join(save_root, "param_schedule.png"), dpi=300)
         plt.close()
 
@@ -376,9 +393,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
@@ -398,8 +415,9 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.001)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.1)
 
-    parser.add_argument("--smooth_weight", type=float, default=0.05)
-    parser.add_argument("--var_floor", type=float, default=0.0)
+    parser.add_argument("--phy_weight", type=float, default=0.01) # 设置为0可以实现重建效果
+    parser.add_argument("--phy_alpha", type=float, default=1)
+    parser.add_argument("--phy_beta", type=float, default=1)
 
     parser.add_argument("--scale_weight", type=float, default=0.5)
 
