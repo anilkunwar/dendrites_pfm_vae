@@ -115,7 +115,7 @@ def load_image_from_path(image_path):
         return None
 
 
-def process_image(image:np.ndarray, model, image_size):
+def process_image(image, model, image_size):
     """Process image through the model"""
 
     arr = cv2.resize(np.array(image), image_size)
@@ -123,7 +123,7 @@ def process_image(image:np.ndarray, model, image_size):
     tensor_t = smooth_scale(tensor_t)
 
     with torch.no_grad():
-        recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t)
+        recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t[None])
 
     # Ensure reconstruction is in valid range
     recon_img = torch.clamp(recon.squeeze(0), 0, 1)
