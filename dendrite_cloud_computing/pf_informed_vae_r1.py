@@ -191,7 +191,7 @@ with tab1:
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
 
     if uploaded_file is not None:
-        try:
+        # try:
             image = load_image_from_path(uploaded_file)
 
             # Display original image
@@ -252,8 +252,8 @@ with tab1:
                 mime="image/png"
             )
 
-        except Exception as e:
-            st.error(f"Error processing image: {str(e)}")
+        # except Exception as e:
+        #     st.error(f"Error processing image: {str(e)}")
 
 with tab2:
     st.header("Select from Test Images")
