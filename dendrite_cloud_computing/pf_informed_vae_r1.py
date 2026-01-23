@@ -2,7 +2,6 @@ import os
 import torch
 import cv2
 import streamlit as st
-import torchvision.transforms as transforms
 import numpy as np
 import io
 import pandas as pd
@@ -10,12 +9,8 @@ from pathlib import Path
 from PIL import Image
 from matplotlib import colors, cm
 
-from src.dataloader import inv_scale_params
-from src.dataloader import PARAM_RANGES
+from src.dataloader import inv_scale_params, smooth_scale, PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
-
-def smooth_scale(x, k=0.3):
-    return 0.5 + 0.5 * torch.tanh(k * x)
 
 # ==========================================================
 # 3. STREAMLIT LOADING
@@ -131,7 +126,7 @@ def process_image(image, model, image_size):
 
     # Get control parameters
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-        pi_s, mu_s, log_sigma_s, var_scale=0.01, topk=3
+        pi_s, mu_s, log_sigma_s, var_scale=1, topk=3
     )
     y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
     conf_s = conf_param_s.detach().cpu().numpy()[0]

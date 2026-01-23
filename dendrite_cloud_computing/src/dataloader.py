@@ -40,7 +40,7 @@ def inv_scale_params(params:np.ndarray) -> list:
         raise ValueError("Wrong input to inv_scale_params")
     normed = [params[0]]
     vs = list(PARAM_RANGES.values())
-    for vi in range(1, len(params)):
+    for vi in range(1, params.shape[0]):
         lo, hi = vs[vi]
         normed.append(params[vi] * (hi - lo) + lo)
     return normed
