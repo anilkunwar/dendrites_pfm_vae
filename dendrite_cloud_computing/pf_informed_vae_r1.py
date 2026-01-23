@@ -105,7 +105,7 @@ def load_image_from_path(image_path):
         if image_path.endswith(".npy"):
             return np.load(image_path)
         else:
-            return Image.open(image_path).convert("RGB")
+            return np.array(Image.open(image_path).convert("RGB")) / 255.
     except Exception as e:
         st.error(f"Error loading image {image_path}: {str(e)}")
         return None
@@ -189,6 +189,54 @@ def show_coolwarm(gray_image, caption):
     colored_img = cm.coolwarm(norm(gray_image))  # shape: (H, W, 4)
     st.image(colored_img, caption=caption, use_column_width=True)
 
+def analyze_image(image, image_name):
+    # Display original image (without preprocessing)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Original Image (Only 1st channel)")
+        show_coolwarm(image, caption=f"Selected: {image_name}")
+        st.caption(
+            f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image):.2f}, Min value: {np.min(image):.2f}")
+
+    # Process image
+    recon_image, ctr_array = process_image(image, model, expected_size)
+
+    # Display reconstruction
+    with col2:
+        st.subheader(f"Reconstructed Image (Only 1st channel)")
+        show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
+        st.caption(
+            f"Resized from: {expected_size}, Max value: {np.max(recon_image[..., 0]):.2f}, Min value: {np.min(recon_image[..., 0]):.2f}")
+
+    # Display control parameters
+    st.subheader("📈 Predicted Control Parameters")
+
+    # Create parameter table
+    param_df = pd.DataFrame({
+        "Parameter": param_names,
+        "Predict Value (Normalized)": ctr_array,
+        "Predict Value (Denormalized)": inv_scale_params(ctr_array),
+    })
+
+    st.dataframe(
+        param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.9f}"}))
+    st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
+
+    # Parameter statistics
+    st.subheader("📊 Parameter Statistics")
+    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+
+    with stats_col1:
+        st.metric("Mean", f"{np.mean(ctr_array):.4f}")
+    with stats_col2:
+        st.metric("Std Dev", f"{np.std(ctr_array):.4f}")
+    with stats_col3:
+        st.metric("Min", f"{np.min(ctr_array):.4f}")
+    with stats_col4:
+        st.metric("Max", f"{np.max(ctr_array):.4f}")
+
+    return recon_image, ctr_array
+
 with tab1:
     st.header("Upload Your Own Image (Note your images should be PFM results (eta, c, potential) with valid data range")
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
@@ -202,48 +250,7 @@ with tab1:
             else:
                 image = np.array(Image.open(uploaded_file).convert("RGB")) / 255.   # convert to float
 
-            # Display original image (without preprocessing)
-            col1, col2 = st.columns(2)
-            with col1:
-                image_for_show = smooth_scale(image[..., 0])
-                st.subheader("Original Image (Only 1st channel)")
-                show_coolwarm(image_for_show, caption=f"Uploaded: {uploaded_file.name}")
-                st.caption(f"Size: {image_for_show.shape[0]}×{image_for_show.shape[1]}, Max value: {np.max(image_for_show):.2f}, Min value: {np.min(image_for_show):.2f}")
-
-            # Process image
-            recon_image, ctr_array = process_image(image, model, expected_size)
-
-            # Display reconstruction
-            with col2:
-                st.subheader(f"Reconstructed Image (Only 1st channel)")
-                show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
-                st.caption(f"Resized from: {expected_size}, Max value: {np.max(recon_image[..., 0]):.2f}, Min value: {np.min(recon_image[..., 0]):.2f}")
-
-            # Display control parameters
-            st.subheader("📈 Predicted Control Parameters")
-
-            # Create parameter table
-            param_df = pd.DataFrame({
-                "Parameter": param_names,
-                "Predict Value (Normalized)": ctr_array,
-                "Predict Value (Denormalized)": inv_scale_params(ctr_array),
-            })
-
-            st.dataframe(param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.9f}"}))
-            st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
-
-            # Parameter statistics
-            st.subheader("📊 Parameter Statistics")
-            stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
-
-            with stats_col1:
-                st.metric("Mean", f"{np.mean(ctr_array):.4f}")
-            with stats_col2:
-                st.metric("Std Dev", f"{np.std(ctr_array):.4f}")
-            with stats_col3:
-                st.metric("Min", f"{np.min(ctr_array):.4f}")
-            with stats_col4:
-                st.metric("Max", f"{np.max(ctr_array):.4f}")
+            recon_image, ctr_array = analyze_image(image, uploaded_file.name)
 
             # Download button
             st.markdown("---")
@@ -276,39 +283,8 @@ with tab2:
             image = load_image_from_path(selected_path)
 
             if image:
-                col1, col2 = st.columns(2)
 
-                with col1:
-                    st.subheader("Test Image")
-                    st.image(image, caption=f"Selected: {selected_image_name}", use_column_width=True)
-                    st.caption(f"Path: {selected_path}")
-
-                # Process image
-                recon_pil, ctr_array = process_image(image, model, expected_size)
-
-                with col2:
-                    st.subheader("Reconstructed Image")
-                    st.image(recon_pil, caption="VAE Reconstruction", use_column_width=True)
-
-                # Display control parameters
-                st.subheader("📈 Predicted Control Parameters")
-
-                param_df = pd.DataFrame({
-                    "Parameter": [f"P{i:02d}" for i in range(len(ctr_array))],
-                    "Value": ctr_array
-                })
-
-                col_chart1, col_chart2 = st.columns(2)
-
-                with col_chart1:
-                    st.bar_chart(param_df.set_index("Parameter")["Value"])
-
-                with col_chart2:
-                    # Create a line chart for parameter trends
-                    st.line_chart(param_df.set_index("Parameter")["Value"])
-
-                # Show parameter table
-                st.dataframe(param_df.style.format({"Value": "{:.4f}"}))
+                recon_image, ctr_array = analyze_image(image, selected_image_name)
 
                 # Quick comparison if multiple images have been processed
                 if 'previous_params' not in st.session_state:
@@ -368,7 +344,7 @@ with tab3:
 
                     if image:
                         # Process image
-                        recon_pil, ctr_array = process_image(image, model, expected_size)
+                        recon_image, ctr_array = process_image(image, model, expected_size)
 
                         # Store results
                         result = {
