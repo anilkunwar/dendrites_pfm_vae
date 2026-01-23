@@ -437,8 +437,9 @@ with tab4:
             accept_multiple_files=True,
             key="tab4_uploader",
         )
-        if up_files:
+        if len(up_files) != len(st.session_state.tab4_items):
             for uf in up_files:
+                # st.session_state.tab4_items.pop(idx)
                 if uf.name.endswith(".npy"):
                     buf = io.BytesIO(uf.getvalue())
                     img = np.load(buf)
@@ -489,19 +490,15 @@ with tab4:
 
         st.markdown("")
 
-        for idx, item in enumerate(list(st.session_state.tab4_items)):
+        for idx, item in enumerate(st.session_state.tab4_items):
             container = st.container(border=True)
             with container:
-                header_cols = st.columns([3, 1, 1])
+                header_cols = st.columns([1, 1])
                 with header_cols[0]:
                     st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
                 with header_cols[1]:
                     st.metric("Score", f"{item['score']:.4f}")
-                with header_cols[2]:
-                    if st.button("🗑️ Delete", key=f"tab4_del_{item['id']}"):
-                        st.session_state.tab4_items.pop(idx)
-                        st.rerun()
-                st.caption("Result")
+
                 st.pyplot(item["result"])
 
 with tab5:
