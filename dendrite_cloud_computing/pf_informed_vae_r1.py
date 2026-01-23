@@ -323,7 +323,7 @@ with tab2:
 with tab3:
     st.header("Batch Image Analysis")
 
-    if test_images is not None:
+    if test_images:
         st.info(f"Found {len(test_images)} images in test folder. Select which ones to analyze.")
 
         # Multi-select for batch processing
@@ -343,7 +343,7 @@ with tab3:
                     img_path = test_images[[img.name for img in test_images].index(img_name)]
                     image = load_image_from_path(img_path)
 
-                    if image:
+                    if image is not None:
                         # Process image
                         recon_image, ctr_array = process_image(image, model, expected_size)
 
