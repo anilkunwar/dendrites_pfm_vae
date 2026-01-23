@@ -105,16 +105,16 @@ def get_test_images():
 
 def load_image_from_path(image_path):
     """Load image from file path"""
-    try:
-        if str(image_path).endswith(".npy"):
-            st.info(f"Loading npy from {image_path}")
-            return np.load(image_path)
-        else:
-            st.info(f"Loading image from {image_path}")
-            return Image.open(image_path).convert("RGB")
-    except Exception as e:
-        st.error(f"Error loading image {image_path}: {str(e)}")
-        return None
+    # try:
+    if str(image_path).endswith(".npy"):
+        st.info(f"Loading npy from {image_path}")
+        return np.load(image_path)
+    else:
+        st.info(f"Loading image from {image_path}")
+        return Image.open(image_path).convert("RGB")
+    # except Exception as e:
+    #     st.error(f"Error loading image {image_path}: {str(e)}")
+    #     return None
 
 
 def process_image(image, model, image_size):
