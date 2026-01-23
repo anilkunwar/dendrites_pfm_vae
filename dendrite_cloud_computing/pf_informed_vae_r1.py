@@ -406,9 +406,7 @@ with tab4:
 
     # ========== 1) Session state for tab4 ==========
     session_item_id = 0
-    if "tab4_items" not in st.session_state:
-        # {"id": str, "name": str, "source": "upload"/"test", "orig": np.ndarray, "result": np.ndarray, "score": float}
-        st.session_state.tab4_items = []
+    st.session_state.tab4_items = []
 
     def _tab4_make_id(prefix: str, name: str) -> str:
         global session_item_id
@@ -439,7 +437,6 @@ with tab4:
         )
         if len(up_files) != len(st.session_state.tab4_items):
             for uf in up_files:
-                # st.session_state.tab4_items.pop(idx)
                 if uf.name.endswith(".npy"):
                     buf = io.BytesIO(uf.getvalue())
                     img = np.load(buf)
@@ -480,7 +477,7 @@ with tab4:
         st.info("No images added yet.")
     else:
         # 顶部操作：清空
-        top_ops = st.columns([1, 1, 3])
+        top_ops = st.columns([1, 1])
         with top_ops[0]:
             if st.button("🧹 Clear All", key="tab4_clear_all"):
                 st.session_state.tab4_items = []
