@@ -227,13 +227,8 @@ with tab1:
                 "Predict Value (Denormalized)": inv_scale_params(ctr_array),
             })
 
-            col_table, col_chart = st.columns([1, 2])
-
-            with col_table:
-                st.dataframe(param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.9f}"}))
-
-            with col_chart:
-                st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
+            st.dataframe(param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.9f}"}))
+            st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
 
             # Parameter statistics
             st.subheader("📊 Parameter Statistics")
