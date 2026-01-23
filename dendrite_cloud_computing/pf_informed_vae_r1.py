@@ -213,7 +213,7 @@ with tab1:
 
             # Display reconstruction
             with col2:
-                st.subheader(f"Reconstructed Image (Only 1st channel: order parameter)")
+                st.subheader(f"Reconstructed Image (Only 1st channel)")
                 show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
                 st.caption(f"Resized to: {expected_size}")
 
@@ -246,6 +246,7 @@ with tab1:
             # Download button
             st.markdown("---")
             buf = io.BytesIO()
+            st.subheader(f"{recon_image.shape}")
             Image.fromarray(recon_image).convert("RGB").save(buf, format="PNG")
             st.download_button(
                 label="📥 Download Reconstructed Image",
