@@ -7,11 +7,10 @@ import numpy as np
 import io
 import pandas as pd
 from pathlib import Path
-
 from PIL import Image
 
+from src.dataloader import PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
-
 
 def smooth_scale(x, k=0.3):
     return 0.5 + 0.5 * torch.tanh(k * x)
@@ -191,7 +190,7 @@ with tab1:
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
 
     if uploaded_file is not None:
-        try:
+        # try:
             if uploaded_file.name.endswith(".npy"):
                 bytes_data = uploaded_file.getvalue()
                 buffer = io.BytesIO(bytes_data)
@@ -257,8 +256,8 @@ with tab1:
                 mime="image/png"
             )
 
-        except Exception as e:
-            st.error(f"Error processing image: {str(e)}")
+        # except Exception as e:
+        #     st.error(f"Error processing image: {str(e)}")
 
 with tab2:
     st.header("Select from Test Images")
@@ -329,7 +328,9 @@ with tab2:
                         compare_data[img_name] = params
 
                     compare_df = pd.DataFrame(compare_data)
-                    compare_df.index = [f"P{i:02d}" for i in range(len(ctr_array))]
+                    param_names = ["t"]
+                    param_names += list(PARAM_RANGES.keys())
+                    compare_df.index = param_names
 
                     st.dataframe(compare_df.style.format("{:.4f}"))
 
