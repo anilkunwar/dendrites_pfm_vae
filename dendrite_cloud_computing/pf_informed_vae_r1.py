@@ -134,7 +134,7 @@ def process_image(image, model, image_size):
     conf_s = conf_param_s.detach().cpu().numpy()[0]
     conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
-    return recon_img, y_pred_s
+    return recon_img, y_pred_s, conf_s, conf_global_s
 
 
 # ==========================================================
@@ -200,7 +200,7 @@ def analyze_image(image, image_name:str):
             f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image):.2f}, Min value: {np.min(image):.2f}")
 
     # Process image
-    recon_image, ctr_array = process_image(image, model, expected_size)
+    recon_image, ctr_array, conf_s, conf_global_s = process_image(image, model, expected_size)
 
     # Display reconstruction
     with col2:
@@ -217,10 +217,15 @@ def analyze_image(image, image_name:str):
         "Parameter": param_names,
         "Predict Value (Normalized)": ctr_array,
         "Predict Value (Denormalized)": inv_scale_params(ctr_array),
+        "Confidence": conf_s
     })
 
     st.dataframe(
-        param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.9f}"}))
+        param_df.style.format(
+            {"Predict Value (Normalized)": "{:.4f}",
+             "Predict Value (Denormalized)": "{:.9f}",
+             "Confidence": "{:.2f}"
+             }))
     st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
 
     # Parameter statistics
@@ -345,7 +350,7 @@ with tab3:
 
                     if image is not None:
                         # Process image
-                        recon_image, ctr_array = process_image(image, model, expected_size)
+                        recon_img, y_pred_s, conf_s, conf_global_s = process_image(image, model, expected_size)
 
                         # Store results
                         result = {
