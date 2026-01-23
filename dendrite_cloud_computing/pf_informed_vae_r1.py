@@ -114,7 +114,7 @@ def load_image_from_path(image_path):
 def process_image(image, model, image_size):
     """Process image through the model"""
 
-    arr = cv2.resize(np.array(image), image_size)
+    arr = cv2.resize(image, image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
 
@@ -209,11 +209,11 @@ with tab1:
                 st.caption(f"Size: {image.shape[0]}×{image.shape[1]}")
 
             # Process image
-            recon_image, ctr_array = process_image(np.array(image), model, expected_size)
+            recon_image, ctr_array = process_image(image, model, expected_size)
 
             # Display reconstruction
             with col2:
-                st.subheader("Reconstructed Image (Only 1st channel: order parameter)")
+                st.subheader(f"Reconstructed Image (Only 1st channel: order parameter) {recon_image.shape}")
                 show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
                 st.caption(f"Resized to: {expected_size}")
 
@@ -230,7 +230,7 @@ with tab1:
             col_table, col_chart = st.columns([1, 2])
 
             with col_table:
-                st.dataframe(param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.3f}"}))
+                st.dataframe(param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.9f}"}))
 
             with col_chart:
                 st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
