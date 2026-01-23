@@ -193,7 +193,7 @@ with tab1:
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
 
     if uploaded_file is not None:
-        # try:
+        try:
             if uploaded_file.name.endswith(".npy"):
                 bytes_data = uploaded_file.getvalue()
                 buffer = io.BytesIO(bytes_data)
@@ -230,10 +230,10 @@ with tab1:
             col_table, col_chart = st.columns([1, 2])
 
             with col_table:
-                st.dataframe(param_df.style.format({"Value": "{:.4f}", "Normalized": "{:.3f}"}))
+                st.dataframe(param_df.style.format({"Predict Value (Normalized)": "{:.4f}", "Predict Value (Denormalized)": "{:.3f}"}))
 
             with col_chart:
-                st.bar_chart(param_df.set_index("Parameter")["Value"])
+                st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
 
             # Parameter statistics
             st.subheader("📊 Parameter Statistics")
@@ -259,8 +259,8 @@ with tab1:
                 mime="image/png"
             )
 
-        # except Exception as e:
-        #     st.error(f"Error processing image: {str(e)}")
+        except Exception as e:
+            st.error(f"Error processing image: {str(e)}")
 
 with tab2:
     st.header("Select from Test Images")
