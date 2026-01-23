@@ -405,13 +405,15 @@ with tab4:
     st.header("Dendrite Intensity Analysis")
 
     # ========== 1) Session state for tab4 ==========
+    session_item_id = 0
     if "tab4_items" not in st.session_state:
         # {"id": str, "name": str, "source": "upload"/"test", "orig": np.ndarray, "result": np.ndarray, "score": float}
         st.session_state.tab4_items = []
 
     def _tab4_make_id(prefix: str, name: str) -> str:
-        # generate key
-        return f"{prefix}:{name}:{len(st.session_state.tab4_items)}"
+        global session_item_id
+        session_item_id += 1
+        return f"{prefix}:{name}:{session_item_id}"
 
     def tab4_add_item(img: np.ndarray, name: str, source: str):
         result_img, _, scores = generate_analysis_figure(img[..., 0])
