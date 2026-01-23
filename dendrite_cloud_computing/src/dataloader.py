@@ -41,7 +41,7 @@ def inv_scale_params(params:np.ndarray) -> list:
     normed = [params[0]]
     vs = list(PARAM_RANGES.values())
     for vi in range(1, params.shape[0]):
-        lo, hi = vs[vi]
+        lo, hi = vs[vi-1]
         normed.append(params[vi] * (hi - lo) + lo)
     return normed
 
