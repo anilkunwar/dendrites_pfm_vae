@@ -205,9 +205,10 @@ with tab1:
             # Display original image (without preprocessing)
             col1, col2 = st.columns(2)
             with col1:
+                image_for_show = smooth_scale(image[..., 0])
                 st.subheader("Original Image (Only 1st channel: order parameter)")
-                show_coolwarm(smooth_scale(image[..., 0]), caption=f"Uploaded: {uploaded_file.name}")
-                st.caption(f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image):.2f}, Min value: {np.min(image):.2f}")
+                show_coolwarm(image_for_show, caption=f"Uploaded: {uploaded_file.name}")
+                st.caption(f"Size: {image_for_show.shape[0]}×{image_for_show.shape[1]}, Max value: {np.max(image_for_show):.2f}, Min value: {np.min(image_for_show):.2f}")
 
             # Process image
             recon_image, ctr_array = process_image(image, model, expected_size)
@@ -216,7 +217,7 @@ with tab1:
             with col2:
                 st.subheader(f"Reconstructed Image (Only 1st channel)")
                 show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
-                st.caption(f"Resized from: {expected_size}, Max value: {np.max(recon_image):.2f}, Min value: {np.min(recon_image):.2f}")
+                st.caption(f"Resized from: {expected_size}, Max value: {np.max(recon_image[..., 0]):.2f}, Min value: {np.min(recon_image[..., 0]):.2f}")
 
             # Display control parameters
             st.subheader("📈 Predicted Control Parameters")
