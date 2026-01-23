@@ -422,14 +422,14 @@ with tab4:
             return
         try:
             result_img, _, scores = generate_analysis_figure(img[..., 0])
-            st.session_state.tab4_items.append({
-                "id": _tab4_make_id(source, name),
-                "name": name,
-                "source": source,
-                "orig": img,
-                "result": result_img,
-                "score": scores["final_score"],
-            })
+            # st.session_state.tab4_items.append({
+            #     "id": _tab4_make_id(source, name),
+            #     "name": name,
+            #     "source": source,
+            #     "orig": img,
+            #     "result": result_img,
+            #     "score": scores["final_score"],
+            # })
         except Exception as e:
             st.error(f"tab4 analyze error for {name}: {e}")
 
@@ -452,7 +452,7 @@ with tab4:
                         img = np.load(buf)
                     else:
                         img = np.array(Image.open(uf).convert("RGB")) / 255.0
-                    # tab4_add_item(img, uf.name, source="upload")
+                    tab4_add_item(img, uf.name, source="upload")
                 except Exception as e:
                     st.error(f"Error loading image {uf.name}: {e}")
 
