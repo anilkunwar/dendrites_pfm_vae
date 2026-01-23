@@ -8,6 +8,8 @@ import io
 import pandas as pd
 from pathlib import Path
 
+from PIL import Image
+
 from src.modelv11 import mdn_point_and_confidence
 
 
@@ -101,10 +103,10 @@ def get_test_images():
     return None, []
 
 
-def load_image_from_path(image_path:str):
+def load_image_from_path(image_path):
     """Load image from file path"""
     try:
-        if image_path.endswith(".npy"):
+        if str(image_path).endswith(".npy"):
             return np.load(image_path)
         else:
             return cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
