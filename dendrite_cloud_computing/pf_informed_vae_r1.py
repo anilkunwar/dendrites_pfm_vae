@@ -240,7 +240,7 @@ def analyze_image(image, image_name:str):
 
 with tab1:
     st.header("Upload Your Own Image (Note your images should be PFM results (eta, c, potential) with valid data range")
-    uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
+    uploaded_file = st.file_uploader("Choose an image file...", type=["npy", "jpg", "png", "jpeg", "bmp", "tiff"])
 
     if uploaded_file is not None:
         try:
@@ -440,7 +440,7 @@ with tab4:
         st.subheader("📤 Upload Images")
         up_files = st.file_uploader(
             "Choose one or more image files...",
-            type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"],
+            type=["npy", "jpg", "png", "jpeg", "bmp", "tiff"],
             accept_multiple_files=True,
             key="tab4_uploader",
         )
@@ -478,7 +478,7 @@ with tab4:
                     except Exception as e:
                         st.error(f"Error loading image {nm}: {e}")
         else:
-            st.warning("No test images found for batch analysis.")
+            st.warning("No test images found for analysis.")
 
     st.markdown("---")
 
