@@ -441,15 +441,12 @@ with tab4:
         )
         if up_files:
             for uf in up_files:
-                try:
-                    if uf.name.endswith(".npy"):
-                        buf = io.BytesIO(uf.getvalue())
-                        img = np.load(buf)
-                    else:
-                        img = np.array(Image.open(uf).convert("RGB")) / 255.0
-                    tab4_add_item(img, uf.name, source="upload")
-                except Exception as e:
-                    st.error(f"Error loading image {uf.name}: {e}")
+                if uf.name.endswith(".npy"):
+                    buf = io.BytesIO(uf.getvalue())
+                    img = np.load(buf)
+                else:
+                    img = np.array(Image.open(uf).convert("RGB")) / 255.0
+                tab4_add_item(img, uf.name, source="upload")
 
         st.caption("Tip: you can upload multiple times. Newly uploaded images will be added to the list below.")
 
