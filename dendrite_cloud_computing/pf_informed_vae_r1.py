@@ -182,7 +182,7 @@ param_names = ["t"]
 param_names += list(PARAM_RANGES.keys())
 
 # Main interface with tabs
-tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "Dendrite Intensity Score", "Heuristic Latent Space Exploration"])
 
 def show_coolwarm(gray_image, caption):
     norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
@@ -282,7 +282,7 @@ with tab2:
             # Load and display the image
             image = load_image_from_path(selected_path)
 
-            if image:
+            if image is not None:
 
                 recon_image, ctr_array = analyze_image(image, selected_image_name)
 

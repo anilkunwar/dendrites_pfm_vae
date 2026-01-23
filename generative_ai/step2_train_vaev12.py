@@ -435,7 +435,7 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=0.001)
+    parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.1)
 
     # weights
