@@ -201,13 +201,14 @@ with tab1:
                 image = np.load(buffer)
             else:
                 image = np.array(Image.open(uploaded_file).convert("RGB"))
+            image = smooth_scale(image) # preprocessing
 
             # Display original image
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image (Only 1st channel: order parameter)")
                 show_coolwarm(image[..., 0], caption=f"Uploaded: {uploaded_file.name}")
-                st.caption(f"Size: {image.shape[0]}×{image.shape[1]}")
+                st.caption(f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image)}, Min value: {np.min(image)}")
 
             # Process image
             recon_image, ctr_array = process_image(image, model, expected_size)
@@ -216,7 +217,7 @@ with tab1:
             with col2:
                 st.subheader(f"Reconstructed Image (Only 1st channel)")
                 show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
-                st.caption(f"Resized from: {expected_size}")
+                st.caption(f"Resized from: {expected_size}, Max value: {np.max(image)}, Min value: {np.min(image)}")
 
             # Display control parameters
             st.subheader("📈 Predicted Control Parameters")
