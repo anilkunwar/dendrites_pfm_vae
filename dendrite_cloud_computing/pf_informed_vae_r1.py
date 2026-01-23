@@ -487,7 +487,6 @@ with tab4:
 
         st.markdown("")
 
-        # 逐项展示：原图 + 结果图 + 分数 + 删除
         for idx, item in enumerate(list(st.session_state.tab4_items)):
             container = st.container(border=True)
             with container:
@@ -518,7 +517,7 @@ with tab4:
 
                 with img_cols[1]:
                     st.caption("Result")
-                    st.image(item["result"], use_column_width=True)
+                    st.pyplot(item["result"], use_column_width=True)
 
 with tab5:
     pass
