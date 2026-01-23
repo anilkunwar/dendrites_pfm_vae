@@ -247,7 +247,7 @@ with tab1:
             # Download button
             st.markdown("---")
             buf = io.BytesIO()
-            Image.fromarray((image * 255).clip(0, 255).astype(np.uint8)).convert("RGB").save(buf, format="PNG")
+            Image.fromarray((recon_image * 255).clip(0, 255).astype(np.uint8)).convert("RGB").save(buf, format="PNG")
             st.download_button(
                 label="📥 Download Reconstructed Image",
                 data=buf.getvalue(),
