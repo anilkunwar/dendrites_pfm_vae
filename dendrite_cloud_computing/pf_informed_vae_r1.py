@@ -113,7 +113,7 @@ def load_image_from_path(image_path):
 
 def process_image(image, model, image_size):
     """Process image through the model"""
-
+    original_shape = image.shape
     arr = cv2.resize(image, image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
@@ -123,6 +123,7 @@ def process_image(image, model, image_size):
 
     # Ensure reconstruction is in valid range
     recon_img = recon.detach().cpu().numpy()[0].transpose(1, 2, 0)
+    recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
 
     # Get control parameters
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
@@ -215,7 +216,7 @@ with tab1:
             with col2:
                 st.subheader(f"Reconstructed Image (Only 1st channel)")
                 show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
-                st.caption(f"Resized to: {expected_size}")
+                st.caption(f"Resized from: {expected_size}")
 
             # Display control parameters
             st.subheader("📈 Predicted Control Parameters")
