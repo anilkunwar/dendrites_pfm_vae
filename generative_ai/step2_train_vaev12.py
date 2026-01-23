@@ -183,12 +183,12 @@ def main(args):
     # --------------------------
     exp_name = (
         f"VAEv12_MDN_"
-        f"lat={args.latent_size}_"
+        f"lat={args.latent_size}_var_scale={args.var_scale}"
         f"K={args.mdn_components}_"
         f"beta={args.beta}_warm={args.beta_warmup_ratio}_"
         f"gamma={args.gamma}_warm={args.gamma_warmup_ratio}_"
         f"phy_weight={args.phy_weight}_phy_alpha={args.phy_alpha}_phy_beta={args.phy_beta}_"
-        f"scale={args.scale_weight}_"
+        f"scale_weight={args.scale_weight}_"
         f"time={datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
     print(f"Experiment name: {exp_name}")
@@ -420,8 +420,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--T0", type=float, default=1000)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--T0", type=float, default=500)
     parser.add_argument("--lr_min", type=float, default=1e-5)
     parser.add_argument("--seed", type=int, default=0)
 
@@ -449,7 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("--scale_weight", type=float, default=0.1)
 
     # confidence scaling
-    parser.add_argument("--var_scale", type=float, default=0.01)
+    parser.add_argument("--var_scale", type=float, default=0.1)
 
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")

@@ -200,13 +200,13 @@ with tab1:
                 buffer = io.BytesIO(bytes_data)
                 image = np.load(buffer)
             else:
-                image = np.array(Image.open(uploaded_file).convert("RGB"))
+                image = np.array(Image.open(uploaded_file).convert("RGB")) / 255.   # convert to float
 
             # Display original image (without preprocessing)
             col1, col2 = st.columns(2)
             with col1:
                 image_for_show = smooth_scale(image[..., 0])
-                st.subheader("Original Image (Only 1st channel: order parameter)")
+                st.subheader("Original Image (Only 1st channel)")
                 show_coolwarm(image_for_show, caption=f"Uploaded: {uploaded_file.name}")
                 st.caption(f"Size: {image_for_show.shape[0]}×{image_for_show.shape[1]}, Max value: {np.max(image_for_show):.2f}, Min value: {np.min(image_for_show):.2f}")
 
