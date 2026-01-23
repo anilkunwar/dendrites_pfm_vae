@@ -213,8 +213,8 @@ with tab1:
 
             # Display reconstruction
             with col2:
-                st.subheader(f"Reconstructed Image (Only 1st channel: order parameter) {recon_image.shape}")
-                show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
+                st.subheader(f"Reconstructed Image (Only 1st channel: order parameter)")
+                show_coolwarm(recon_image[0], caption="VAE Reconstruction")
                 st.caption(f"Resized to: {expected_size}")
 
             # Display control parameters
