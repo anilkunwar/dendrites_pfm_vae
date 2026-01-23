@@ -182,6 +182,9 @@ if hasattr(model, 'H') and hasattr(model, 'W'):
 else:
     expected_size = (48, 48)
 
+param_names = ["t"]
+param_names += list(PARAM_RANGES.keys())
+
 # Main interface with tabs
 tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis"])
 
@@ -202,7 +205,7 @@ with tab1:
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image (Only 1st channel: order parameter)")
-                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True, clamp=True)
+                st.image(image[..., 0], caption=f"Uploaded: {uploaded_file.name}", use_column_width=True, clamp=True)
                 st.caption(f"Size: {image.shape[0]}×{image.shape[1]}")
 
             # Process image
@@ -210,8 +213,8 @@ with tab1:
 
             # Display reconstruction
             with col2:
-                st.subheader("Reconstructed Image")
-                st.image(recon_pil, caption="VAE Reconstruction", use_column_width=True, clamp=True)
+                st.subheader("Reconstructed Image (Only 1st channel: order parameter)")
+                st.image(recon_pil[..., 0], caption="VAE Reconstruction", use_column_width=True, clamp=True)
                 st.caption(f"Resized to: {expected_size}")
 
             # Display control parameters
@@ -219,7 +222,7 @@ with tab1:
 
             # Create parameter table
             param_df = pd.DataFrame({
-                "Parameter": [f"P{i:02d}" for i in range(len(ctr_array))],
+                "Parameter": param_names,
                 "Value": ctr_array,
                 "Normalized": (ctr_array - ctr_array.min()) / (ctr_array.max() - ctr_array.min() + 1e-8)
             })
@@ -328,8 +331,6 @@ with tab2:
                         compare_data[img_name] = params
 
                     compare_df = pd.DataFrame(compare_data)
-                    param_names = ["t"]
-                    param_names += list(PARAM_RANGES.keys())
                     compare_df.index = param_names
 
                     st.dataframe(compare_df.style.format("{:.4f}"))
