@@ -200,7 +200,7 @@ with tab1:
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image")
-                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True)
+                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True, clamp=True)
                 st.caption(f"Size: {image.size[0]}×{image.size[1]}, Mode: {image.mode}")
 
             # Process image
