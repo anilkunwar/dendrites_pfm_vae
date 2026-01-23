@@ -8,6 +8,7 @@ import io
 import pandas as pd
 from pathlib import Path
 from PIL import Image
+from matplotlib import colors, cm
 
 from src.dataloader import PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
@@ -117,7 +118,6 @@ def load_image_from_path(image_path):
 def process_image(image, model, image_size):
     """Process image through the model"""
 
-    original_shape = image.shape
     arr = cv2.resize(np.array(image), image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
@@ -126,8 +126,7 @@ def process_image(image, model, image_size):
         recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t[None])
 
     # Ensure reconstruction is in valid range
-    recon_img = torch.clamp(recon.squeeze(0), 0, 1)
-    recon_pil = transforms.ToPILImage()(recon_img).resize((original_shape[1], original_shape[0]))
+    recon_img = recon.detach().cpu().numpy()[0]
 
     # Get control parameters
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
@@ -137,7 +136,7 @@ def process_image(image, model, image_size):
     conf_s = conf_param_s.detach().cpu().numpy()[0]
     conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
-    return recon_pil, y_pred_s
+    return recon_img, y_pred_s
 
 
 # ==========================================================
@@ -188,6 +187,11 @@ param_names += list(PARAM_RANGES.keys())
 # Main interface with tabs
 tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis"])
 
+def show_coolwarm(gray_image, caption):
+    norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
+    colored_img = cm.coolwarm(norm(gray_image))  # shape: (H, W, 4)
+    st.image(colored_img, caption=caption, use_column_width=True)
+
 with tab1:
     st.header("Upload Your Own Image (Note your images should be PFM results (eta, c, potential) with valid data range")
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
@@ -205,7 +209,7 @@ with tab1:
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image (Only 1st channel: order parameter)")
-                st.image(image[..., 0], caption=f"Uploaded: {uploaded_file.name}", use_column_width=True, clamp=True)
+                show_coolwarm(image[..., 0], caption=f"Uploaded: {uploaded_file.name}")
                 st.caption(f"Size: {image.shape[0]}×{image.shape[1]}")
 
             # Process image
@@ -214,7 +218,7 @@ with tab1:
             # Display reconstruction
             with col2:
                 st.subheader("Reconstructed Image (Only 1st channel: order parameter)")
-                st.image(recon_pil[..., 0], caption="VAE Reconstruction", use_column_width=True, clamp=True)
+                show_coolwarm(recon_pil[..., 0], caption="VAE Reconstruction")
                 st.caption(f"Resized to: {expected_size}")
 
             # Display control parameters
