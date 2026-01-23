@@ -9,6 +9,7 @@ from pathlib import Path
 from PIL import Image
 from matplotlib import colors, cm
 
+from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import inv_scale_params, smooth_scale, PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
 
@@ -182,7 +183,7 @@ param_names = ["t"]
 param_names += list(PARAM_RANGES.keys())
 
 # Main interface with tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "Dendrite Intensity Score", "Heuristic Latent Space Exploration"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "Heuristic Latent Space Exploration"])
 
 def show_coolwarm(gray_image, caption):
     norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
@@ -322,7 +323,7 @@ with tab2:
 with tab3:
     st.header("Batch Image Analysis")
 
-    if test_images:
+    if test_images is not None:
         st.info(f"Found {len(test_images)} images in test folder. Select which ones to analyze.")
 
         # Multi-select for batch processing
@@ -403,6 +404,142 @@ with tab3:
                     )
     else:
         st.warning("No test images found for batch analysis.")
+
+with tab4:
+    st.header("Dendrite Intensity Analysis")
+
+    # ========== 1) Session state for tab4 ==========
+    if "tab4_items" not in st.session_state:
+        # 每个元素：{"id": str, "name": str, "source": "upload"/"test", "orig": np.ndarray, "result": np.ndarray, "score": float}
+        st.session_state.tab4_items = []
+
+    def _tab4_make_id(prefix: str, name: str) -> str:
+        # 生成稳定且不太容易冲突的 key
+        return f"{prefix}:{name}:{len(st.session_state.tab4_items)}"
+
+    def tab4_add_item(img: np.ndarray, name: str, source: str):
+        if img is None:
+            return
+        try:
+            result_img, _, scores = generate_analysis_figure(img)
+            st.session_state.tab4_items.append({
+                "id": _tab4_make_id(source, name),
+                "name": name,
+                "source": source,
+                "orig": img,
+                "result": result_img,
+                "score": scores["final_score"],
+            })
+        except Exception as e:
+            st.error(f"tab4 analyze error for {name}: {e}")
+
+    # ========== 2) Two-column UI ==========
+    left_col, right_col = st.columns(2, gap="large")
+
+    with left_col:
+        st.subheader("📤 上传图像（可多选）")
+        up_files = st.file_uploader(
+            "选择一个或多个图像文件（.npy / jpg / png / jpeg / bmp / tiff）",
+            type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"],
+            accept_multiple_files=True,
+            key="tab4_uploader",
+        )
+        if up_files:
+            # 立即加入展示列表
+            for uf in up_files:
+                try:
+                    if uf.name.endswith(".npy"):
+                        buf = io.BytesIO(uf.getvalue())
+                        img = np.load(buf)
+                    else:
+                        img = np.array(Image.open(uf).convert("RGB")) / 255.0
+                    tab4_add_item(img, uf.name, source="upload")
+                except Exception as e:
+                    st.error(f"上传文件解析失败 {uf.name}: {e}")
+
+        st.caption("提示：你可以反复上传，新增的图像会追加到下方展示列表。")
+
+    with right_col:
+        st.subheader("🧰 从测试图像直接调用（可多选）")
+
+        if test_images:
+            test_names = [p.name for p in test_images]
+            picked = st.multiselect(
+                "选择要加入的测试图像：",
+                options=test_names,
+                default=[],
+                key="tab4_test_pick",
+            )
+
+            add_btn = st.button("➕ 添加到展示", key="tab4_add_test_btn")
+
+            if add_btn and picked:
+                name_to_path = {p.name: p for p in test_images}
+                for nm in picked:
+                    try:
+                        img = load_image_from_path(name_to_path[nm])
+                        tab4_add_item(img, nm, source="test")
+                    except Exception as e:
+                        st.error(f"测试图像加载失败 {nm}: {e}")
+        else:
+            st.warning("未发现测试图像文件夹。请在项目目录创建 test_input（或脚本里 get_test_images 支持的目录名）并放入图像。")
+
+        st.caption("提示：右侧是“选择后点击添加”，避免每次改动选择就重复加入。")
+
+    st.markdown("---")
+
+    # ========== 3) Gallery: show + delete ==========
+    st.subheader("🖼️ 已加入的图像（可删除）")
+
+    if not st.session_state.tab4_items:
+        st.info("还没有图像。请在左侧上传，或在右侧选择测试图像加入。")
+    else:
+        # 顶部操作：清空
+        top_ops = st.columns([1, 1, 3])
+        with top_ops[0]:
+            if st.button("🧹 清空列表", key="tab4_clear_all"):
+                st.session_state.tab4_items = []
+                st.rerun()
+        with top_ops[1]:
+            st.metric("当前图像数", len(st.session_state.tab4_items))
+
+        st.markdown("")
+
+        # 逐项展示：原图 + 结果图 + 分数 + 删除
+        for idx, item in enumerate(list(st.session_state.tab4_items)):
+            container = st.container(border=True)
+            with container:
+                header_cols = st.columns([3, 1, 1])
+                with header_cols[0]:
+                    st.markdown(f"**{item['name']}**  · 来源：`{item['source']}`")
+                with header_cols[1]:
+                    st.metric("Score", f"{item['score']:.4f}")
+                with header_cols[2]:
+                    if st.button("🗑️ 删除", key=f"tab4_del_{item['id']}"):
+                        # 删除该项
+                        st.session_state.tab4_items.pop(idx)
+                        st.rerun()
+
+                img_cols = st.columns(2, gap="large")
+                with img_cols[0]:
+                    st.caption("Original（仅展示第1通道的 coolwarm）")
+                    # 复用你上面定义过的 show_coolwarm
+                    try:
+                        orig = item["orig"]
+                        if orig.ndim == 2:
+                            show_coolwarm(orig, caption="Original")
+                        else:
+                            show_coolwarm(orig[..., 0], caption="Original")
+                    except Exception:
+                        # 兜底：直接 st.image
+                        st.image(item["orig"], use_column_width=True)
+
+                with img_cols[1]:
+                    st.caption("Result（占位分析输出图）")
+                    st.image(item["result"], use_column_width=True)
+
+with tab5:
+    pass
 
 # Footer
 st.markdown("---")
