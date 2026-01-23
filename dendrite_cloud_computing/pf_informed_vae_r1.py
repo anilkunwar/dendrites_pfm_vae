@@ -497,27 +497,10 @@ with tab4:
                     st.metric("Score", f"{item['score']:.4f}")
                 with header_cols[2]:
                     if st.button("🗑️ Delete", key=f"tab4_del_{item['id']}"):
-                        # 删除该项
                         st.session_state.tab4_items.pop(idx)
                         st.rerun()
-
-                img_cols = st.columns(2, gap="large")
-                with img_cols[0]:
-                    st.caption("Original（仅展示第1通道的 coolwarm）")
-                    # 复用你上面定义过的 show_coolwarm
-                    try:
-                        orig = item["orig"]
-                        if orig.ndim == 2:
-                            show_coolwarm(orig, caption="Original")
-                        else:
-                            show_coolwarm(orig[..., 0], caption="Original")
-                    except Exception:
-                        # 兜底：直接 st.image
-                        st.image(item["orig"], use_column_width=True)
-
-                with img_cols[1]:
-                    st.caption("Result")
-                    st.pyplot(item["result"], use_column_width=True)
+                st.caption("Result")
+                st.pyplot(item["result"])
 
 with tab5:
     pass
