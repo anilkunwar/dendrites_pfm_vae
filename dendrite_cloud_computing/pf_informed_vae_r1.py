@@ -105,16 +105,14 @@ def get_test_images():
 
 def load_image_from_path(image_path):
     """Load image from file path"""
-    # try:
-    if str(image_path).endswith(".npy"):
-        st.info(f"Loading npy from {image_path}")
-        return np.load(image_path)
-    else:
-        st.info(f"Loading image from {image_path}")
-        return Image.open(image_path).convert("RGB")
-    # except Exception as e:
-    #     st.error(f"Error loading image {image_path}: {str(e)}")
-    #     return None
+    try:
+        if image_path.endswith(".npy"):
+            return np.load(image_path)
+        else:
+            return Image.open(image_path).convert("RGB")
+    except Exception as e:
+        st.error(f"Error loading image {image_path}: {str(e)}")
+        return None
 
 
 def process_image(image, model, image_size):
@@ -193,8 +191,13 @@ with tab1:
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
 
     if uploaded_file is not None:
-        # try:
-            image = load_image_from_path(uploaded_file)
+        try:
+            if uploaded_file.name.endswith(".npy"):
+                bytes_data = uploaded_file.getvalue()
+                buffer = io.BytesIO(bytes_data)
+                image = np.load(buffer)
+            else:
+                image = Image.open(uploaded_file).convert("RGB")
 
             # Display original image
             col1, col2 = st.columns(2)
@@ -254,8 +257,8 @@ with tab1:
                 mime="image/png"
             )
 
-        # except Exception as e:
-        #     st.error(f"Error processing image: {str(e)}")
+        except Exception as e:
+            st.error(f"Error processing image: {str(e)}")
 
 with tab2:
     st.header("Select from Test Images")
