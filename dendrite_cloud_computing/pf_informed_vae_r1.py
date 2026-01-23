@@ -122,7 +122,7 @@ def process_image(image, model, image_size):
         recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t[None])
 
     # Ensure reconstruction is in valid range
-    recon_img = recon.detach().cpu().numpy()[0]
+    recon_img = recon.detach().cpu().numpy()[0].transpose(1, 2, 0)
 
     # Get control parameters
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
@@ -214,7 +214,7 @@ with tab1:
             # Display reconstruction
             with col2:
                 st.subheader(f"Reconstructed Image (Only 1st channel: order parameter)")
-                show_coolwarm(recon_image[0], caption="VAE Reconstruction")
+                show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
                 st.caption(f"Resized to: {expected_size}")
 
             # Display control parameters
