@@ -454,10 +454,10 @@ with tab4:
             selected_dendrite_images = st.multiselect(
                 "Select images for analysis:",
                 options=[img.name for img in test_images],
-                default=[img.name for img in test_images[:3]] if len(test_images) >= 3 else []
+                default=[]
             )
 
-            if st.button("🚀 Run Analysis") and selected_dendrite_images:
+            if selected_dendrite_images:
                 name_to_path = {p.name: p for p in test_images}
                 for nm in selected_dendrite_images:
                     try:
