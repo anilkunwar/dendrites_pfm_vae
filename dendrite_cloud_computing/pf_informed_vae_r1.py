@@ -483,54 +483,54 @@ with tab4:
     st.markdown("---")
 
     # ========== 3) Gallery: show + delete ==========
-    st.subheader("🖼️ Images Added")
+    st.subheader("🖼️ Analysis Statistics")
 
     if not st.session_state.tab4_items:
         st.info("No images added yet.")
-    else:
-        # 顶部操作：清空
-        top_ops = st.columns([1, 1, 3])
-        with top_ops[0]:
-            if st.button("🧹 Clear All", key="tab4_clear_all"):
-                st.session_state.tab4_items = []
-                st.rerun()
-        with top_ops[1]:
-            st.metric("Number of images", len(st.session_state.tab4_items))
-
-        st.markdown("")
-
-        # 逐项展示：原图 + 结果图 + 分数 + 删除
-        for idx, item in enumerate(list(st.session_state.tab4_items)):
-            container = st.container(border=True)
-            with container:
-                header_cols = st.columns([3, 1, 1])
-                with header_cols[0]:
-                    st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
-                with header_cols[1]:
-                    st.metric("Score", f"{item['score']:.4f}")
-                with header_cols[2]:
-                    if st.button("🗑️ Delete", key=f"tab4_del_{item['id']}"):
-                        # 删除该项
-                        st.session_state.tab4_items.pop(idx)
-                        st.rerun()
-
-                img_cols = st.columns(2, gap="large")
-                with img_cols[0]:
-                    st.caption("Original（仅展示第1通道的 coolwarm）")
-                    # 复用你上面定义过的 show_coolwarm
-                    try:
-                        orig = item["orig"]
-                        if orig.ndim == 2:
-                            show_coolwarm(orig, caption="Original")
-                        else:
-                            show_coolwarm(orig[..., 0], caption="Original")
-                    except Exception:
-                        # 兜底：直接 st.image
-                        st.image(item["orig"], use_column_width=True)
-
-                with img_cols[1]:
-                    st.caption("Result")
-                    st.image(item["result"], use_column_width=True)
+    # else:
+    #     # 顶部操作：清空
+    #     top_ops = st.columns([1, 1, 3])
+    #     with top_ops[0]:
+    #         if st.button("🧹 Clear All", key="tab4_clear_all"):
+    #             st.session_state.tab4_items = []
+    #             st.rerun()
+    #     with top_ops[1]:
+    #         st.metric("Number of images", len(st.session_state.tab4_items))
+    #
+    #     st.markdown("")
+    #
+    #     # 逐项展示：原图 + 结果图 + 分数 + 删除
+    #     for idx, item in enumerate(list(st.session_state.tab4_items)):
+    #         container = st.container(border=True)
+    #         with container:
+    #             header_cols = st.columns([3, 1, 1])
+    #             with header_cols[0]:
+    #                 st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
+    #             with header_cols[1]:
+    #                 st.metric("Score", f"{item['score']:.4f}")
+    #             with header_cols[2]:
+    #                 if st.button("🗑️ Delete", key=f"tab4_del_{item['id']}"):
+    #                     # 删除该项
+    #                     st.session_state.tab4_items.pop(idx)
+    #                     st.rerun()
+    #
+    #             img_cols = st.columns(2, gap="large")
+    #             with img_cols[0]:
+    #                 st.caption("Original（仅展示第1通道的 coolwarm）")
+    #                 # 复用你上面定义过的 show_coolwarm
+    #                 try:
+    #                     orig = item["orig"]
+    #                     if orig.ndim == 2:
+    #                         show_coolwarm(orig, caption="Original")
+    #                     else:
+    #                         show_coolwarm(orig[..., 0], caption="Original")
+    #                 except Exception:
+    #                     # 兜底：直接 st.image
+    #                     st.image(item["orig"], use_column_width=True)
+    #
+    #             with img_cols[1]:
+    #                 st.caption("Result")
+    #                 st.image(item["result"], use_column_width=True)
 
 with tab5:
     pass
