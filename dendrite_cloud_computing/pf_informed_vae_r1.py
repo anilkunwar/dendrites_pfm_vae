@@ -410,11 +410,11 @@ with tab4:
 
     # ========== 1) Session state for tab4 ==========
     if "tab4_items" not in st.session_state:
-        # 每个元素：{"id": str, "name": str, "source": "upload"/"test", "orig": np.ndarray, "result": np.ndarray, "score": float}
+        # {"id": str, "name": str, "source": "upload"/"test", "orig": np.ndarray, "result": np.ndarray, "score": float}
         st.session_state.tab4_items = []
 
     def _tab4_make_id(prefix: str, name: str) -> str:
-        # 生成稳定且不太容易冲突的 key
+        # generate key
         return f"{prefix}:{name}:{len(st.session_state.tab4_items)}"
 
     def tab4_add_item(img: np.ndarray, name: str, source: str):
@@ -437,15 +437,14 @@ with tab4:
     left_col, right_col = st.columns(2, gap="large")
 
     with left_col:
-        st.subheader("📤 上传图像（可多选）")
+        st.subheader("📤 Upload Images")
         up_files = st.file_uploader(
-            "选择一个或多个图像文件（.npy / jpg / png / jpeg / bmp / tiff）",
+            "Choose one or more image files...",
             type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"],
             accept_multiple_files=True,
             key="tab4_uploader",
         )
         if up_files:
-            # 立即加入展示列表
             for uf in up_files:
                 try:
                     if uf.name.endswith(".npy"):
@@ -455,53 +454,48 @@ with tab4:
                         img = np.array(Image.open(uf).convert("RGB")) / 255.0
                     tab4_add_item(img, uf.name, source="upload")
                 except Exception as e:
-                    st.error(f"上传文件解析失败 {uf.name}: {e}")
+                    st.error(f"Error loading image {uf.name}: {e}")
 
-        st.caption("提示：你可以反复上传，新增的图像会追加到下方展示列表。")
+        st.caption("Tip: you can upload multiple times. Newly uploaded images will be added to the list below.")
 
     with right_col:
-        st.subheader("🧰 从测试图像直接调用（可多选）")
+        st.subheader("Select from Test Images")
 
         if test_images:
             test_names = [p.name for p in test_images]
-            picked = st.multiselect(
-                "选择要加入的测试图像：",
-                options=test_names,
-                default=[],
-                key="tab4_test_pick",
+            selected_images = st.multiselect(
+                "Select images for batch analysis:",
+                options=[img.name for img in test_images],
+                default=[img.name for img in test_images[:3]] if len(test_images) >= 3 else []
             )
 
-            add_btn = st.button("➕ 添加到展示", key="tab4_add_test_btn")
-
-            if add_btn and picked:
+            if st.button("🚀 Run Analysis") and selected_images:
                 name_to_path = {p.name: p for p in test_images}
-                for nm in picked:
+                for nm in selected_images:
                     try:
                         img = load_image_from_path(name_to_path[nm])
                         tab4_add_item(img, nm, source="test")
                     except Exception as e:
-                        st.error(f"测试图像加载失败 {nm}: {e}")
+                        st.error(f"Error loading image {nm}: {e}")
         else:
-            st.warning("未发现测试图像文件夹。请在项目目录创建 test_input（或脚本里 get_test_images 支持的目录名）并放入图像。")
-
-        st.caption("提示：右侧是“选择后点击添加”，避免每次改动选择就重复加入。")
+            st.warning("No test images found for batch analysis.")
 
     st.markdown("---")
 
     # ========== 3) Gallery: show + delete ==========
-    st.subheader("🖼️ 已加入的图像（可删除）")
+    st.subheader("🖼️ Images Added")
 
     if not st.session_state.tab4_items:
-        st.info("还没有图像。请在左侧上传，或在右侧选择测试图像加入。")
+        st.info("No images added yet.")
     else:
         # 顶部操作：清空
         top_ops = st.columns([1, 1, 3])
         with top_ops[0]:
-            if st.button("🧹 清空列表", key="tab4_clear_all"):
+            if st.button("🧹 Clear All", key="tab4_clear_all"):
                 st.session_state.tab4_items = []
                 st.rerun()
         with top_ops[1]:
-            st.metric("当前图像数", len(st.session_state.tab4_items))
+            st.metric("Number of images", len(st.session_state.tab4_items))
 
         st.markdown("")
 
@@ -511,11 +505,11 @@ with tab4:
             with container:
                 header_cols = st.columns([3, 1, 1])
                 with header_cols[0]:
-                    st.markdown(f"**{item['name']}**  · 来源：`{item['source']}`")
+                    st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
                 with header_cols[1]:
                     st.metric("Score", f"{item['score']:.4f}")
                 with header_cols[2]:
-                    if st.button("🗑️ 删除", key=f"tab4_del_{item['id']}"):
+                    if st.button("🗑️ Delete", key=f"tab4_del_{item['id']}"):
                         # 删除该项
                         st.session_state.tab4_items.pop(idx)
                         st.rerun()
@@ -535,7 +529,7 @@ with tab4:
                         st.image(item["orig"], use_column_width=True)
 
                 with img_cols[1]:
-                    st.caption("Result（占位分析输出图）")
+                    st.caption("Result")
                     st.image(item["result"], use_column_width=True)
 
 with tab5:
