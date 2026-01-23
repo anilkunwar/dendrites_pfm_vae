@@ -206,7 +206,7 @@ with tab1:
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image (Only 1st channel: order parameter)")
-                show_coolwarm(image[..., 0], caption=f"Uploaded: {uploaded_file.name}")
+                show_coolwarm(smooth_scale(image[..., 0]), caption=f"Uploaded: {uploaded_file.name}")
                 st.caption(f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image):.2f}, Min value: {np.min(image):.2f}")
 
             # Process image

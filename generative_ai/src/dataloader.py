@@ -28,11 +28,21 @@ PARAM_RANGES = {
     "Noise": (5e-4, 5e-3)
 }
 
-def inverse_scale_params(params):
+def scale_params(params):
     normed = {}
     for key, val in params.items():
         lo, hi = PARAM_RANGES[key]
         normed[key] = (val - lo) / (hi - lo)
+    return normed
+
+def inv_scale_params(params:np.ndarray) -> list:
+    if params.shape != (len(PARAM_RANGES) + 1,):
+        raise ValueError("Wrong input to inv_scale_params")
+    normed = [params[0]]
+    vs = list(PARAM_RANGES.values())
+    for vi in range(1, params.shape[0]):
+        lo, hi = vs[vi-1]
+        normed.append(params[vi] * (hi - lo) + lo)
     return normed
 
 def smooth_scale(x, k=0.3):
@@ -94,7 +104,7 @@ class DendritePFMDataset(Dataset):
         if meta_path not in self.meta_dict:
             with open(meta_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
-            self.meta_dict[meta_path] = inverse_scale_params(meta).values()
+            self.meta_dict[meta_path] = scale_params(meta).values()
         c += self.meta_dict[meta_path]
 
         return tensor_t, torch.tensor(c, dtype=torch.float32), int(os.path.basename(sub_path).split("_")[-1]), tensor
