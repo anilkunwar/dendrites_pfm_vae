@@ -1,11 +1,9 @@
 import json, os
-import math
 
 import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.transforms import transforms
 
 # param range -> (min, max)
 PARAM_RANGES = {
@@ -47,7 +45,10 @@ def inv_scale_params(params:np.ndarray) -> list:
     return normed
 
 def smooth_scale(x, k=0.3):
-    return 0.5 + 0.5 * math.tanh(k * x)
+    if isinstance(x, np.ndarray):
+        return 0.5 + 0.5 * np.tanh(k * x)
+    else:
+        return 0.5 + 0.5 * torch.tanh(k * x)
 
 def inv_smooth_scale(y, k=0.3, eps=1e-6):
     y = torch.clamp(y, eps, 1 - eps)
