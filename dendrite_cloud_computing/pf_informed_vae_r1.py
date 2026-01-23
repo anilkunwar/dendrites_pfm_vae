@@ -452,7 +452,7 @@ with tab4:
                         img = np.load(buf)
                     else:
                         img = np.array(Image.open(uf).convert("RGB")) / 255.0
-                    tab4_add_item(img, uf.name, source="upload")
+                    # tab4_add_item(img, uf.name, source="upload")
                 except Exception as e:
                     st.error(f"Error loading image {uf.name}: {e}")
 
