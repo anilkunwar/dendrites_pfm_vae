@@ -201,9 +201,9 @@ with tab1:
             # Display original image
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("Original Image")
+                st.subheader("Original Image (Only 1st channel: order parameter)")
                 st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True, clamp=True)
-                st.caption(f"Size: {image.shape[0]}×{image.shape[1]}, Mode: {image.mode}")
+                st.caption(f"Size: {image.shape[0]}×{image.shape[1]}")
 
             # Process image
             recon_pil, ctr_array = process_image(np.array(image), model, expected_size)
@@ -211,7 +211,7 @@ with tab1:
             # Display reconstruction
             with col2:
                 st.subheader("Reconstructed Image")
-                st.image(recon_pil, caption="VAE Reconstruction", use_column_width=True)
+                st.image(recon_pil, caption="VAE Reconstruction", use_column_width=True, clamp=True)
                 st.caption(f"Resized to: {expected_size}")
 
             # Display control parameters
