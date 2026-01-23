@@ -189,11 +189,11 @@ def show_coolwarm(gray_image, caption):
     colored_img = cm.coolwarm(norm(gray_image))  # shape: (H, W, 4)
     st.image(colored_img, caption=caption, use_column_width=True)
 
-def analyze_image(image, image_name):
+def analyze_image(image, image_name:str):
     # Display original image (without preprocessing)
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Original Image (Only 1st channel)")
+        st.subheader(f"Original Image (Only 1st channel) {image.shape} {image_name}")
         show_coolwarm(image, caption=f"Selected: {image_name}")
         st.caption(
             f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image):.2f}, Min value: {np.min(image):.2f}")
