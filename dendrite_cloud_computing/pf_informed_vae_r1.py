@@ -118,6 +118,7 @@ def load_image_from_path(image_path):
 def process_image(image, model, image_size):
     """Process image through the model"""
 
+    original_shape = image.shape
     arr = cv2.resize(np.array(image), image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
@@ -127,7 +128,7 @@ def process_image(image, model, image_size):
 
     # Ensure reconstruction is in valid range
     recon_img = torch.clamp(recon.squeeze(0), 0, 1)
-    recon_pil = transforms.ToPILImage()(recon_img)
+    recon_pil = transforms.ToPILImage()(recon_img).resize((original_shape[1], original_shape[0]))
 
     # Get control parameters
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
