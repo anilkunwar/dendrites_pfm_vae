@@ -632,7 +632,7 @@ def generate_analysis_figure(
         base_name = os.path.splitext(os.path.basename(image_or_path))[0]
         img = np.load(image_or_path)[..., 0].astype(np.float32)
     else:
-        img = image_or_path
+        img = image_or_path.astype(np.float32)
         if isinstance(img, np.ndarray) and img.ndim == 3:
             base_name = "dendrite_rgb"
 
