@@ -29,6 +29,67 @@ def save_image_grid(tensor, path, nrow=3):
     )
     vutils.save_image(grid, path)
 
+def plot_all_metrics_separately(
+    df_train,
+    df_val=None,
+    save_root="plots",
+    xcol="epoch",
+    drop_top=0.05,      # 删除最大的 5%
+):
+    """
+    Plot every numeric column (except xcol) as a separate figure.
+    Train / Val are filtered independently.
+    """
+
+    os.makedirs(save_root, exist_ok=True)
+
+    def _filter_top(x, y, drop_top):
+        x = np.asarray(x)
+        y = np.asarray(y)
+        mask = np.isfinite(x) & np.isfinite(y)
+        x, y = x[mask], y[mask]
+        if len(y) == 0:
+            return x, y
+        thr = np.percentile(y, 100 * (1 - drop_top))
+        keep = y <= thr
+        return x[keep], y[keep]
+
+    # 选出所有数值列
+    numeric_cols = [
+        c for c in df_train.columns
+        if c != xcol and pd.api.types.is_numeric_dtype(df_train[c])
+    ]
+
+    for col in numeric_cols:
+        fig = plt.figure()
+        ax = plt.gca()
+
+        # -------- train --------
+        x_t = df_train[xcol].values
+        y_t = df_train[col].values
+        x_t, y_t = _filter_top(x_t, y_t, drop_top)
+        if len(y_t) > 0:
+            ax.plot(x_t, y_t, label="train", alpha=0.7)
+
+        # -------- val --------
+        if df_val is not None and col in df_val.columns:
+            x_v = df_val[xcol].values
+            y_v = df_val[col].values
+            x_v, y_v = _filter_top(x_v, y_v, drop_top)
+            if len(y_v) > 0:
+                ax.plot(x_v, y_v, label="val", alpha=0.7)
+
+        ax.set_xlabel(xcol)
+        ax.set_ylabel(col)
+        ax.set_title(f"{col} (drop top {int(drop_top*100)}%)")
+        ax.legend()
+
+        fig.tight_layout()
+        fig.savefig(
+            os.path.join(save_root, f"{col}.png"),
+            dpi=300
+        )
+        plt.close(fig)
 
 def multiscale_recon_loss(x_pred, x_true, num_scales=4, scale_weight=0.5):
     total, weight = 0.0, 0.0
@@ -185,7 +246,7 @@ def main(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer,
-        100,
+        500,
         eta_min=1e-5,
     )
 
@@ -337,43 +398,7 @@ def main(args):
         df_train.to_csv(os.path.join(save_root, "train_epoch.csv"), index=False)
         df_val.to_csv(os.path.join(save_root, "val_epoch.csv"), index=False)
 
-        # -------------------- Plot losses --------------------
-        plt.figure()
-        plt.plot(df_train["epoch"], df_train["total"], label="train")
-        plt.plot(df_val["epoch"], df_val["total"], label="val")
-        plt.legend(); plt.title("Total Loss")
-        plt.savefig(os.path.join(save_root, "loss_total.png"), dpi=300)
-        plt.close()
-
-        plt.figure()
-        plt.plot(df_train["epoch"], df_train["recon"], label="recon")
-        plt.plot(df_train["epoch"], df_train["kl"], label="kl")
-        plt.plot(df_train["epoch"], df_train["ctr_nll"], label="ctr_nll")
-        plt.legend(); plt.title("Train Main Losses")
-        plt.savefig(os.path.join(save_root, "loss_train_main.png"), dpi=300)
-        plt.close()
-
-        plt.figure()
-        plt.plot(df_train["epoch"], df_train["ctr_mse_monitor"], label="ctr_mse_monitor")
-        plt.plot(df_train["epoch"], df_train["conf_global_mean"], label="conf_global_mean")
-        plt.legend(); plt.title("CTR Monitor (MSE) + Global Confidence")
-        plt.savefig(os.path.join(save_root, "ctr_monitor.png"), dpi=300)
-        plt.close()
-
-        plt.figure()
-        plt.plot(df_train["epoch"], df_train["phy"], label="phy")
-        plt.plot(df_train["epoch"], df_train["interface"], label="interface")
-        plt.plot(df_train["epoch"], df_train["two_phase"], label="two_phase")
-        plt.legend(); plt.title("Phy Losses")
-        plt.savefig(os.path.join(save_root, "loss_phy.png"), dpi=300)
-        plt.close()
-
-        plt.figure()
-        plt.plot(df_train["epoch"], df_train["beta"], label="beta")
-        plt.plot(df_train["epoch"], df_train["gamma"], label="gamma")
-        plt.legend(); plt.title("Param Schedule")
-        plt.savefig(os.path.join(save_root, "param_schedule.png"), dpi=300)
-        plt.close()
+        plot_all_metrics_separately(df_train, df_val, save_root=save_root)
 
         # -------------------- Early stopping --------------------
         if val_epoch["total"] < best_val:
