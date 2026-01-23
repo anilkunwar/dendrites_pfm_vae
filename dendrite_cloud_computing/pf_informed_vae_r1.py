@@ -107,9 +107,9 @@ def load_image_from_path(image_path):
     """Load image from file path"""
     try:
         if str(image_path).endswith(".npy"):
-            return np.load(image_path)
+            return Image.fromarray(np.load(image_path))
         else:
-            return cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+            return Image.open(image_path).convert("RGB")
     except Exception as e:
         st.error(f"Error loading image {image_path}: {str(e)}")
         return None
@@ -118,7 +118,7 @@ def load_image_from_path(image_path):
 def process_image(image:np.ndarray, model, image_size):
     """Process image through the model"""
 
-    arr = cv2.resize(image, image_size)
+    arr = cv2.resize(np.array(image), image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
 
@@ -201,7 +201,7 @@ with tab1:
                 st.caption(f"Size: {image.size[0]}×{image.size[1]}, Mode: {image.mode}")
 
             # Process image
-            recon_pil, ctr_array = process_image(image, model, expected_size)
+            recon_pil, ctr_array = process_image(np.array(image), model, expected_size)
 
             # Display reconstruction
             with col2:
