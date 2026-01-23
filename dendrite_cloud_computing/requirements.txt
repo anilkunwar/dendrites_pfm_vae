@@ -1,5 +1,5 @@
 streamlit
 torch
 torchvision
-opencv-python
+opencv-python-headless
 matplotlib
