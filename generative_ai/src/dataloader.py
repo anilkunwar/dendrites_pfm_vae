@@ -1,4 +1,5 @@
 import json, os
+import math
 
 import cv2
 import numpy as np
@@ -46,7 +47,7 @@ def inv_scale_params(params:np.ndarray) -> list:
     return normed
 
 def smooth_scale(x, k=0.3):
-    return 0.5 + 0.5 * torch.tanh(k * x)
+    return 0.5 + 0.5 * math.tanh(k * x)
 
 def inv_smooth_scale(y, k=0.3, eps=1e-6):
     y = torch.clamp(y, eps, 1 - eps)
