@@ -117,7 +117,7 @@ def load_image_from_path(image_path):
 def process_image(image, model, image_size):
     """Process image through the model"""
 
-    original_shape = image.size
+    original_shape = image.shape
     arr = cv2.resize(np.array(image), image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
@@ -196,14 +196,14 @@ with tab1:
                 buffer = io.BytesIO(bytes_data)
                 image = np.load(buffer)
             else:
-                image = Image.open(uploaded_file).convert("RGB")
-            st.caption(image.__class__.__name__)
+                image = np.array(Image.open(uploaded_file).convert("RGB"))
+
             # Display original image
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image")
-                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True, clamp=True)
-                st.caption(f"Size: {image.size[0]}×{image.size[1]}, Mode: {image.mode}")
+                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_column_width=True)
+                st.caption(f"Size: {image.shape[0]}×{image.shape[1]}, Mode: {image.mode}")
 
             # Process image
             recon_pil, ctr_array = process_image(np.array(image), model, expected_size)
