@@ -426,7 +426,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
-    parser.add_argument("--latent_size", type=int, default=8)
+    parser.add_argument("--latent_size", type=int, default=16)
     parser.add_argument("--hidden_dim", type=int, default=128)
     parser.add_argument("--num_params", type=int, default=15)
 
@@ -449,7 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("--scale_weight", type=float, default=0.1)
 
     # confidence scaling
-    parser.add_argument("--var_scale", type=float, default=1)
+    parser.add_argument("--var_scale", type=float, default=0.01)
 
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")
