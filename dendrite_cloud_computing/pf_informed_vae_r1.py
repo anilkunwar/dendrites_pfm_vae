@@ -118,7 +118,7 @@ def load_image_from_path(image_path):
 def process_image(image, model, image_size):
     """Process image through the model"""
 
-    original_shape = image.shape
+    original_shape = image.size
     arr = cv2.resize(np.array(image), image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
@@ -191,7 +191,7 @@ with tab1:
     uploaded_file = st.file_uploader("Choose an image file...", type=[".npy", "jpg", "png", "jpeg", "bmp", "tiff"])
 
     if uploaded_file is not None:
-        # try:
+        try:
             image = load_image_from_path(uploaded_file)
 
             # Display original image
@@ -252,8 +252,8 @@ with tab1:
                 mime="image/png"
             )
 
-        # except Exception as e:
-        #     st.error(f"Error processing image: {str(e)}")
+        except Exception as e:
+            st.error(f"Error processing image: {str(e)}")
 
 with tab2:
     st.header("Select from Test Images")
