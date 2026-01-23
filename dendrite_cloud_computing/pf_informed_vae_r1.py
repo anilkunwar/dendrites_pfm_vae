@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image
 from matplotlib import colors, cm
 
+from src.dataloader import inv_scale_params
 from src.dataloader import PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
 
@@ -213,12 +214,12 @@ with tab1:
                 st.caption(f"Size: {image.shape[0]}×{image.shape[1]}")
 
             # Process image
-            recon_pil, ctr_array = process_image(np.array(image), model, expected_size)
+            recon_image, ctr_array = process_image(np.array(image), model, expected_size)
 
             # Display reconstruction
             with col2:
                 st.subheader("Reconstructed Image (Only 1st channel: order parameter)")
-                show_coolwarm(recon_pil[..., 0], caption="VAE Reconstruction")
+                show_coolwarm(recon_image[..., 0], caption="VAE Reconstruction")
                 st.caption(f"Resized to: {expected_size}")
 
             # Display control parameters
@@ -227,8 +228,8 @@ with tab1:
             # Create parameter table
             param_df = pd.DataFrame({
                 "Parameter": param_names,
-                "Value": ctr_array,
-                "Normalized": (ctr_array - ctr_array.min()) / (ctr_array.max() - ctr_array.min() + 1e-8)
+                "Predict Value (Normalized)": ctr_array,
+                "Predict Value (Denormalized)": inv_scale_params(ctr_array),
             })
 
             col_table, col_chart = st.columns([1, 2])
@@ -255,7 +256,7 @@ with tab1:
             # Download button
             st.markdown("---")
             buf = io.BytesIO()
-            recon_pil.save(buf, format="PNG")
+            Image.fromarray(recon_image).convert("RGB").save(buf, format="PNG")
             st.download_button(
                 label="📥 Download Reconstructed Image",
                 data=buf.getvalue(),

@@ -35,11 +35,14 @@ def scale_params(params):
         normed[key] = (val - lo) / (hi - lo)
     return normed
 
-def inv_scale_params(params):
-    normed = {}
-    for key, val in params.items():
-        lo, hi = PARAM_RANGES[key]
-        normed[key] = val * (hi - lo) + lo
+def inv_scale_params(params:np.ndarray) -> list:
+    if params.shape != (len(PARAM_RANGES) + 1,):
+        raise ValueError("Wrong input to inv_scale_params")
+    normed = [params[0]]
+    vs = list(PARAM_RANGES.values())
+    for vi in range(1, len(params)):
+        lo, hi = vs[vi]
+        normed.append(params[vi] * (hi - lo) + lo)
     return normed
 
 def smooth_scale(x, k=0.3):
