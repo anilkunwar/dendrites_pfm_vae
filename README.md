@@ -5,7 +5,7 @@
 
 (The description of the codes related to phase field method will be provided here)
 
-# Generative Machine Learning (Conditional VAE)
+# Generative Machine Learning (Dual-branch VAE)
 
 [![vaemodel](https://img.shields.io/badge/dendritevae1-streamlit-red)](https://phase-field-informed-vae1.streamlit.app/) (interfacial microstructure construction app)
 

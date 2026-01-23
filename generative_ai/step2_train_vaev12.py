@@ -246,8 +246,8 @@ def main(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer,
-        500,
-        eta_min=1e-5,
+        args.T0,
+        eta_min=args.lr_min,
     )
 
     beta_warup_epochs = int(args.epochs * args.beta_warmup_ratio)
@@ -421,6 +421,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--T0", type=float, default=500)
+    parser.add_argument("--lr_min", type=float, default=1e-5)
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
@@ -440,7 +442,7 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.001)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.1)
 
-    parser.add_argument("--phy_weight", type=float, default=0.001) # 设置为0可以实现重建效果
+    parser.add_argument("--phy_weight", type=float, default=0.00) # 设置为0可以实现重建效果
     parser.add_argument("--phy_alpha", type=float, default=1)
     parser.add_argument("--phy_beta", type=float, default=1)
 
