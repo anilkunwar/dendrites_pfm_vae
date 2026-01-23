@@ -133,9 +133,9 @@ def process_image(image, model, image_size):
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
         pi_s, mu_s, log_sigma_s, var_scale=0.01, topk=3
     )
-    y_pred_s = theta_hat_s.detach().cpu().numpy()
-    conf_s = conf_param_s.detach().cpu().numpy()
-    conf_global_s = conf_global_s.detach().cpu().numpy()
+    y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+    conf_s = conf_param_s.detach().cpu().numpy()[0]
+    conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
     return recon_pil, y_pred_s
 
