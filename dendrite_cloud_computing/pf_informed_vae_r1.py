@@ -201,9 +201,8 @@ with tab1:
                 image = np.load(buffer)
             else:
                 image = np.array(Image.open(uploaded_file).convert("RGB"))
-            image = smooth_scale(image) # preprocessing
 
-            # Display original image
+            # Display original image (without preprocessing)
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Original Image (Only 1st channel: order parameter)")
