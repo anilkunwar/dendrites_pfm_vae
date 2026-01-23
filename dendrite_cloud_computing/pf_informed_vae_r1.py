@@ -421,7 +421,7 @@ with tab4:
         if img is None:
             return
         try:
-            result_img, _, scores = generate_analysis_figure(img)
+            result_img, _, scores = generate_analysis_figure(img[..., 0])
             st.session_state.tab4_items.append({
                 "id": _tab4_make_id(source, name),
                 "name": name,
