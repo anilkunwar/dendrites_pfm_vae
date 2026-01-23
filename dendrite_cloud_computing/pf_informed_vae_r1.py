@@ -108,7 +108,7 @@ def load_image_from_path(image_path):
     try:
         if str(image_path).endswith(".npy"):
             st.info(f"Loading npy from {image_path}")
-            return Image.fromarray(np.load(image_path))
+            return np.load(image_path)
         else:
             st.info(f"Loading image from {image_path}")
             return Image.open(image_path).convert("RGB")
