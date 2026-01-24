@@ -92,7 +92,9 @@ with st.sidebar:
     """)
 
     # check for models
-    model_paths = {p: os.path.join("knowledge_base", p) for p in os.listdir("knowledge_base")}
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(current_dir, "knowledge_base")
+    model_paths = {p: os.path.join(model_dir, p) for p in os.listdir(model_dir)}
     selected_model_name = st.selectbox("Choose a test image:", list(model_paths.keys()))
     model = load_model(device)
 

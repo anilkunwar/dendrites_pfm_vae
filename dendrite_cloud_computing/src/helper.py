@@ -11,7 +11,6 @@ from src.modelv11 import mdn_point_and_confidence
 
 @st.cache_resource
 def load_model(model_path, device="cpu"):
-    current_dir = os.path.dirname(os.path.abspath(__file__))
 
     base_name = "vae_model.pt"
     num_parts = 4
