@@ -4,208 +4,14 @@ import cv2
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import io
 import pandas as pd
-from pathlib import Path
 from PIL import Image
 from matplotlib import colors, cm
 
 from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import inv_scale_params, smooth_scale, inv_smooth_scale, PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
-
-# ==========================================================
-# 3. STREAMLIT LOADING
-# ==========================================================
-@st.cache_resource
-def load_model():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Try multiple possible locations
-    possible_folders = ["knowledge_base", "knowledge-base", ".", "models"]
-    folder_found = None
-
-    for f in possible_folders:
-        test_path = os.path.join(current_dir, f)
-        if os.path.exists(test_path) and os.path.isdir(test_path):
-            # Check if part1 exists
-            part1_path = os.path.join(test_path, "vae_model.pt.part1")
-            if os.path.exists(part1_path):
-                folder_found = test_path
-                break
-
-    if folder_found is None:
-        st.error("❌ Could not find the model parts.")
-        st.info("Please ensure the model files are in one of these folders: " + ", ".join(possible_folders))
-        return None
-
-    base_name = "vae_model.pt"
-    num_parts = 4
-    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
-
-    try:
-        combined_data = io.BytesIO()
-        with st.spinner(f"Merging model parts from {os.path.basename(folder_found)}..."):
-            for p in parts:
-                if not os.path.exists(p):
-                    st.error(f"Missing: {p}")
-                    return None
-                with open(p, 'rb') as f:
-                    combined_data.write(f.read())
-
-        combined_data.seek(0)
-
-        # Load the model
-        device = torch.device('cpu')
-
-        # Try to load the state dict
-        try:
-            vae = torch.load(combined_data, map_location=device, weights_only=False)
-            vae.eval()
-            st.success("✅ Model loaded successfully!")
-            return vae
-
-        except Exception as e:
-            st.error(f"Error loading model: {str(e)}")
-            return None
-
-    except Exception as e:
-        st.error(f"Error reassembling model: {str(e)}")
-        return None
-
-
-# ==========================================================
-# 4. HELPER FUNCTIONS FOR IMAGE HANDLING
-# ==========================================================
-def get_test_images():
-    """Scan for test_input folder and return available images"""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Try different possible folder names
-    possible_folders = ["test_input", "test_images", "images", "test"]
-
-    for folder_name in possible_folders:
-        test_folder = os.path.join(current_dir, folder_name)
-        if os.path.exists(test_folder) and os.path.isdir(test_folder):
-            # Find all image files
-            image_extensions = ['.npy', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
-            image_files = []
-
-            for ext in image_extensions:
-                image_files.extend(Path(test_folder).glob(f"*{ext}"))
-                image_files.extend(Path(test_folder).glob(f"*{ext.upper()}"))
-
-            if image_files:
-                return test_folder, sorted(image_files)
-
-    return None, []
-
-
-def load_image_from_path(image_path):
-    """Load image from file path"""
-    try:
-        if image_path.name.endswith(".npy"):
-            return np.load(image_path)
-        else:
-            return np.array(Image.open(image_path).convert("RGB")) / 255.
-    except Exception as e:
-        st.error(f"Error loading image {image_path}: {str(e)}")
-        return None
-
-def _prep_tensor_from_image(image: np.ndarray, image_size: tuple):
-    """image: (H,W,3) float in [0,1] or npy compatible; returns (1,3,H,W) torch tensor after smooth_scale"""
-    arr = cv2.resize(image, image_size)
-    tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
-    tensor_t = smooth_scale(tensor_t)
-    return tensor_t[None]
-
-def process_image(image, model, image_size):
-    """Process image through the model"""
-    original_shape = image.shape
-    tensor_t = _prep_tensor_from_image(image, image_size)
-
-    with torch.no_grad():
-        recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t)
-
-    # Ensure reconstruction is in valid range
-    recon_img = inv_smooth_scale(recon)     # post processing
-    recon_img = recon_img.detach().cpu().numpy()[0].transpose(1, 2, 0)
-    recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
-
-    # Get control parameters
-    theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-        pi_s, mu_s, log_sigma_s, var_scale=var_scale, topk=3
-    )
-    y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
-    conf_s = conf_param_s.detach().cpu().numpy()[0]
-    conf_global_s = conf_global_s.detach().cpu().numpy()[0]
-
-    return recon_img, y_pred_s, conf_s, conf_global_s
-@torch.no_grad()
-def inference(model, z, var_scale: float = 1.0, topk: int = 3):
-
-    recon = model.decoder(z)
-
-    pi, mu, log_sigma = model.mdn_head(z)
-    theta_hat, conf_param, conf_global, modes = mdn_point_and_confidence(
-        pi, mu, log_sigma, var_scale=var_scale, topk=topk
-    )
-
-    return recon, (theta_hat, conf_param, conf_global, modes)
-
-# ==========================================================
-# 5. STREAMLIT UI & INFERENCE
-# ==========================================================
-st.set_page_config(layout="wide", page_title="VAE Image Reconstruction")
-
-st.title("🎨 VAE Image Reconstruction & Analysis")
-st.markdown("Upload an image or select from test images to reconstruct it and analyze predicted control parameters.")
-
-# Sidebar for model info and controls
-with st.sidebar:
-    st.header("⚙️ Controls & Information")
-
-    st.markdown("### Model Information")
-    st.info("""
-    This VAE model:
-    - Reconstructs 128×128 RGB images
-    - Predicts 15 control parameters
-    - Uses a multi-kernel residual architecture
-    """)
-
-    # Check for test images
-    test_folder, test_images = get_test_images()
-
-    if test_images:
-        st.markdown("### Available Test Images")
-        test_image_names = [img.name for img in test_images]
-        st.info(f"Found {len(test_images)} images in '{os.path.basename(test_folder)}' folder")
-    else:
-        st.warning("No test images found. Create a 'test_input' folder with images.")
-
-    var_scale = st.slider(
-        "Var Scale (How much uncertainty is allowed)",
-        0.01, 1.0, 0.1, 0.01,
-        key="var_scale"
-    )
-
-# Load model
-model = load_model()
-
-if model is None:
-    st.stop()
-
-# Get model's expected input size
-if hasattr(model, 'H') and hasattr(model, 'W'):
-    expected_size = (model.H, model.W)
-else:
-    expected_size = (48, 48)
-
-param_names = ["t"]
-param_names += list(PARAM_RANGES.keys())
-
-# Main interface with tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "🔍 Heuristic Latent Space Exploration"])
+from src.helper import *
 
 def show_coolwarm(gray_image, caption):
     norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
@@ -222,7 +28,7 @@ def analyze_image(image, image_name:str):
             f"Size: {image.shape[0]}×{image.shape[1]}, Max value: {np.max(image):.2f}, Min value: {np.min(image):.2f}")
 
     # Process image
-    recon_image, ctr_array, conf_s, conf_global_s = process_image(image, model, expected_size)
+    recon_image, ctr_array, conf_s, conf_global_s = process_image(image, model, expected_size, var_scale)
 
     # Display reconstruction
     with col2:
@@ -264,6 +70,57 @@ def analyze_image(image, image_name:str):
         st.metric("Max", f"{np.max(ctr_array):.4f}")
 
     return recon_image, ctr_array
+
+st.set_page_config(layout="wide", page_title="VAE Image Reconstruction")
+
+st.title("🎨 VAE Image Reconstruction & Analysis")
+st.markdown("Upload an image or select from test images to reconstruct it and analyze predicted control parameters.")
+
+# Sidebar for model info and controls
+with st.sidebar:
+    st.header("⚙️ Controls & Information")
+
+    st.markdown("### Model Information")
+    st.info("""
+    This VAE model:
+    - Reconstructs 128×128 RGB images
+    - Predicts 15 control parameters
+    - Uses a multi-kernel residual architecture
+    """)
+
+    # Check for test images
+    test_folder, test_images = get_test_images()
+
+    if test_images:
+        st.markdown("### Available Test Images")
+        test_image_names = [img.name for img in test_images]
+        st.info(f"Found {len(test_images)} images in '{os.path.basename(test_folder)}' folder")
+    else:
+        st.warning("No test images found. Create a 'test_input' folder with images.")
+
+    var_scale = st.slider(
+        "Var Scale (How much uncertainty is allowed)",
+        0.01, 1.0, 0.1, 0.01,
+        key="var_scale"
+    )
+
+# Load model
+device = "cpu"
+model = load_model(device)
+if model is None:
+    st.stop()
+
+# Get model's expected input size
+if hasattr(model, 'H') and hasattr(model, 'W'):
+    expected_size = (model.H, model.W)
+else:
+    expected_size = (48, 48)
+
+param_names = ["t"]
+param_names += list(PARAM_RANGES.keys())
+
+# Main interface with tabs
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "🔍 Heuristic Latent Space Exploration"])
 
 with tab1:
     st.header("Upload Your Own Image (Note your images should be PFM results (eta, c, potential) with valid data range")
@@ -521,47 +378,6 @@ with tab4:
                 progress_bar.progress((idx + 1) / len(st.session_state.tab4_items))
         st.success(f"✅ Processed {len(st.session_state.tab4_items)} images")
 
-def _encode_image_get_z_and_recon(image: np.ndarray):
-    """Run VAE once: get recon (RGB float, resized back to original), control params, and latent z (1D)."""
-    original_shape = image.shape
-    x = _prep_tensor_from_image(image, expected_size)  # (1,3,H,W)
-
-    with torch.no_grad():
-        # model forward returns: recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z
-        recon, _, _, (pi_s, mu_s, log_sigma_s), z = model(x)
-
-    # recon to RGB float [0,1] and resize back to original
-    recon_img = inv_smooth_scale(recon).detach().cpu().numpy()[0].transpose(1, 2, 0)
-    recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
-
-    # control params for the sampled z
-    theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-        pi_s, mu_s, log_sigma_s, var_scale=var_scale, topk=3
-    )
-    y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
-
-    z_np = z.detach().cpu().numpy()
-    # robust squeeze: could be (1,D) or (D,)
-    z_np = np.squeeze(z_np)
-    if z_np.ndim != 1:
-        z_np = z_np.reshape(-1)
-
-    return recon_img, y_pred_s, z_np
-
-def _inference_from_z(z_1d: np.ndarray):
-    """Decode from latent z; return recon_img (RGB float), y_pred_s (params)."""
-    z_tensor = torch.from_numpy(z_1d.astype(np.float32))[None]  # (1,D)
-    with torch.no_grad():
-        # model.inference returns: recon, (theta_hat_s, conf_param_s, conf_global_s, modes_s)
-        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-            inference(model, z_tensor, var_scale=var_scale)
-
-    recon_img = inv_smooth_scale(recon_cand).detach().cpu().numpy()[0].transpose(1, 2, 0)
-    # NOTE: inference recon is in model's native resolution; we keep it native for metrics
-    # but for display we may resize to original later if needed.
-    y_pred_s = theta_hat_s_cand.detach().cpu().numpy()[0]
-    return recon_img, y_pred_s
-
 def _plot_latent_exploration_fig(
         z_path,
         cand_clouds,
@@ -690,17 +506,7 @@ def _plot_latent_exploration_fig(
 with tab5:
     st.header("Heuristic Latent Space Exploration")
 
-    def _compute_metrics(recon_img_rgb: np.ndarray):
-        """Use channel-0 for dendrite metrics; returns (analysis_fig, metrics_dict, scores_dict)."""
-        # generate_analysis_figure expects a 2D gray image in your other tabs
-        result_fig, metrics, scores = generate_analysis_figure(recon_img_rgb[..., 0])
-        return result_fig, metrics, scores
-
-    # -----------------------------
-    # UI: seed selection
-    # -----------------------------
     st.subheader("Initial state")
-
     seed_mode = st.radio(
         "Choose initial state source",
         ["Default", "Upload image", "From test images"],
@@ -758,7 +564,7 @@ with tab5:
     with c1:
         STEPS_UI = st.number_input("Steps", min_value=1, max_value=500, value=60, step=1, key="tab5_steps")
     with c2:
-        NUM_CAND_UI = st.number_input("NUM_CAND", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
+        NUM_CAND_UI = st.number_input("Number of candidates each step", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
     with c3:
         RW_SIGMA_UI = st.slider("RW_SIGMA", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
     with c4:
@@ -769,92 +575,271 @@ with tab5:
 
     run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
 
+    # -----------------------------
+    # TAB5: Live viewer + history + params/score panel
+    # -----------------------------
+    st.subheader("🖼️ Live Exploration Viewer")
+
+    # --- Session state (history) ---
+    if "explore_hist" not in st.session_state:
+        st.session_state.explore_hist = {
+            "recon": [],  # list of (H,W,3) float
+            "analysis_fig": [],  # list of matplotlib figs (optional)
+            "z": [],  # list of (D,)
+            "params": [],  # list of (P,) y_pred_s
+            "score": [],  # list of float
+            "coverage": [],  # list of float
+            "t": [],  # list of float (params[0])
+            "step": [],  # list of int
+        }
+
+    def _clip01_rgb(img_rgb: np.ndarray) -> np.ndarray:
+        img_rgb = np.asarray(img_rgb)
+        if img_rgb.dtype.kind == "f":
+            img_rgb = np.clip(img_rgb, 0.0, 1.0)
+        return img_rgb
+
+    def _params_to_table(y_pred: np.ndarray, extra: dict):
+        """
+        y_pred: (P,)
+        extra: dict of scalar metrics
+        Returns a dataframe for display.
+        """
+        y_pred = np.asarray(y_pred).reshape(-1)
+        rows = [{"name": f"param[{i}]", "value": float(y_pred[i])} for i in range(len(y_pred))]
+        for k, v in extra.items():
+            rows.append({"name": k, "value": float(v)})
+        return pd.DataFrame(rows)
+
+    # --- Layout: left = live image + history, right = params/metrics ---
+    left, right = st.columns([1.2, 1.0], gap="large")
+
+    with left:
+        # Viewer containers
+        live_box = st.container(border=True)
+        hist_box = st.container(border=True)
+
+    with right:
+        metrics_box = st.container(border=True)
+        cand_box = st.container(border=True)
+
+    # ---- Controls: history browsing ----
+    with hist_box:
+        st.markdown("### History")
+        hist = st.session_state.explore_hist
+        n_hist = len(hist["step"])
+        if n_hist == 0:
+            st.info("No history yet. Run exploration to populate.")
+            view_step = 0
+        else:
+            view_step = st.slider("View step", min_value=0, max_value=n_hist - 1, value=n_hist - 1,
+                                  key="tab5_view_step")
+
+            # Compact thumbnail strip (optional)
+            show_thumbs = st.checkbox("Show thumbnails", value=False, key="tab5_show_thumbs")
+            if show_thumbs:
+                # show up to 10 evenly spaced thumbs
+                idxs = np.linspace(0, n_hist - 1, num=min(10, n_hist), dtype=int).tolist()
+                cols = st.columns(len(idxs))
+                for col, i in zip(cols, idxs):
+                    with col:
+                        st.caption(f"{i}")
+                        st.image(_clip01_rgb(hist["recon"][i]), use_container_width=True)
+
+    # ---- Live viewer (current + selected historical) ----
+    with live_box:
+        st.markdown("### Live / Selected Image")
+
+        live_img_placeholder = st.empty()
+        live_caption_placeholder = st.empty()
+
+        # show selected historical by default (updates after run)
+        if len(st.session_state.explore_hist["step"]) > 0:
+            i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
+            live_img_placeholder.image(_clip01_rgb(st.session_state.explore_hist["recon"][i]),
+                                       caption=f"Step {i}", use_container_width=True)
+            live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
+
+    # ---- Metrics / params panel for selected step ----
+    with metrics_box:
+        st.markdown("### Params & Scores")
+
+        metrics_placeholder = st.empty()
+
+        if len(st.session_state.explore_hist["step"]) > 0:
+            i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
+            y_pred = st.session_state.explore_hist["params"][i]
+            extra = {
+                "score": st.session_state.explore_hist["score"][i],
+                "coverage": st.session_state.explore_hist["coverage"][i],
+                "t": st.session_state.explore_hist["t"][i],
+                "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
+            }
+            df = _params_to_table(y_pred, extra)
+            metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            metrics_placeholder.info("Metrics table will appear after the first accepted step.")
+
+    # ---- Candidate stats (optional live info per step) ----
+    with cand_box:
+        st.markdown("### Candidate Summary (current step)")
+        cand_summary_placeholder = st.empty()
+        cand_summary_placeholder.caption("Will show min/mean/max H each step while running.")
+
+    # ---------------------------------------------------------------------------------
+    # Hook this into your exploration loop:
+    # - call _update_live(step_i, recon_rgb, z, y_pred_s, score, coverage, t, cand_H_list)
+    #   right after you accept a step (and also once at init step=0).
+    # ---------------------------------------------------------------------------------
+    def _update_live(step_i: int,
+                     recon_rgb: np.ndarray,
+                     z_1d: np.ndarray,
+                     y_pred_s: np.ndarray,
+                     score: float,
+                     coverage: float,
+                     t_val: float,
+                     cand_H_list: np.ndarray | None = None):
+        """
+        Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
+        Safe for repeated calls.
+        """
+        hist = st.session_state.explore_hist
+
+        hist["step"].append(int(step_i))
+        hist["recon"].append(np.asarray(recon_rgb))
+        hist["z"].append(np.asarray(z_1d).reshape(-1))
+        hist["params"].append(np.asarray(y_pred_s).reshape(-1))
+        hist["score"].append(float(score))
+        hist["coverage"].append(float(coverage))
+        hist["t"].append(float(t_val))
+
+        # auto-jump viewer to latest step
+        st.session_state["tab5_view_step"] = len(hist["step"]) - 1
+
+        # update live image
+        live_img_placeholder.image(_clip01_rgb(recon_rgb),
+                                   caption=f"Step {step_i} (latest accepted)",
+                                   use_container_width=True)
+
+        # update metrics table (latest)
+        df = _params_to_table(y_pred_s, {
+            "score": float(score),
+            "coverage": float(coverage),
+            "t": float(t_val),
+            "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
+        })
+        metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
+
+        # update cand summary if given
+        if cand_H_list is not None:
+            v = np.asarray(cand_H_list).reshape(-1)
+            v_ok = v[np.isfinite(v)]
+            if v_ok.size > 0:
+                cand_summary_placeholder.markdown(
+                    f"- H min/mean/max: **{v_ok.min():.4f} / {v_ok.mean():.4f} / {v_ok.max():.4f}**  \n"
+                    f"- valid H count: **{v_ok.size}** / total: **{v.size}**"
+                )
+            else:
+                cand_summary_placeholder.warning("No finite H values this step (all candidates rejected/NaN).")
+
     if run_btn and seed_image is not None:
+
         with st.spinner("Running exploration..."):
-            # ---- init from seed image ----
-            recon0_rgb, y_pred_s, z = _encode_image_get_z_and_recon(seed_image)
 
-            fig0, metrics0, scores0 = _compute_metrics(recon0_rgb)
-            s = float(scores0["empirical_score"])
-            c = float(metrics0["dendrite_coverage"])
-            t = float(y_pred_s[0])
+            with torch.no_grad():
+                seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
+                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model()
+                # ---- stochastic prediction + confidence (from sampled z) ----
+                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
+                    pi_s, mu_s, log_sigma_s, var_scale=var_scale
+                )
 
-            # records
+            recon = inv_smooth_scale(recon)
+            recon = recon.cpu().detach().numpy()[0, 0]
+            z = z.cpu().detach().numpy()[0]
+            y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+            conf_s = conf_param_s.detach().cpu().numpy()[0]
+            conf_global_s = conf_global_s.detach().cpu().numpy()[0]
+
+            _, metrics, scores = generate_analysis_figure(recon)
+            s = scores["empirical_score"]
+            c = metrics["dendrite_coverage"]
+            t = y_pred_s[0]
+            _update_live(0, recon, z, y_pred_s, s, c, t)
+
             z_path = [z.copy()]
-            score_path = [s]
-            coverage_path = [c]
-            recon_path = [recon0_rgb]  # model-res recon for display
-            analysis_figs = [fig0]
-
             cand_clouds = []
             cand_H = []
-
-            progress = st.progress(0.0)
-
-            for step in range(1, int(STEPS_UI) + 1):
+            score_path = [float(s)]
+            coverage_path = [float(c)]
+            for step in range(1, STEPS_UI + 1):
+                # 生成候选
                 best_z = None
                 best_H_score = -1e18
                 best_score = -1e18
-                best_recon = None
+                best_img = None
                 best_params = None
                 best_coverage = None
+                z_cands = []
+                H_list = []
+                for _ in range(NUM_CAND_UI):
 
-                z_cands = np.empty((int(NUM_CAND_UI), z.shape[0]), dtype=np.float32)
-                H_list = np.full((int(NUM_CAND_UI),), np.nan, dtype=np.float32)  # nan for rejected/unevaluated
-
-                for i in range(int(NUM_CAND_UI)):
-                    dz = np.random.randn(*z.shape).astype(np.float32) * float(RW_SIGMA_UI)
+                    dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
                     z_cand = z + dz
-                    z_cands[i] = z_cand
+                    z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+                            model.inference(z_cand_tensor, var_scale=var_scale)
+                    recon_cand = inv_smooth_scale(recon_cand)
+                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+                    y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
+                    conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
+                    conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
 
-                    recon_cand_rgb, y_pred_s_cand = _inference_from_z(z_cand)
-                    _, metrics_cand, scores_cand = _compute_metrics(recon_cand_rgb)
+                    _, metrics_cand, scores_cand = generate_analysis_figure(recon_cand)
+                    t_cand = y_pred_s_cand[0]
+                    s_cand = scores_cand["empirical_score"]
+                    c_cand = metrics_cand["dendrite_coverage"]
 
-                    s_cand = float(scores_cand["empirical_score"])
-                    c_cand = float(metrics_cand["dendrite_coverage"])
-                    t_cand = float(y_pred_s_cand[0])
+                    # 总结全局匹配度
+                    H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
 
-                    # same heuristic as your explore script
-                    H = - float(np.linalg.norm(y_pred_s_cand - y_pred_s)) - (s_cand - s)
-                    H_list[i] = H
+                    # save cands
+                    z_cands.append(z_cand.copy())
+                    H_list.append(float(H))
 
-                    # reject constraints
-                    if (c_cand < c) or (t_cand < t):
+                    if c_cand < c or t_cand < t:
+                        print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
                         continue
 
                     if H > best_H_score:
                         best_H_score = H
                         best_score = s_cand
                         best_z = z_cand
-                        best_recon = recon_cand_rgb
+                        best_img = recon_cand
                         best_params = y_pred_s_cand
                         best_coverage = c_cand
 
-                cand_clouds.append(z_cands.copy())
-                cand_H.append(H_list.copy())
-
                 if best_z is None:
-                    st.warning(f"Stopped early at step={step}: no valid candidate (all rejected).")
+                    print("[Stop] no valid candidate (all rejected).")
                     break
+                else:
+                    print(f"[Next] find best candidate with H score={best_H_score:.2f}")
 
-                # accept best
                 z = best_z
+                s = best_score
+                c = best_coverage
+                t = best_params[0]
                 y_pred_s = best_params
-                s = float(best_score)
-                c = float(best_coverage)
-                t = float(best_params[0])
+
+                _update_live(0, best_img, best_z, best_params, best_score, best_coverage, best_params[0], cand_H)
 
                 z_path.append(z.copy())
-                score_path.append(s)
-                coverage_path.append(c)
-                recon_path.append(best_recon)
+                score_path.append(float(s))
+                coverage_path.append(float(c))
 
-                fig_step, _, _ = _compute_metrics(best_recon)
-                analysis_figs.append(fig_step)
-
-                progress.progress(step / float(STEPS_UI))
-
-            progress.empty()
+                cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
+                cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
 
         # -----------------------------
         # Display results
@@ -882,24 +867,24 @@ with tab5:
         }).set_index("step")
         st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
-        # show a compact gallery: first, last, and a few intermediates
-        st.subheader("🖼️ Reconstructions along the accepted path")
-        show_idx = list(dict.fromkeys(
-            [0, min(1, len(recon_path) - 1), len(recon_path) // 4, len(recon_path) // 2, (3 * len(recon_path)) // 4,
-             len(recon_path) - 1]
-        ))
-        cols = st.columns(len(show_idx))
-        for col, idx in zip(cols, show_idx):
-            with col:
-                st.markdown(f"**step {idx}**")
-                show_coolwarm(recon_path[idx][..., 0], caption=f"recon step {idx}")
-
-        st.subheader("🔍 Detailed analysis figures (optional)")
-        if st.checkbox("Show analysis figure for each accepted step (can be slow)", value=False, key="tab5_show_all"):
-            for i, fig in enumerate(analysis_figs):
-                with st.container(border=True):
-                    st.markdown(f"**Accepted step {i}**  · score={score_path[i]:.4f} · coverage={coverage_path[i]:.4f}")
-                    st.pyplot(fig)
+        # # show a compact gallery: first, last, and a few intermediates
+        # st.subheader("🖼️ Reconstructions along the accepted path")
+        # show_idx = list(dict.fromkeys(
+        #     [0, min(1, len(recon_path) - 1), len(recon_path) // 4, len(recon_path) // 2, (3 * len(recon_path)) // 4,
+        #      len(recon_path) - 1]
+        # ))
+        # cols = st.columns(len(show_idx))
+        # for col, idx in zip(cols, show_idx):
+        #     with col:
+        #         st.markdown(f"**step {idx}**")
+        #         show_coolwarm(recon_path[idx][..., 0], caption=f"recon step {idx}")
+        #
+        # st.subheader("🔍 Detailed analysis figures (optional)")
+        # if st.checkbox("Show analysis figure for each accepted step (can be slow)", value=False, key="tab5_show_all"):
+        #     for i, fig in enumerate(analysis_figs):
+        #         with st.container(border=True):
+        #             st.markdown(f"**Accepted step {i}**  · score={score_path[i]:.4f} · coverage={coverage_path[i]:.4f}")
+        #             st.pyplot(fig)
 
 # Footer
 st.markdown("---")
