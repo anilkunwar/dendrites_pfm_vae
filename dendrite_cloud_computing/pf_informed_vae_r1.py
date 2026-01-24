@@ -634,6 +634,11 @@ with tab5:
         })
         metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
 
+        log_container.code(
+            f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
+            language="text"
+        )
+
     # show results in one step
     log_container = st.container(height=220)
 
@@ -677,29 +682,6 @@ with tab5:
             metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
         else:
             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
-
-    # ---- Controls: history browsing ----
-    hist_box = st.container(border=True)
-    with hist_box:
-        st.markdown("### History")
-        hist = st.session_state.explore_hist
-        n_hist = len(hist["step"])
-        if n_hist == 0:
-            st.info("No history yet. Run exploration to populate.")
-            view_step = 0
-        else:
-            view_step = st.slider("View step", min_value=0, max_value=n_hist, value=n_hist,
-                                  key="tab5_view_step")
-
-            # Compact thumbnail strip (optional)
-            show_thumbs = st.checkbox("Show thumbnails", value=False, key="tab5_show_thumbs")
-            if show_thumbs:
-                # show up to 10 evenly spaced thumbs
-                idxs = np.linspace(0, n_hist - 1, num=min(10, n_hist), dtype=int).tolist()
-                cols = st.columns(len(idxs))
-                for col, i in zip(cols, idxs):
-                    with col:
-                        show_coolwarm(hist["recon"][i], f"{i}")
 
     if run_btn and seed_image is not None:
 
@@ -809,6 +791,129 @@ with tab5:
         # Display results
         # -----------------------------
         st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
+
+        # ---- History: thumbnails (default all) + playback + per-step params table ----
+        hist_box = st.container(border=True)
+        with hist_box:
+            st.markdown("### History")
+
+            hist = st.session_state.explore_hist
+            n_hist = len(hist.get("step", []))
+
+            if n_hist == 0:
+                st.info("No history yet. Run exploration to populate.")
+                st.session_state["tab5_view_step"] = 0
+
+            else:
+                # -------------------------
+                # Playback controls
+                # -------------------------
+                c1, c2, c3, c4 = st.columns([1.2, 1.0, 1.0, 1.0])
+                with c1:
+                    play = st.toggle("▶️ Play", value=False, key="tab5_play")
+                with c2:
+                    fps = st.slider("FPS", min_value=1, max_value=20, value=6, step=1, key="tab5_fps")
+                with c3:
+                    loop = st.checkbox("Loop", value=True, key="tab5_loop")
+                with c4:
+                    st.caption(f"Total steps: {n_hist}")
+
+                # Ensure view_step exists and is valid
+                if "tab5_view_step" not in st.session_state:
+                    st.session_state["tab5_view_step"] = n_hist - 1
+                st.session_state["tab5_view_step"] = int(np.clip(st.session_state["tab5_view_step"], 0, n_hist - 1))
+
+                # Manual step selector (still useful when not playing)
+                view_step = st.slider(
+                    "View step",
+                    min_value=0,
+                    max_value=n_hist - 1,
+                    value=int(st.session_state["tab5_view_step"]),
+                    key="tab5_view_step",
+                )
+
+                # Auto-play (advances view_step)
+                # NOTE: this drives reruns; keep it lightweight
+                if play:
+                    import time
+
+                    time.sleep(1.0 / float(fps))
+                    nxt = int(st.session_state["tab5_view_step"]) + 1
+                    if nxt >= n_hist:
+                        nxt = 0 if loop else (n_hist - 1)
+                        if not loop:
+                            st.session_state["tab5_play"] = False
+                    st.session_state["tab5_view_step"] = nxt
+                    st.rerun()
+
+                st.divider()
+
+                # -------------------------
+                # Thumbnails (default: ALL)
+                # -------------------------
+                st.markdown("#### Thumbnails (click slider / play to preview above)")
+
+                # Optional: layout controls
+                thumb_cols = st.slider("Columns", min_value=4, max_value=12, value=8, step=1, key="tab5_thumb_cols")
+
+                # Render all thumbnails in a grid
+                idxs = list(range(n_hist))
+                rows = (n_hist + thumb_cols - 1) // thumb_cols
+
+                for r in range(rows):
+                    cols = st.columns(thumb_cols)
+                    for c in range(thumb_cols):
+                        i = r * thumb_cols + c
+                        if i >= n_hist:
+                            break
+                        with cols[c]:
+                            # highlight current selected step
+                            is_sel = (i == int(st.session_state["tab5_view_step"]))
+                            cap = f"✅ {i}" if is_sel else f"{i}"
+
+                            # show_coolwarm expects 2D; if you store RGB recon, use channel 0
+                            img = hist["recon"][i]
+                            if isinstance(img, np.ndarray) and img.ndim == 3:
+                                img2d = img[..., 0]
+                            else:
+                                img2d = img
+
+                            show_coolwarm(img2d, cap)
+
+                st.divider()
+
+                # -------------------------
+                # Per-step parameter list / table
+                # -------------------------
+                st.markdown("### Parameters per step")
+
+                # Build a table: one row per step
+                # Expect: hist["params"][i] is 1D array, hist has score/coverage/t
+                max_p = max(len(np.asarray(p).reshape(-1)) for p in hist.get("params", [])) if hist.get("params") else 0
+
+                rows = []
+                for i in range(n_hist):
+                    y = np.asarray(hist["params"][i]).reshape(-1) if hist.get("params") and i < len(
+                        hist["params"]) else np.array([])
+                    row = {
+                        "step": int(hist["step"][i]) if i < len(hist["step"]) else i,
+                        "score": float(hist["score"][i]) if i < len(hist.get("score", [])) else np.nan,
+                        "coverage": float(hist["coverage"][i]) if i < len(hist.get("coverage", [])) else np.nan,
+                        "t": float(hist["t"][i]) if i < len(hist.get("t", [])) else (
+                            float(y[0]) if y.size > 0 else np.nan),
+                    }
+                    for k in range(max_p):
+                        row[f"param[{k}]"] = float(y[k]) if k < y.size else np.nan
+                    rows.append(row)
+
+                df_params = pd.DataFrame(rows)
+
+                # Make it easy to inspect:
+                st.dataframe(
+                    df_params,
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
         # st.subheader("🧭 Latent exploration visualization")
         # fig_main, fig_norm = _plot_latent_exploration_fig(
