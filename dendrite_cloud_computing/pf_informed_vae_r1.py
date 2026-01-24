@@ -13,10 +13,13 @@ from src.dataloader import inv_scale_params, smooth_scale, inv_smooth_scale, PAR
 from src.modelv11 import mdn_point_and_confidence
 from src.helper import *
 
-def show_coolwarm(gray_image, caption):
+def show_coolwarm(gray_image, caption, container=None):
     norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
     colored_img = cm.coolwarm(norm(gray_image))  # shape: (H, W, 4)
-    st.image(colored_img, caption=caption, use_column_width=True)
+    if container is None:
+        st.image(colored_img, caption=caption, use_column_width=True)
+    else:
+        container.image(colored_img, caption=caption, use_column_width=True)
 
 def analyze_image(image, image_name:str):
     # Display original image (without preprocessing)
@@ -587,28 +590,16 @@ with tab5:
             "analysis_fig": [],  # list of matplotlib figs (optional)
             "z": [],  # list of (D,)
             "params": [],  # list of (P,) y_pred_s
+            "params_confidence": [],
             "score": [],  # list of float
             "coverage": [],  # list of float
-            "t": [],  # list of float (params[0])
             "step": [],  # list of int
         }
 
-    def _clip01_rgb(img_rgb: np.ndarray) -> np.ndarray:
-        img_rgb = np.asarray(img_rgb)
-        if img_rgb.dtype.kind == "f":
-            img_rgb = np.clip(img_rgb, 0.0, 1.0)
-        return img_rgb
-
-    def _params_to_table(y_pred: np.ndarray, extra: dict):
-        """
-        y_pred: (P,)
-        extra: dict of scalar metrics
-        Returns a dataframe for display.
-        """
-        y_pred = np.asarray(y_pred).reshape(-1)
-        rows = [{"name": f"param[{i}]", "value": float(y_pred[i])} for i in range(len(y_pred))]
+    def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
+        rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
         for k, v in extra.items():
-            rows.append({"name": k, "value": float(v)})
+            rows.append({"name": k, "value": float(v), f"confidence under {var_scale}": "-"})
         return pd.DataFrame(rows)
 
     # --- Layout: left = live image + history, right = params/metrics ---
@@ -643,8 +634,7 @@ with tab5:
                 cols = st.columns(len(idxs))
                 for col, i in zip(cols, idxs):
                     with col:
-                        st.caption(f"{i}")
-                        st.image(_clip01_rgb(hist["recon"][i]), use_container_width=True)
+                        show_coolwarm(hist["recon"][i], f"{i}")
 
     # ---- Live viewer (current + selected historical) ----
     with live_box:
@@ -656,8 +646,7 @@ with tab5:
         # show selected historical by default (updates after run)
         if len(st.session_state.explore_hist["step"]) > 0:
             i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-            live_img_placeholder.image(_clip01_rgb(st.session_state.explore_hist["recon"][i]),
-                                       caption=f"Step {i}", use_container_width=True)
+            show_coolwarm(st.session_state.explore_hist["recon"][i], caption=f"Step {i}")
             live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
 
     # ---- Metrics / params panel for selected step ----
@@ -669,13 +658,13 @@ with tab5:
         if len(st.session_state.explore_hist["step"]) > 0:
             i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
             y_pred = st.session_state.explore_hist["params"][i]
+            y_confidence = st.session_state.explore_hist["params_confidence"][i]
             extra = {
                 "score": st.session_state.explore_hist["score"][i],
                 "coverage": st.session_state.explore_hist["coverage"][i],
-                "t": st.session_state.explore_hist["t"][i],
                 "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
             }
-            df = _params_to_table(y_pred, extra)
+            df = _params_to_table(y_pred, y_confidence, extra)
             metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
         else:
             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
@@ -686,15 +675,11 @@ with tab5:
         cand_summary_placeholder = st.empty()
         cand_summary_placeholder.caption("Will show min/mean/max H each step while running.")
 
-    # ---------------------------------------------------------------------------------
-    # Hook this into your exploration loop:
-    # - call _update_live(step_i, recon_rgb, z, y_pred_s, score, coverage, t, cand_H_list)
-    #   right after you accept a step (and also once at init step=0).
-    # ---------------------------------------------------------------------------------
     def _update_live(step_i: int,
                      recon_rgb: np.ndarray,
                      z_1d: np.ndarray,
                      y_pred_s: np.ndarray,
+                     y_pred_conf: np.ndarray,
                      score: float,
                      coverage: float,
                      t_val: float,
@@ -709,6 +694,7 @@ with tab5:
         hist["recon"].append(np.asarray(recon_rgb))
         hist["z"].append(np.asarray(z_1d).reshape(-1))
         hist["params"].append(np.asarray(y_pred_s).reshape(-1))
+        hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
         hist["score"].append(float(score))
         hist["coverage"].append(float(coverage))
         hist["t"].append(float(t_val))
@@ -717,15 +703,12 @@ with tab5:
         st.session_state["tab5_view_step"] = len(hist["step"]) - 1
 
         # update live image
-        live_img_placeholder.image(_clip01_rgb(recon_rgb),
-                                   caption=f"Step {step_i} (latest accepted)",
-                                   use_container_width=True)
+        show_coolwarm(recon_rgb, f"Step {step_i} (latest accepted)", live_img_placeholder)
 
         # update metrics table (latest)
-        df = _params_to_table(y_pred_s, {
+        df = _params_to_table(y_pred_s, y_pred_conf, {
             "score": float(score),
             "coverage": float(coverage),
-            "t": float(t_val),
             "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
         })
         metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
@@ -742,17 +725,17 @@ with tab5:
             else:
                 cand_summary_placeholder.warning("No finite H values this step (all candidates rejected/NaN).")
 
-    # if run_btn and seed_image is not None:
-    #
-    #     with st.spinner("Running exploration..."):
-    #
-    #         with torch.no_grad():
-    #             seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
-    #             recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
-    #             # ---- stochastic prediction + confidence (from sampled z) ----
-    #             theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-    #                 pi_s, mu_s, log_sigma_s, var_scale=var_scale
-    #             )
+    if run_btn and seed_image is not None:
+
+        with st.spinner("Running exploration..."):
+
+            with torch.no_grad():
+                seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
+                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
+                # ---- stochastic prediction + confidence (from sampled z) ----
+                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
+                    pi_s, mu_s, log_sigma_s, var_scale=var_scale
+                )
     #
     #         recon = inv_smooth_scale(recon)
     #         recon = recon.cpu().detach().numpy()[0, 0]
