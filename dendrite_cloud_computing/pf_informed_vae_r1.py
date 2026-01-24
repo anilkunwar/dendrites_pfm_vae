@@ -1,11 +1,5 @@
-import os
-import torch
-import cv2
-import streamlit as st
-import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from PIL import Image
 from matplotlib import colors, cm
 
 from src.evaluate_metrics import generate_analysis_figure
@@ -17,9 +11,9 @@ def show_coolwarm(gray_image, caption, container=None):
     norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
     colored_img = cm.coolwarm(norm(gray_image))  # shape: (H, W, 4)
     if container is None:
-        st.image(colored_img, caption=caption, use_column_width=True)
+        st.image(colored_img, caption=caption, width='stretch')
     else:
-        container.image(colored_img, caption=caption, use_column_width=True)
+        container.image(colored_img, caption=caption, width='stretch')
 
 def analyze_image(image, image_name:str):
     # Display original image (without preprocessing)
@@ -578,6 +572,8 @@ with tab5:
 
     run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
 
+    st.markdown("---")
+
     # -----------------------------
     # TAB5: Live viewer + history + params/score panel
     # -----------------------------
@@ -602,19 +598,55 @@ with tab5:
             rows.append({"name": k, "value": float(v), f"confidence under {var_scale}": -1})
         return pd.DataFrame(rows)
 
-    # --- Layout: left = live image + history, right = params/metrics ---
-    left, right = st.columns([1.2, 1.0], gap="large")
+    def _update_live(step_i: int,
+                     recon_rgb: np.ndarray,
+                     z_1d: np.ndarray,
+                     y_pred_s: np.ndarray,
+                     y_pred_conf: np.ndarray,
+                     score: float,
+                     coverage: float,
+                     cand_H_list: np.ndarray | None = None):
+        """
+        Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
+        Safe for repeated calls.
+        """
+        hist = st.session_state.explore_hist
 
+        hist["step"].append(int(step_i))
+        hist["recon"].append(np.asarray(recon_rgb))
+        hist["z"].append(np.asarray(z_1d).reshape(-1))
+        hist["params"].append(np.asarray(y_pred_s).reshape(-1))
+        hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
+        hist["score"].append(float(score))
+        hist["coverage"].append(float(coverage))
+
+        # auto-jump viewer to latest step
+        st.session_state["tab5_view_step"] = len(hist["step"]) - 1
+
+        # update live image
+        show_coolwarm(recon_rgb, f"Step {step_i} (latest accepted)", live_img_placeholder)
+
+        # update metrics table (latest)
+        df = _params_to_table(y_pred_s, y_pred_conf, {
+            "score": float(score),
+            "coverage": float(coverage),
+            "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
+        })
+        metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
+
+    # show results in one step
+    log_container = st.container(height=220)
+
+    # show live
+    left, right = st.columns([1.2, 1.0], gap="large")
     with left:
         # Viewer containers
         live_box = st.container(border=True)
-        hist_box = st.container(border=True)
-
     with right:
         metrics_box = st.container(border=True)
-        cand_box = st.container(border=True)
 
     # ---- Controls: history browsing ----
+    hist_box = st.container(border=True)
     with hist_box:
         st.markdown("### History")
         hist = st.session_state.explore_hist
@@ -668,60 +700,6 @@ with tab5:
             metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
         else:
             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
-
-    # ---- Candidate stats (optional live info per step) ----
-    with cand_box:
-        st.markdown("### Candidate Summary (current step)")
-        cand_summary_placeholder = st.empty()
-        cand_summary_placeholder.caption("Will show min/mean/max H each step while running.")
-
-    def _update_live(step_i: int,
-                     recon_rgb: np.ndarray,
-                     z_1d: np.ndarray,
-                     y_pred_s: np.ndarray,
-                     y_pred_conf: np.ndarray,
-                     score: float,
-                     coverage: float,
-                     cand_H_list: np.ndarray | None = None):
-        """
-        Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
-        Safe for repeated calls.
-        """
-        hist = st.session_state.explore_hist
-
-        hist["step"].append(int(step_i))
-        hist["recon"].append(np.asarray(recon_rgb))
-        hist["z"].append(np.asarray(z_1d).reshape(-1))
-        hist["params"].append(np.asarray(y_pred_s).reshape(-1))
-        hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
-        hist["score"].append(float(score))
-        hist["coverage"].append(float(coverage))
-
-        # auto-jump viewer to latest step
-        st.session_state["tab5_view_step"] = len(hist["step"]) - 1
-
-        # update live image
-        show_coolwarm(recon_rgb, f"Step {step_i} (latest accepted)", live_img_placeholder)
-
-        # update metrics table (latest)
-        df = _params_to_table(y_pred_s, y_pred_conf, {
-            "score": float(score),
-            "coverage": float(coverage),
-            "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
-        })
-        metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
-
-        # update cand summary if given
-        if cand_H_list is not None:
-            v = np.asarray(cand_H_list).reshape(-1)
-            v_ok = v[np.isfinite(v)]
-            if v_ok.size > 0:
-                cand_summary_placeholder.markdown(
-                    f"- H min/mean/max: **{v_ok.min():.4f} / {v_ok.mean():.4f} / {v_ok.max():.4f}**  \n"
-                    f"- valid H count: **{v_ok.size}** / total: **{v.size}**"
-                )
-            else:
-                cand_summary_placeholder.warning("No finite H values this step (all candidates rejected/NaN).")
 
     if run_btn and seed_image is not None:
 
@@ -779,7 +757,7 @@ with tab5:
                     conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
                     conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
 
-                    _, metrics_cand, scores_cand = generate_analysis_figure(recon_cand)
+                    _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
                     t_cand = y_pred_s_cand[0]
                     s_cand = scores_cand["empirical_score"]
                     c_cand = metrics_cand["dendrite_coverage"]
@@ -792,7 +770,7 @@ with tab5:
                     H_list.append(float(H))
 
                     if c_cand < c or t_cand < t:
-                        print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
+                        log_container.info(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
                         continue
 
                     if H > best_H_score:
@@ -805,10 +783,10 @@ with tab5:
                         best_coverage = c_cand
 
                 if best_z is None:
-                    print("[Stop] no valid candidate (all rejected).")
+                    log_container.info("[Stop] no valid candidate (all rejected).")
                     break
                 else:
-                    print(f"[Next] find best candidate with H score={best_H_score:.2f}")
+                    log_container.info(f"[Next] find best candidate with H score={best_H_score:.2f}")
 
                 z = best_z
                 s = best_score
