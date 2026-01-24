@@ -496,8 +496,6 @@ def _plot_latent_exploration_fig(
     axn.set_ylabel("||z||")
     fig_norm.tight_layout()
 
-    fig_score = None
-    fig_cov = None
     return fig_main, fig_norm
 
 with tab5:
@@ -529,7 +527,7 @@ with tab5:
         # ---- step 2: expand to 3 channels ----
         seed_image = np.stack([base_eta, base_c, base_p], axis=-1)  # (50, 50, 3)
 
-    elif seed_mode == "Upload":
+    elif seed_mode == "Upload image":
         up_seed = st.file_uploader(
             "Upload a seed image (.npy or image file). This seed is only used to get an initial latent z.",
             type=["npy", "jpg", "png", "jpeg", "bmp", "tiff"],
@@ -645,7 +643,7 @@ with tab5:
         # Viewer containers
         live_box = st.container(border=True)
     with right:
-        metrics_box = st.container(border=True)
+        metrics_box = st.container(border=True, height=520)
 
     # ---- Live viewer (current + selected historical) ----
     with live_box:
@@ -800,7 +798,7 @@ with tab5:
             # Make it easy to inspect:
             st.dataframe(
                 df_params,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
             )
 
@@ -913,46 +911,27 @@ with tab5:
         # -----------------------------
         st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
 
-        # st.subheader("🧭 Latent exploration visualization")
-        # enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
-        # fig_main, fig_norm = _plot_latent_exploration_fig(
-        #     z_path=z_path,
-        #     cand_clouds=cand_clouds,
-        #     cand_values=cand_H,
-        #     value_name="H",
-        #     colorize_candidates=bool(enforce_color),
-        # )
-        # st.pyplot(fig_main)
-        # st.pyplot(fig_norm)
-        #
-        # # score / coverage curves
-        # st.subheader("📈 Score / Coverage over accepted steps")
-        # df_curves = pd.DataFrame({
-        #     "step": np.arange(len(score_path)),
-        #     "score": score_path,
-        #     "coverage": coverage_path,
-        #     "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
-        # }).set_index("step")
-        # st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+        st.subheader("🧭 Latent exploration visualization")
+        enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
+        fig_main, fig_norm = _plot_latent_exploration_fig(
+            z_path=z_path,
+            cand_clouds=cand_clouds,
+            cand_values=cand_H,
+            value_name="H",
+            colorize_candidates=bool(enforce_color),
+        )
+        st.pyplot(fig_main)
+        st.pyplot(fig_norm)
 
-        # # show a compact gallery: first, last, and a few intermediates
-        # st.subheader("🖼️ Reconstructions along the accepted path")
-        # show_idx = list(dict.fromkeys(
-        #     [0, min(1, len(recon_path) - 1), len(recon_path) // 4, len(recon_path) // 2, (3 * len(recon_path)) // 4,
-        #      len(recon_path) - 1]
-        # ))
-        # cols = st.columns(len(show_idx))
-        # for col, idx in zip(cols, show_idx):
-        #     with col:
-        #         st.markdown(f"**step {idx}**")
-        #         show_coolwarm(recon_path[idx][..., 0], caption=f"recon step {idx}")
-        #
-        # st.subheader("🔍 Detailed analysis figures (optional)")
-        # if st.checkbox("Show analysis figure for each accepted step (can be slow)", value=False, key="tab5_show_all"):
-        #     for i, fig in enumerate(analysis_figs):
-        #         with st.container(border=True):
-        #             st.markdown(f"**Accepted step {i}**  · score={score_path[i]:.4f} · coverage={coverage_path[i]:.4f}")
-        #             st.pyplot(fig)
+        # score / coverage curves
+        st.subheader("📈 Score / Coverage over accepted steps")
+        df_curves = pd.DataFrame({
+            "step": np.arange(len(score_path)),
+            "score": score_path,
+            "coverage": coverage_path,
+            "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+        }).set_index("step")
+        st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
 # Footer
 st.markdown("---")
