@@ -1,3 +1,5 @@
+import hashlib
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import colors, cm
@@ -282,25 +284,29 @@ with tab3:
     else:
         st.warning("No test images found for batch analysis.")
 
+def file_fingerprint(uploaded_file) -> str:
+    # 注意：getvalue() 会把整个文件读入内存；大文件要谨慎
+    data = uploaded_file.getvalue()
+    h = hashlib.sha256(data).hexdigest()
+    return f"{uploaded_file.name}|{uploaded_file.size}|{h}"
+def tab4_add_item(img: np.ndarray, id:str, source: str):
+    st.session_state.tab4_items.append({
+        "id": id,
+        "origin": img,
+        "source": source,
+        "result": None,
+        "score": None,
+    })
 with tab4:
     st.header("Dendrite Intensity Analysis")
 
     # ========== 1) Session state for tab4 ==========
-    st.session_state.tab4_items = []
-
-    def tab4_add_item(img: np.ndarray, name: str, source: str):
-        result_img, _, scores = generate_analysis_figure(img[..., 0])
-        st.session_state.tab4_items.append({
-            "name": name,
-            "source": source,
-            "orig": img,
-            "result": result_img,
-            "score": scores["empirical_score"],
-        })
+    if st.session_state.get("tab4_items") is None:
+        st.session_state.tab4_items = []
+    past_files = [item["id"] for item in st.session_state.tab4_items] # which files are not here now?
 
     # ========== 2) Two-column UI ==========
     left_col, right_col = st.columns(2, gap="large")
-
     with left_col:
         st.subheader("📤 Upload Images")
         up_files = st.file_uploader(
@@ -309,20 +315,20 @@ with tab4:
             accept_multiple_files=True,
             key="tab4_uploader",
         )
-        if len(up_files) != len(st.session_state.tab4_items):
-            for uf in up_files:
-                if uf.name.endswith(".npy"):
-                    buf = io.BytesIO(uf.getvalue())
-                    img = np.load(buf)
-                else:
-                    img = np.array(Image.open(uf).convert("RGB")) / 255.0
-                tab4_add_item(img, uf.name, source="upload")
-
+        for uf in up_files:
+            fid = file_fingerprint(uf)
+            if fid in past_files:
+                past_files.remove(uf)
+                continue
+            if uf.name.endswith(".npy"):
+                buf = io.BytesIO(uf.getvalue())
+                img = np.load(buf)
+            else:
+                img = np.array(Image.open(uf).convert("RGB")) / 255.0
+            tab4_add_item(img, fid, source="upload")
         st.caption("Tip: you can upload multiple times. Newly uploaded images will be added to the list below.")
-
     with right_col:
         st.subheader("Select from Test Images")
-
         if test_images:
             test_names = [p.name for p in test_images]
             selected_dendrite_images = st.multiselect(
@@ -330,10 +336,13 @@ with tab4:
                 options=[img.name for img in test_images],
                 default=[]
             )
-
             if selected_dendrite_images:
                 name_to_path = {p.name: p for p in test_images}
                 for nm in selected_dendrite_images:
+                    fid = file_fingerprint(name_to_path[nm])
+                    if fid in past_files:
+                        past_files.remove(uf)
+                        continue
                     try:
                         img = load_image_from_path(name_to_path[nm])
                         tab4_add_item(img, nm, source="test")
@@ -341,6 +350,10 @@ with tab4:
                         st.error(f"Error loading image {nm}: {e}")
         else:
             st.warning("No test images found for analysis.")
+    # delete file that no longer here
+    for item in st.session_state.tab4_items.copy():
+        if item["id"] in past_files:
+            st.session_state.tab4_items.remove(item)
 
     st.markdown("---")
 
@@ -356,6 +369,10 @@ with tab4:
         with st.spinner("Processing images..."):
             progress_bar = st.progress(0)
             for idx, item in enumerate(st.session_state.tab4_items):
+                if item["result"] is None:
+                    result_img, _, scores = generate_analysis_figure(img[..., 0])
+                    item["result"] = result_img
+                    item["score"] = scores["empirical_score"]
                 container = st.container(border=True)
                 with container:
                     header_cols = st.columns([1, 1])
@@ -363,7 +380,6 @@ with tab4:
                         st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
                     with header_cols[1]:
                         st.metric("Score", f"{item['score']:.4f}")
-
                     st.pyplot(item["result"])
                 progress_bar.progress((idx + 1) / len(st.session_state.tab4_items))
         st.success(f"✅ Processed {len(st.session_state.tab4_items)} images")
