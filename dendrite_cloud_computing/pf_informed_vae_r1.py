@@ -1,4 +1,5 @@
 import hashlib
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -76,6 +77,8 @@ st.set_page_config(layout="wide", page_title="VAE Image Reconstruction")
 st.title("🎨 VAE Image Reconstruction & Analysis")
 st.markdown("Upload an image or select from test images to reconstruct it and analyze predicted control parameters.")
 
+# Load model
+device = "cpu"
 # Sidebar for model info and controls
 with st.sidebar:
     st.header("⚙️ Controls & Information")
@@ -87,6 +90,11 @@ with st.sidebar:
     - Predicts 15 control parameters
     - Uses a multi-kernel residual architecture
     """)
+
+    # check for models
+    model_paths = {p: os.path.join("knowledge_base", p) for p in os.listdir("knowledge_base")}
+    selected_model_name = st.selectbox("Choose a test image:", list(model_paths.keys()))
+    model = load_model(device)
 
     # Check for test images
     test_folder, test_images = get_test_images()
@@ -105,9 +113,6 @@ with st.sidebar:
         key="var_scale"
     )
 
-# Load model
-device = "cpu"
-model = load_model(device)
 if model is None:
     st.stop()
 
@@ -157,7 +162,7 @@ with tab2:
 
     if test_images:
         # Create image selector
-        selected_image_name = st.selectbox("Choose a test image:", test_names)
+        selected_image_name = st.selectbox("Choose a test image:", test_names, index=0)
 
         if selected_image_name:
             # Find the selected image path

@@ -10,34 +10,16 @@ from src.modelv11 import mdn_point_and_confidence
 
 
 @st.cache_resource
-def load_model(device="cpu"):
+def load_model(model_path, device="cpu"):
     current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Try multiple possible locations
-    possible_folders = ["knowledge_base", "knowledge-base", ".", "models"]
-    folder_found = None
-
-    for f in possible_folders:
-        test_path = os.path.join(current_dir, "..", f)
-        if os.path.exists(test_path) and os.path.isdir(test_path):
-            # Check if part1 exists
-            part1_path = os.path.join(test_path, "vae_model.pt.part1")
-            if os.path.exists(part1_path):
-                folder_found = test_path
-                break
-
-    if folder_found is None:
-        st.error("❌ Could not find the model parts.")
-        st.info("Please ensure the model files are in one of these folders: " + ", ".join(possible_folders))
-        return None
 
     base_name = "vae_model.pt"
     num_parts = 4
-    parts = [os.path.join(folder_found, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
+    parts = [os.path.join(model_path, f"{base_name}.part{i}") for i in range(1, num_parts + 1)]
 
     try:
         combined_data = io.BytesIO()
-        with st.spinner(f"Merging model parts from {os.path.basename(folder_found)}..."):
+        with st.spinner(f"Merging model parts from {os.path.basename(model_path)}..."):
             for p in parts:
                 if not os.path.exists(p):
                     st.error(f"Missing: {p}")

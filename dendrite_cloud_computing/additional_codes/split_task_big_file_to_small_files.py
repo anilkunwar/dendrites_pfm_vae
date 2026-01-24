@@ -1,8 +1,8 @@
 import os
 
-def split_file(file_path, save_dir="../knowledge_base", save_name="vae_model.pt", chunk_size_mb=21):
+def split_file(file_path, save_dir="../knowledge_base/model2", save_name="vae_model.pt", chunk_size_mb=21):
     chunk_size = chunk_size_mb * 1024 * 1024  # 20MB in bytes
-    
+    os.makedirs(save_dir, exist_ok=True)
     with open(file_path, 'rb') as f:
         chunk_num = 1
         while True:
