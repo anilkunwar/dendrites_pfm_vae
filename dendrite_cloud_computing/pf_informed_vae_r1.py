@@ -604,8 +604,7 @@ with tab5:
                      y_pred_s: np.ndarray,
                      y_pred_conf: np.ndarray,
                      score: float,
-                     coverage: float,
-                     cand_H_list: np.ndarray | None = None):
+                     coverage: float):
         """
         Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
         Safe for repeated calls.
@@ -635,7 +634,7 @@ with tab5:
         metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
 
         log_container.code(
-            f"step={step_i} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
+            f"step={step_i} score={score:.3f} t={y_pred_s[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
             language="text"
         )
 
@@ -776,7 +775,7 @@ with tab5:
                 t = best_params[0]
                 y_pred_s = best_params
 
-                _update_live(0, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage, cand_H)
+                _update_live(0, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage)
 
                 z_path.append(z.copy())
                 score_path.append(float(s))
