@@ -868,11 +868,9 @@ with tab5:
                     "step": int(hist["step"][i]) if i < len(hist["step"]) else i,
                     "score": float(hist["score"][i]) if i < len(hist.get("score", [])) else np.nan,
                     "coverage": float(hist["coverage"][i]) if i < len(hist.get("coverage", [])) else np.nan,
-                    "t": float(hist["t"][i]) if i < len(hist.get("t", [])) else (
-                        float(y[0]) if y.size > 0 else np.nan),
                 }
                 for k in range(max_p):
-                    row[f"param[{k}]"] = float(y[k]) if k < y.size else np.nan
+                    row[param_names[k]] = float(y[k]) if k < y.size else np.nan
                 rows.append(row)
 
             df_params = pd.DataFrame(rows)
