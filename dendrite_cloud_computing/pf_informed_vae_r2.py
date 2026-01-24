@@ -922,7 +922,22 @@ with tab5:
         st.session_state.tab5_view_step = 0
 
         with st.spinner("Running exploration..."):
-
+            # Determine latent dimension from model architecture
+            latent_dim = None
+            if hasattr(model, 'latent_dim'):
+                latent_dim = model.latent_dim
+            elif hasattr(model, 'decoder') and hasattr(model.decoder, 'fc') and hasattr(model.decoder.fc, 'in_features'):
+                latent_dim = model.decoder.fc.in_features
+            else:
+                # Fallback to shape of z from initial encoding
+                seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
+                with torch.no_grad():
+                    _, _, _, _, z_test = model(seed_image_tensor)
+                latent_dim = z_test.shape[1]
+                del z_test
+            
+            st.info(f"Detected latent dimension: {latent_dim}")
+            
             progress_bar = st.progress(0)
             with torch.no_grad():
                 seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
@@ -967,45 +982,110 @@ with tab5:
                 best_coverage = None
                 z_cands = []
                 H_list = []
-                for _ in range(NUM_CAND_UI):
+                
+                # Ensure z has correct dimension
+                if z.shape[0] != latent_dim:
+                    st.warning(f"Reshaping latent vector from {z.shape[0]} to {latent_dim} dimensions")
+                    if z.shape[0] > latent_dim:
+                        z = z[:latent_dim]
+                    else:
+                        z_padded = np.zeros(latent_dim)
+                        z_padded[:z.shape[0]] = z
+                        z = z_padded
+                
+                for cand_idx in range(NUM_CAND_UI):
+                    try:
+                        dz = np.random.randn(*z.shape).astype(np.float32) * current_hopping
+                        z_cand = z + dz
+                        
+                        # Ensure candidate has correct dimension
+                        if z_cand.shape[0] != latent_dim:
+                            if z_cand.shape[0] > latent_dim:
+                                z_cand = z_cand[:latent_dim]
+                            else:
+                                z_cand_padded = np.zeros(latent_dim)
+                                z_cand_padded[:z_cand.shape[0]] = z_cand
+                                z_cand = z_cand_padded
+                        
+                        # Create tensor with correct shape and device
+                        z_cand_tensor = torch.from_numpy(z_cand).float().to(device)
+                        if z_cand_tensor.dim() == 1:
+                            z_cand_tensor = z_cand_tensor.unsqueeze(0)
+                        
+                        # Verify shape matches model expectations
+                        if z_cand_tensor.shape[1] != latent_dim:
+                            st.warning(f"Reshaping candidate tensor from {z_cand_tensor.shape[1]} to {latent_dim} dimensions")
+                            if z_cand_tensor.shape[1] > latent_dim:
+                                z_cand_tensor = z_cand_tensor[:, :latent_dim]
+                            else:
+                                z_cand_tensor_padded = torch.zeros(z_cand_tensor.shape[0], latent_dim).to(device)
+                                z_cand_tensor_padded[:, :z_cand_tensor.shape[1]] = z_cand_tensor
+                                z_cand_tensor = z_cand_tensor_padded
+                        
+                        with torch.no_grad():
+                            # Call model decoder directly with proper interface
+                            if hasattr(model, 'decoder'):
+                                # For newer model architecture
+                                recon_cand = model.decoder(z_cand_tensor)
+                                # Get predictions from the model's prediction head
+                                if hasattr(model, 'prediction_head'):
+                                    params_pred = model.prediction_head(z_cand_tensor)
+                                    # Handle MDN output format if needed
+                                    if isinstance(params_pred, tuple) and len(params_pred) == 4:
+                                        pi_s_cand, mu_s_cand, log_sigma_s_cand, _ = params_pred
+                                        theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand = mdn_point_and_confidence(
+                                            pi_s_cand, mu_s_cand, log_sigma_s_cand, var_scale=var_scale
+                                        )
+                                    else:
+                                        # Simple prediction output
+                                        theta_hat_s_cand = params_pred
+                                        conf_param_s_cand = torch.ones_like(theta_hat_s_cand) * 0.95
+                                        conf_global_s_cand = torch.tensor([0.95])
+                                        modes_s_cand = None
+                                else:
+                                    # Fallback to inference function
+                                    recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+                                        inference(model, z_cand_tensor, var_scale=var_scale)
+                            else:
+                                # For older model architecture
+                                recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+                                    inference(model, z_cand_tensor, var_scale=var_scale)
+                        
+                        recon_cand = inv_smooth_scale(recon_cand)
+                        recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+                        y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
+                        conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
+                        conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
 
-                    dz = np.random.randn(*z.shape).astype(np.float32) * current_hopping
-                    z_cand = z + dz
-                    z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
-                    with torch.no_grad():
-                        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-                            inference(model, z_cand_tensor, var_scale=var_scale)
-                    recon_cand = inv_smooth_scale(recon_cand)
-                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
-                    y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
-                    conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
-                    conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
+                        _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
+                        t_cand = y_pred_s_cand[0]
+                        s_cand = scores_cand["empirical_score"]
+                        cnn_cand = metrics_cand["connected_components"]
+                        c_cand = metrics_cand["dendrite_coverage"]
 
-                    _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
-                    t_cand = y_pred_s_cand[0]
-                    s_cand = scores_cand["empirical_score"]
-                    cnn_cand = metrics_cand["connected_components"]
-                    c_cand = metrics_cand["dendrite_coverage"]
+                        # 总结全局匹配度
+                        H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
 
-                    # 总结全局匹配度
-                    H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
+                        # save cands
+                        z_cands.append(z_cand.copy())
+                        H_list.append(float(H))
 
-                    # save cands
-                    z_cands.append(z_cand.copy())
-                    H_list.append(float(H))
+                        if c_cand < c or t_cand < t_val or (cnn_cand >= 3 and STRICT_UI):
+                            log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t_val:.3f} connected_components={cnn_cand}")
+                            continue
 
-                    if c_cand < c or t_cand < t_val or (cnn_cand >= 3 and STRICT_UI):
-                        log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t_val:.3f} connected_components={cnn_cand}")
+                        if H > best_H_score:
+                            best_H_score = H
+                            best_score = s_cand
+                            best_z = z_cand
+                            best_img = recon_cand
+                            best_params = y_pred_s_cand
+                            best_params_confidence = conf_s_cand
+                            best_coverage = c_cand
+                            
+                    except Exception as e:
+                        log_container.error(f"Candidate {cand_idx} failed: {str(e)}")
                         continue
-
-                    if H > best_H_score:
-                        best_H_score = H
-                        best_score = s_cand
-                        best_z = z_cand
-                        best_img = recon_cand
-                        best_params = y_pred_s_cand
-                        best_params_confidence = conf_s_cand
-                        best_coverage = c_cand
 
                 if best_z is None:
                     log_container.code("[Stop] no valid candidate (all rejected).", language="text")
