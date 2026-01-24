@@ -338,7 +338,7 @@ with tab4:
             if selected_dendrite_images:
                 name_to_path = {p.name: p for p in test_images}
                 for nm in selected_dendrite_images:
-                    fid = file_fingerprint(name_to_path[nm].encode("utf-8"))
+                    fid = file_fingerprint(str(name_to_path[nm]).encode("utf-8"))
                     if fid in past_files:
                         past_files.remove(fid)
                         continue
