@@ -168,8 +168,8 @@ with st.sidebar:
         st.warning("No test images found. Create a 'test_input' folder with images.")
 
     var_scale = st.slider(
-        "var_scale",
-        0.01, 10.0, 1.0, 0.01,
+        "Var Scale (How much uncertainty is allowed)",
+        0.01, 1, 0.1, 0.01,
         key="var_scale"
     )
 

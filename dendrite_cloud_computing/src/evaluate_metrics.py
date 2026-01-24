@@ -594,7 +594,7 @@ def generate_analysis_figure(
     *,
     save: bool = False,
     save_path: Optional[str] = None,
-    show: bool = True,
+    show: bool = False,
     title: Optional[str] = None,
     random_seed: Optional[int] = None,
 ) -> Tuple[plt.Figure, Dict[str, float], Dict[str, float]]:

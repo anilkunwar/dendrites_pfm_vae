@@ -5,7 +5,13 @@
 # phy_weight × phy_alpha × phy_beta
 # =====================================
 
-phy_weight=("0.001" "0.01" "0.05")
+TARGET_PID=127453
+
+while ps -p "$TARGET_PID" > /dev/null 2>&1; do
+    sleep 1
+done
+
+phy_weight=("0.001" "0.0001")
 phy_alpha=("0.5" "1.0" "5.0" "10.0")
 phy_beta=("0.5" "1.0" "5.0" "10.0")
 

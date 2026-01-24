@@ -7,36 +7,27 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
+from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import smooth_scale
 from src.modelv11 import mdn_point_and_confidence
 
-def get_init_tensor(image_size=(64, 64)):
+def get_init_tensor(image_size: tuple):
 
     arr = np.load("data/case_000/npy_files/0.000000.npy")  # shape (H, W, 3)
 
-    # assert arr.max() <= 5 and arr.min() >= -5, "Inappropriate values occured"
     arr = cv2.resize(arr, image_size)
     tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
     tensor_t = smooth_scale(tensor_t)
-
-    # build control variable
-    c = [0.0]
-
-    # find meta
-    meta_path = "data/case_000/case_000.json"
-    with open(meta_path, "r", encoding="utf-8") as f:
-        meta = json.load(f)
-    c += meta
 
     return tensor_t
 
 
 # ====== CONFIG ======
-MODEL_ROOT = "/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/results_expV9/V9_lat=8_beta=0.1_warm=0.3_ctr=2.0_smooth=0.05_time=20260105_071004/"
+MODEL_ROOT = "results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search_continuous")
 
-IMAGE_SIZE = 64
+IMAGE_SIZE = (48, 48)
 VAR_SCALE = 1
 TOPK_MODES = 3
 
@@ -53,11 +44,11 @@ MAX_NORM   = 3.5         # 限制 z 的范数（粗暴但有效）
 PIX_CLIP_MIN = -0.2      # 用于检测异常 decode
 PIX_CLIP_MAX =  1.2
 
-def save_step(out_dir, step, img, z, t, fd, score):
+def save_step(out_dir, step, img, z, params, coverage, score):
     plt.figure(figsize=(6, 5))
     plt.imshow(img, cmap="coolwarm")
     plt.colorbar(fraction=0.046)
-    plt.title(f"step={step}  score={score:.3f}\nt={t:.3f}, FD={fd:.3f}, ||z||={np.linalg.norm(z):.2f}")
+    plt.title(f"step={step} score={score:.3f}\n t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
@@ -78,27 +69,28 @@ def main():
     # === 初始化：直接从 prior 采样 ===
     # 这一步本身就可能生成很差的图（取决于你的 VAE prior match 是否好）
     with torch.no_grad():
-        recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(get_init_tensor().unsqueeze(0).to(device))
-
-    for step in range(0, STEPS + 1):
-
+        recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(get_init_tensor(IMAGE_SIZE).unsqueeze(0).to(device))
         # ---- stochastic prediction + confidence (from sampled z) ----
         theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
             pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE, topk=TOPK_MODES
         )
-        y_pred_s = theta_hat_s.detach().cpu().numpy().tolist()
-        conf_s = conf_param_s.detach().cpu().numpy().tolist()
-        conf_global_s = conf_global_s.detach().cpu().numpy().tolist()
 
+    y_pred_s = theta_hat_s.detach().cpu().numpy().tolist()
+    conf_s = conf_param_s.detach().cpu().numpy().tolist()
+    conf_global_s = conf_global_s.detach().cpu().numpy().tolist()
+
+    _, metrics, scores = generate_analysis_figure(recon)
+    s = scores["empirical_score"]
+    c = metrics["dendrite_coverage"]
+    save_step(run_dir, 0, recon, z, y_pred_s, c, s)
+
+    for step in range(1, STEPS + 1):
+        # 生成候选
         best = None
         best_score = -1e18
         best_img = None
-        best_t = None
-        best_fd = None
-
-        save_step(run_dir, step, best_img, z, best_t, best_fd, best_score)
-
-        # 生成候选
+        best_params = None
+        best_coverage = None
         for _ in range(NUM_CAND):
 
             dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA
@@ -111,30 +103,34 @@ def main():
 
             with torch.no_grad():
                 recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(get_init_tensor().unsqueeze(0).to(device))
+                # ---- stochastic prediction + confidence (from sampled z) ----
+                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
+                    pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE, topk=TOPK_MODES
+                )
+            y_pred_s = theta_hat_s.detach().cpu().numpy().tolist()
+            conf_s = conf_param_s.detach().cpu().numpy().tolist()
+            conf_global_s = conf_global_s.detach().cpu().numpy().tolist()
 
-            t_cand = predict_time(model, device, z_cand)
-            fd_cand = fractal_dimension(img_cand)
+            _, metrics, scores = generate_analysis_figure(recon)
+            s = scores["empirical_score"]
+            c = metrics["dendrite_coverage"]
 
-            s = heuristic_score(img_cand)
+            # 总结全局匹配度
+            H =
 
             if s > best_score:
                 best_score = s
                 best = z_cand
-                best_img = img_cand
-                best_t = t_cand
-                best_fd = fd_cand
+                best_img = recon
+                best_params = y_pred_s
+                best_coverage = c
 
         if best is None:
             print("[Stop] no valid candidate (all rejected).")
             break
 
         z = best
-
-        # # safe: 定期投影回 dataset latent 的最近邻附近（非常有效）
-        # if MODE == "safe" and USE_PROJ and (step % PROJ_EVERY == 0):
-        #     _, idx = knn.kneighbors(z.reshape(1, -1))
-        #     z_nn = Z_data[idx[0, 0]]
-        #     z = PROJ_ALPHA * z + (1 - PROJ_ALPHA) * z_nn
+        save_step(run_dir, 0, best_img, best, best_params, best_coverage, best_score)
 
     print("Done. Saved to:", run_dir)
 

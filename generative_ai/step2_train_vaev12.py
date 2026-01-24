@@ -244,11 +244,7 @@ def main(args):
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer,
-        args.T0,
-        eta_min=args.lr_min,
-    )
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=args.lr_factor, patience=args.lr_patience)
 
     beta_warup_epochs = int(args.epochs * args.beta_warmup_ratio)
     gamma_warmup_epochs = int(args.epochs * args.gamma_warmup_ratio)
@@ -362,7 +358,7 @@ def main(args):
                 tstat["interface"].append(sm_info["interface"])
                 tstat["two_phase"].append(sm_info["two_phase"])
 
-        lr_scheduler.step()
+        lr_scheduler.step(np.mean(vstat["total"]))
 
         val_epoch = {k: float(np.mean(v)) for k, v in vstat.items()}
         val_epoch["epoch"] = epoch
@@ -421,8 +417,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--T0", type=float, default=500)
-    parser.add_argument("--lr_min", type=float, default=1e-5)
+    parser.add_argument("--lr_factor", type=float, default=0.5)
+    parser.add_argument("--lr_patience", type=float, default=10)
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))

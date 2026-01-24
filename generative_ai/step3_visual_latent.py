@@ -84,11 +84,11 @@ def main():
 
     # ===== basic =====
     parser.add_argument("--model_root", type=str,
-                        default='results/VAEv11_MDN_lat=32_K=8_beta=2.0_warm=0.3_ctr=1.0_smooth=2.0_time=20260120_202159')
+                        default='results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835')
 
-    parser.add_argument("--image_size", type=int, default=64)
+    parser.add_argument("--image_size", type=int, default=48)
     parser.add_argument("--split_json", type=str, default="data/dataset_split.json")
-    parser.add_argument("--split", type=str, default="test")
+    parser.add_argument("--split", type=str, default="val")
 
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=4)

@@ -125,8 +125,8 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--model_root", type=str, default='results/VAEv11_MDN_lat=32_K=16_beta=2.0_warm=0.3_ctr=0.8_smooth=2.0_scale=1.0_time=20260121_132911')
+    parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
+    parser.add_argument("--model_root", type=str, default='results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835')
 
     args = parser.parse_args()
 
