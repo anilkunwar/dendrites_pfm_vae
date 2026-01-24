@@ -1294,4 +1294,3 @@ Features:
 - Batch process multiple images
 - View parameter visualizations
 - Download results
-"""
