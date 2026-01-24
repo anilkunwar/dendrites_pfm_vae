@@ -128,7 +128,7 @@ def process_image(image, model, image_size):
 
     # Get control parameters
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-        pi_s, mu_s, log_sigma_s, var_scale=1, topk=3
+        pi_s, mu_s, log_sigma_s, var_scale=var_scale, topk=3
     )
     y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
     conf_s = conf_param_s.detach().cpu().numpy()[0]
@@ -181,6 +181,7 @@ else:
 
 param_names = ["t"]
 param_names += list(PARAM_RANGES.keys())
+var_scale = 1.0
 
 # Main interface with tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "Heuristic Latent Space Exploration"])
@@ -210,7 +211,18 @@ def analyze_image(image, image_name:str):
             f"Resized from: {expected_size}, Max value: {np.max(recon_image[..., 0]):.2f}, Min value: {np.min(recon_image[..., 0]):.2f}")
 
     # Display control parameters
-    st.subheader("📈 Predicted Control Parameters")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📈 Predicted Control Parameters")
+    with col2:
+        global var_scale
+        var_scale = st.slider(
+            "var_scale",
+            min_value=0.01,
+            max_value=10.0,
+            value=1.0,
+            step=0.01
+        )
 
     # Create parameter table
     param_df = pd.DataFrame({
@@ -224,7 +236,7 @@ def analyze_image(image, image_name:str):
         param_df.style.format(
             {"Predict Value (Normalized)": "{:.4f}",
              "Predict Value (Denormalized)": "{:.9f}",
-             "Confidence": "{:.2f}"
+             f"Confidence under var={var_scale}": "{:.2f}"
              }))
     st.bar_chart(param_df.set_index("Parameter")["Predict Value (Normalized)"])
 
