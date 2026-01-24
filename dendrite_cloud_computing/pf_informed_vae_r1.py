@@ -748,7 +748,7 @@ with tab5:
 
             with torch.no_grad():
                 seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
-                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model()
+                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
                 # ---- stochastic prediction + confidence (from sampled z) ----
                 theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
                     pi_s, mu_s, log_sigma_s, var_scale=var_scale
@@ -789,7 +789,7 @@ with tab5:
                     z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
                     with torch.no_grad():
                         recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-                            model.inference(z_cand_tensor, var_scale=var_scale)
+                            inference(model, z_cand_tensor, var_scale=var_scale)
                     recon_cand = inv_smooth_scale(recon_cand)
                     recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
                     y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
