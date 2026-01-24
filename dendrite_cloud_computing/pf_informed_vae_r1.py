@@ -575,19 +575,6 @@ with tab5:
     # -----------------------------
     st.subheader("🖼️ Live Exploration Viewer")
 
-    # --- Session state (history) ---
-    if "explore_hist" not in st.session_state:
-        st.session_state.explore_hist = {
-            "recon": [],  # list of (H,W,3) float
-            "analysis_fig": [],  # list of matplotlib figs (optional)
-            "z": [],  # list of (D,)
-            "params": [],  # list of (P,) y_pred_s
-            "params_confidence": [],
-            "score": [],  # list of float
-            "coverage": [],  # list of float
-            "step": [],  # list of int
-        }
-
     def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
         rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
         for k, v in extra.items():
@@ -803,6 +790,18 @@ with tab5:
             )
 
     if run_btn and seed_image is not None:
+
+        # clean all the images
+        st.session_state.explore_hist = {
+            "recon": [],  # list of (H,W,3) float
+            "analysis_fig": [],  # list of matplotlib figs (optional)
+            "z": [],  # list of (D,)
+            "params": [],  # list of (P,) y_pred_s
+            "params_confidence": [],
+            "score": [],  # list of float
+            "coverage": [],  # list of float
+            "step": [],  # list of int
+        }
 
         with st.spinner("Running exploration..."):
 
