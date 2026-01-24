@@ -755,7 +755,7 @@ with tab5:
         enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
 
     st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
-               "Reject if coverage decreases or t decreases (same as your script).")
+               "Reject if coverage decreases or t decreases.")
 
     run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
 
@@ -917,8 +917,6 @@ Folder Structure Expected:
 │   ├── image2.png
 │   └── ...
 └── (other project files)
-
-
 
 Features:
 - Upload custom images
