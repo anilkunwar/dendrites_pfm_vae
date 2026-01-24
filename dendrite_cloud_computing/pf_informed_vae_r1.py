@@ -350,7 +350,7 @@ with tab3:
 
                     if image is not None:
                         # Process image
-                        recon_img, y_pred_s, conf_s, conf_global_s = process_image(image, model, expected_size)
+                        recon_img, ctr_array, conf_s, conf_global_s = process_image(image, model, expected_size)
 
                         # Store results
                         result = {
@@ -483,16 +483,21 @@ with tab4:
     else:
         st.metric("Number of images", len(st.session_state.tab4_items))
         st.markdown("")
-        for idx, item in enumerate(st.session_state.tab4_items):
-            container = st.container(border=True)
-            with container:
-                header_cols = st.columns([1, 1])
-                with header_cols[0]:
-                    st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
-                with header_cols[1]:
-                    st.metric("Score", f"{item['score']:.4f}")
 
-                st.pyplot(item["result"])
+        with st.spinner("Processing images..."):
+            progress_bar = st.progress(0)
+            for idx, item in enumerate(st.session_state.tab4_items):
+                container = st.container(border=True)
+                with container:
+                    header_cols = st.columns([1, 1])
+                    with header_cols[0]:
+                        st.markdown(f"**{item['name']}**  · from：`{item['source']}`")
+                    with header_cols[1]:
+                        st.metric("Score", f"{item['score']:.4f}")
+
+                    st.pyplot(item["result"])
+                progress_bar.progress((idx + 1) / len(st.session_state.tab4_items))
+        st.success(f"✅ Processed {len(st.session_state.tab4_items)} images")
 
 with tab5:
     pass
