@@ -443,7 +443,7 @@ def _plot_latent_exploration_fig(
     max_step_labels=30,
 ):
     """
-    Returns matplotlib figures: (fig_main, fig_norm, fig_score, fig_cov)
+    Returns matplotlib figure: fig_main
     - best candidate is assumed to be z_path[t+1] for step t
     """
     Zpath = np.asarray(z_path)  # (T+1, D)
@@ -462,7 +462,7 @@ def _plot_latent_exploration_fig(
         Z_all.append(np.asarray(C))
     Z_all = np.concatenate(Z_all, axis=0)
 
-    mean = Z_all.mean(axis=0)  # (D,) IMPORTANT: no keepdims
+    mean = Z_all.mean(axis=0)  # (D,)
     Zc = Z_all - mean
     _, _, Vt = np.linalg.svd(Zc, full_matrices=False)
     W = Vt[:2].T  # (D,2)
@@ -486,7 +486,6 @@ def _plot_latent_exploration_fig(
 
         if colorize_candidates:
             vals = np.asarray(cand_values[t]).reshape(-1)
-            # strict align: must match NUM_CAND
             if vals.size != C2.shape[0]:
                 raise ValueError(
                     f"cand_values[{t}] has {vals.size} elems but cand_clouds[{t}] has {C2.shape[0]} points. "
@@ -494,7 +493,6 @@ def _plot_latent_exploration_fig(
                 )
             mask = np.isfinite(vals)
 
-            # invalid (nan) as faint gray
             if np.any(~mask):
                 ax.scatter(C2[~mask, 0], C2[~mask, 1],
                            s=10, alpha=0.08, color="gray", linewidths=0)
@@ -543,18 +541,7 @@ def _plot_latent_exploration_fig(
 
     fig_main.tight_layout()
 
-    # ---------- aux figs ----------
-    steps = np.arange(T_plus_1)
-
-    fig_norm = plt.figure(figsize=(7, 4))
-    axn = fig_norm.add_subplot(111)
-    axn.plot(steps, np.linalg.norm(Zpath, axis=1))
-    axn.set_title("||z|| over accepted steps")
-    axn.set_xlabel("step")
-    axn.set_ylabel("||z||")
-    fig_norm.tight_layout()
-
-    return fig_main, fig_norm
+    return fig_main
 
 with tab5:
     st.header("Heuristic Latent Space Exploration")
@@ -900,7 +887,7 @@ with tab5:
         st.success(f"✅ Finished. Accepted steps: {len(st.session_state.explore_hist['z']) - 1}")
         st.subheader("🧭 Latent exploration visualization")
         enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
-        fig_main, fig_norm = _plot_latent_exploration_fig(
+        fig_main = _plot_latent_exploration_fig(
             z_path=st.session_state.explore_hist["z"],
             cand_clouds=st.session_state.explore_hist["cand_clouds"],
             cand_values=st.session_state.explore_hist["cand_H"],
@@ -908,19 +895,18 @@ with tab5:
             colorize_candidates=bool(enforce_color),
         )
         st.pyplot(fig_main)
-        st.pyplot(fig_norm)
 
         # score / coverage curves
-        st.subheader("📈 Score / Coverage over accepted steps")
+        st.subheader("📈 Statistics over accepted steps")
         df_curves = pd.DataFrame({
             "step": np.arange(len(st.session_state.explore_hist['z'])),
             "score": st.session_state.explore_hist['score'],
             "coverage": st.session_state.explore_hist['coverage'],
             "z_norm": np.linalg.norm(np.asarray(st.session_state.explore_hist['z']), axis=1),
         }).set_index("step")
-        st.line_chart(df_curves[["score"]])
-        st.line_chart(df_curves[["coverage"]])
-        st.line_chart(df_curves[["z_norm"]])
+        st.line_chart(df_curves[["score"]], caption="Score over accepted steps")
+        st.line_chart(df_curves[["coverage"]], caption="Dendrite coverage over accepted steps")
+        st.line_chart(df_curves[["z_norm"]], caption="Z_norm over accepted steps")
 
 # Footer
 
