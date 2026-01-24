@@ -635,7 +635,7 @@ with tab5:
         metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
 
         log_container.code(
-            f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
+            f"step={step_i} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
             language="text"
         )
 
