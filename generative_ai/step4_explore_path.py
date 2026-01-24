@@ -25,7 +25,7 @@ def get_init_tensor(image_size: tuple):
 # ====== CONFIG ======
 MODEL_ROOT = "results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
-OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search_continuous")
+OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search")
 
 IMAGE_SIZE = (48, 48)
 VAR_SCALE = 1
@@ -53,7 +53,7 @@ def save_step(out_dir, step, img, z, params, coverage, score):
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
     plt.close()
-
+    print(f"step={step} score={score:.3f}\n t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
 
 def main():
 
@@ -75,9 +75,11 @@ def main():
             pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE, topk=TOPK_MODES
         )
 
-    y_pred_s = theta_hat_s.detach().cpu().numpy().tolist()
-    conf_s = conf_param_s.detach().cpu().numpy().tolist()
-    conf_global_s = conf_global_s.detach().cpu().numpy().tolist()
+    recon = recon.cpu().detach().numpy()[0, 0]
+    z = z.cpu().detach().numpy()[0]
+    y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+    conf_s = conf_param_s.detach().cpu().numpy()[0]
+    conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
     _, metrics, scores = generate_analysis_figure(recon)
     s = scores["empirical_score"]
@@ -86,7 +88,8 @@ def main():
 
     for step in range(1, STEPS + 1):
         # 生成候选
-        best = None
+        best_z = None
+        best_H_score = -1e18
         best_score = -1e18
         best_img = None
         best_params = None
@@ -95,42 +98,38 @@ def main():
 
             dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA
             z_cand = z + dz
-
-            # 避免探索太远
-            nrm = np.linalg.norm(z_cand)
-            if nrm > MAX_NORM:
-                z_cand = z_cand / (nrm + 1e-12) * MAX_NORM
-
+            z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
             with torch.no_grad():
-                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(get_init_tensor().unsqueeze(0).to(device))
-                # ---- stochastic prediction + confidence (from sampled z) ----
-                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-                    pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE, topk=TOPK_MODES
-                )
-            y_pred_s = theta_hat_s.detach().cpu().numpy().tolist()
-            conf_s = conf_param_s.detach().cpu().numpy().tolist()
-            conf_global_s = conf_global_s.detach().cpu().numpy().tolist()
+                recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = model.inference(z_cand_tensor)
 
-            _, metrics, scores = generate_analysis_figure(recon)
-            s = scores["empirical_score"]
-            c = metrics["dendrite_coverage"]
+            recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+            y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
+            conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
+            conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
+
+            _, metrics_cand, scores_cand = generate_analysis_figure(recon_cand)
+            s_cand = scores_cand["empirical_score"]
+            c_cand = metrics_cand["dendrite_coverage"]
 
             # 总结全局匹配度
-            H =
+            H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
 
-            if s > best_score:
+            if H > best_H_score and c_cand > c:
+                best_H_score = H
                 best_score = s
-                best = z_cand
+                best_z = z_cand
                 best_img = recon
                 best_params = y_pred_s
                 best_coverage = c
 
-        if best is None:
+        if best_z is None:
             print("[Stop] no valid candidate (all rejected).")
             break
+        else:
+            print(f"[Next] find best candidate with H score={best_H_score:.2f}")
 
-        z = best
-        save_step(run_dir, 0, best_img, best, best_params, best_coverage, best_score)
+        z = best_z
+        save_step(run_dir, 0, best_img, best_z, best_params, best_coverage, best_score)
 
     print("Done. Saved to:", run_dir)
 

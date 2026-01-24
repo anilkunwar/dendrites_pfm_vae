@@ -335,16 +335,13 @@ class VAE_MDN(nn.Module):
         return recon, mu_q, logvar_q, (pi, mu, log_sigma), z
 
     @torch.no_grad()
-    def inference(self, num_samples=1, full_output=False, var_scale: float = 1.0, topk: int = 3):
-        device = next(self.parameters()).device
-        z = torch.randn(num_samples, self.latent_size, device=device)
-        imgs = self.decoder(z)
+    def inference(self, z, var_scale: float = 1.0, topk: int = 3):
+
+        recon = self.decoder(z)
 
         pi, mu, log_sigma = self.mdn_head(z)
         theta_hat, conf_param, conf_global, modes = mdn_point_and_confidence(
             pi, mu, log_sigma, var_scale=var_scale, topk=topk
         )
 
-        if full_output:
-            return imgs, theta_hat, conf_param, conf_global, modes, z, (pi, mu, log_sigma)
-        return imgs, theta_hat, conf_param, conf_global
+        return recon, (theta_hat, conf_param, conf_global, modes)
