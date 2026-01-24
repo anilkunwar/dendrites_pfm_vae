@@ -190,7 +190,7 @@ param_names = ["t"]
 param_names += list(PARAM_RANGES.keys())
 
 # Main interface with tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "Heuristic Latent Space Exploration"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "🔍 Heuristic Latent Space Exploration"])
 
 def show_coolwarm(gray_image, caption):
     norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
@@ -507,7 +507,379 @@ with tab4:
         st.success(f"✅ Processed {len(st.session_state.tab4_items)} images")
 
 with tab5:
-    pass
+    st.header("Heuristic Latent Space Exploration")
+
+
+    # -----------------------------
+    # Helpers (local to tab5)
+    # -----------------------------
+    def _prep_tensor_from_image(image: np.ndarray, image_size: tuple):
+        """image: (H,W,3) float in [0,1] or npy compatible; returns (1,3,H,W) torch tensor after smooth_scale"""
+        arr = cv2.resize(image, image_size)
+        tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
+        tensor_t = smooth_scale(tensor_t)
+        return tensor_t[None]
+
+
+    def _encode_image_get_z_and_recon(image: np.ndarray):
+        """Run VAE once: get recon (RGB float, resized back to original), control params, and latent z (1D)."""
+        original_shape = image.shape
+        x = _prep_tensor_from_image(image, expected_size)  # (1,3,H,W)
+
+        with torch.no_grad():
+            # model forward returns: recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z
+            recon, _, _, (pi_s, mu_s, log_sigma_s), z = model(x)
+
+        # recon to RGB float [0,1] and resize back to original
+        recon_img = inv_smooth_scale(recon).detach().cpu().numpy()[0].transpose(1, 2, 0)
+        recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
+
+        # control params for the sampled z
+        theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
+            pi_s, mu_s, log_sigma_s, var_scale=var_scale, topk=3
+        )
+        y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+
+        z_np = z.detach().cpu().numpy()
+        # robust squeeze: could be (1,D) or (D,)
+        z_np = np.squeeze(z_np)
+        if z_np.ndim != 1:
+            z_np = z_np.reshape(-1)
+
+        return recon_img, y_pred_s, z_np
+
+
+    def _inference_from_z(z_1d: np.ndarray):
+        """Decode from latent z; return recon_img (RGB float), y_pred_s (params)."""
+        z_tensor = torch.from_numpy(z_1d.astype(np.float32))[None]  # (1,D)
+        with torch.no_grad():
+            # model.inference returns: recon, (theta_hat_s, conf_param_s, conf_global_s, modes_s)
+            recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+                model.inference(z_tensor, var_scale=var_scale)
+
+        recon_img = inv_smooth_scale(recon_cand).detach().cpu().numpy()[0].transpose(1, 2, 0)
+        # NOTE: inference recon is in model's native resolution; we keep it native for metrics
+        # but for display we may resize to original later if needed.
+        y_pred_s = theta_hat_s_cand.detach().cpu().numpy()[0]
+        return recon_img, y_pred_s
+
+
+    def _compute_metrics(recon_img_rgb: np.ndarray):
+        """Use channel-0 for dendrite metrics; returns (analysis_fig, metrics_dict, scores_dict)."""
+        # generate_analysis_figure expects a 2D gray image in your other tabs
+        result_fig, metrics, scores = generate_analysis_figure(recon_img_rgb[..., 0])
+        return result_fig, metrics, scores
+
+
+    def _plot_latent_exploration_fig(
+            z_path,
+            cand_clouds,
+            cand_values=None,
+            value_name="H",
+            colorize_candidates=False,
+            show_step_labels=True,
+            max_step_labels=30,
+    ):
+        """
+        Returns matplotlib figures: (fig_main, fig_norm, fig_score, fig_cov)
+        - best candidate is assumed to be z_path[t+1] for step t
+        """
+        Zpath = np.asarray(z_path)  # (T+1, D)
+        Zpath = np.squeeze(Zpath)
+        if Zpath.ndim != 2:
+            raise ValueError(f"z_path must become (T+1,D), got {Zpath.shape}")
+
+        T_plus_1, D = Zpath.shape
+        T = T_plus_1 - 1
+        if len(cand_clouds) != T:
+            raise ValueError(f"cand_clouds length must be T={T}, got {len(cand_clouds)}")
+
+        # PCA basis uses path + all clouds
+        Z_all = [Zpath]
+        for C in cand_clouds:
+            Z_all.append(np.asarray(C))
+        Z_all = np.concatenate(Z_all, axis=0)
+
+        mean = Z_all.mean(axis=0)  # (D,) IMPORTANT: no keepdims
+        Zc = Z_all - mean
+        _, _, Vt = np.linalg.svd(Zc, full_matrices=False)
+        W = Vt[:2].T  # (D,2)
+
+        Zp2 = (Zpath - mean) @ W  # (T+1,2)
+
+        # ---------- main fig ----------
+        fig_main = plt.figure(figsize=(7.5, 6.5))
+        ax = fig_main.add_subplot(111)
+        mappable = None
+
+        if colorize_candidates:
+            if cand_values is None or len(cand_values) != T:
+                raise ValueError("colorize_candidates=True requires cand_values with length T")
+            vmin = min(float(np.nanmin(v)) for v in cand_values)
+            vmax = max(float(np.nanmax(v)) for v in cand_values)
+
+        for t, C in enumerate(cand_clouds):
+            C = np.asarray(C)
+            C2 = (C - mean) @ W
+
+            if colorize_candidates:
+                vals = np.asarray(cand_values[t]).reshape(-1)
+                # strict align: must match NUM_CAND
+                if vals.size != C2.shape[0]:
+                    raise ValueError(
+                        f"cand_values[{t}] has {vals.size} elems but cand_clouds[{t}] has {C2.shape[0]} points. "
+                        "Record one value per candidate (use np.nan for invalid/rejected)."
+                    )
+                mask = np.isfinite(vals)
+
+                # invalid (nan) as faint gray
+                if np.any(~mask):
+                    ax.scatter(C2[~mask, 0], C2[~mask, 1],
+                               s=10, alpha=0.08, color="gray", linewidths=0)
+
+                if np.any(mask):
+                    sc = ax.scatter(C2[mask, 0], C2[mask, 1],
+                                    c=vals[mask], vmin=vmin, vmax=vmax,
+                                    s=10, alpha=0.28, linewidths=0)
+                    mappable = sc
+            else:
+                ax.scatter(C2[:, 0], C2[:, 1], s=10, alpha=0.18, color="gray", linewidths=0)
+
+            # best = path next point
+            z_best = Zpath[t + 1]  # (D,)
+            z_best2 = (z_best - mean) @ W  # (2,)
+            ax.scatter(
+                float(z_best2[0]), float(z_best2[1]),
+                s=90, marker="*", color="gold",
+                edgecolors="black", linewidths=0.7, zorder=5
+            )
+
+        # accepted path
+        ax.plot(Zp2[:, 0], Zp2[:, 1], "-o", linewidth=1.6, markersize=4, label="accepted path", zorder=4)
+        for i in range(len(Zp2) - 1):
+            ax.annotate(
+                "",
+                xy=(Zp2[i + 1, 0], Zp2[i + 1, 1]),
+                xytext=(Zp2[i, 0], Zp2[i, 1]),
+                arrowprops=dict(arrowstyle="->", lw=0.8),
+                zorder=4
+            )
+
+        if show_step_labels:
+            stride = max(1, T_plus_1 // max_step_labels)
+            for i in range(0, T_plus_1, stride):
+                ax.text(Zp2[i, 0], Zp2[i, 1], str(i), fontsize=8)
+
+        ax.set_title("Latent exploration (PCA 2D) with candidate clouds")
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        ax.legend(loc="best")
+
+        if mappable is not None:
+            cb = fig_main.colorbar(mappable, ax=ax, fraction=0.046, pad=0.04)
+            cb.set_label(value_name)
+
+        fig_main.tight_layout()
+
+        # ---------- aux figs ----------
+        steps = np.arange(T_plus_1)
+
+        fig_norm = plt.figure(figsize=(7, 4))
+        axn = fig_norm.add_subplot(111)
+        axn.plot(steps, np.linalg.norm(Zpath, axis=1))
+        axn.set_title("||z|| over accepted steps")
+        axn.set_xlabel("step")
+        axn.set_ylabel("||z||")
+        fig_norm.tight_layout()
+
+        fig_score = None
+        fig_cov = None
+        return fig_main, fig_norm
+
+
+    # -----------------------------
+    # UI: seed selection
+    # -----------------------------
+    seed_mode = st.radio("Seed image source", ["Upload", "From test images"], horizontal=True)
+
+    seed_image = None
+    seed_name = None
+
+    if seed_mode == "Upload":
+        up_seed = st.file_uploader(
+            "Upload a seed image (.npy or image file). This seed is only used to get an initial latent z.",
+            type=["npy", "jpg", "png", "jpeg", "bmp", "tiff"],
+            key="tab5_seed_uploader",
+        )
+        if up_seed is not None:
+            if up_seed.name.endswith(".npy"):
+                buf = io.BytesIO(up_seed.getvalue())
+                seed_image = np.load(buf)
+            else:
+                seed_image = np.array(Image.open(up_seed).convert("RGB")) / 255.0
+            seed_name = up_seed.name
+
+    else:
+        if test_images:
+            test_names = [p.name for p in test_images]
+            seed_name = st.selectbox("Choose a seed from test images", test_names, key="tab5_seed_select")
+            if seed_name:
+                name_to_path = {p.name: p for p in test_images}
+                seed_image = load_image_from_path(name_to_path[seed_name])
+        else:
+            st.warning("No test images available.")
+
+    st.markdown("---")
+
+    # -----------------------------
+    # UI: exploration hyperparameters
+    # -----------------------------
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        STEPS_UI = st.number_input("Steps", min_value=1, max_value=500, value=60, step=1, key="tab5_steps")
+    with c2:
+        NUM_CAND_UI = st.number_input("NUM_CAND", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
+    with c3:
+        RW_SIGMA_UI = st.slider("RW_SIGMA", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
+    with c4:
+        enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
+
+    st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
+               "Reject if coverage decreases or t decreases (same as your script).")
+
+    run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
+
+    if run_btn and seed_image is not None:
+        with st.spinner("Running exploration..."):
+            # ---- init from seed image ----
+            recon0_rgb, y_pred_s, z = _encode_image_get_z_and_recon(seed_image)
+
+            fig0, metrics0, scores0 = _compute_metrics(recon0_rgb)
+            s = float(scores0["empirical_score"])
+            c = float(metrics0["dendrite_coverage"])
+            t = float(y_pred_s[0])
+
+            # records
+            z_path = [z.copy()]
+            score_path = [s]
+            coverage_path = [c]
+            recon_path = [recon0_rgb]  # model-res recon for display
+            analysis_figs = [fig0]
+
+            cand_clouds = []
+            cand_H = []
+
+            progress = st.progress(0.0)
+
+            for step in range(1, int(STEPS_UI) + 1):
+                best_z = None
+                best_H_score = -1e18
+                best_score = -1e18
+                best_recon = None
+                best_params = None
+                best_coverage = None
+
+                z_cands = np.empty((int(NUM_CAND_UI), z.shape[0]), dtype=np.float32)
+                H_list = np.full((int(NUM_CAND_UI),), np.nan, dtype=np.float32)  # nan for rejected/unevaluated
+
+                for i in range(int(NUM_CAND_UI)):
+                    dz = np.random.randn(*z.shape).astype(np.float32) * float(RW_SIGMA_UI)
+                    z_cand = z + dz
+                    z_cands[i] = z_cand
+
+                    recon_cand_rgb, y_pred_s_cand = _inference_from_z(z_cand)
+                    _, metrics_cand, scores_cand = _compute_metrics(recon_cand_rgb)
+
+                    s_cand = float(scores_cand["empirical_score"])
+                    c_cand = float(metrics_cand["dendrite_coverage"])
+                    t_cand = float(y_pred_s_cand[0])
+
+                    # same heuristic as your explore script
+                    H = - float(np.linalg.norm(y_pred_s_cand - y_pred_s)) - (s_cand - s)
+                    H_list[i] = H
+
+                    # reject constraints
+                    if (c_cand < c) or (t_cand < t):
+                        continue
+
+                    if H > best_H_score:
+                        best_H_score = H
+                        best_score = s_cand
+                        best_z = z_cand
+                        best_recon = recon_cand_rgb
+                        best_params = y_pred_s_cand
+                        best_coverage = c_cand
+
+                cand_clouds.append(z_cands.copy())
+                cand_H.append(H_list.copy())
+
+                if best_z is None:
+                    st.warning(f"Stopped early at step={step}: no valid candidate (all rejected).")
+                    break
+
+                # accept best
+                z = best_z
+                y_pred_s = best_params
+                s = float(best_score)
+                c = float(best_coverage)
+                t = float(best_params[0])
+
+                z_path.append(z.copy())
+                score_path.append(s)
+                coverage_path.append(c)
+                recon_path.append(best_recon)
+
+                fig_step, _, _ = _compute_metrics(best_recon)
+                analysis_figs.append(fig_step)
+
+                progress.progress(step / float(STEPS_UI))
+
+            progress.empty()
+
+        # -----------------------------
+        # Display results
+        # -----------------------------
+        st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
+
+        st.subheader("🧭 Latent exploration visualization")
+        fig_main, fig_norm = _plot_latent_exploration_fig(
+            z_path=z_path,
+            cand_clouds=cand_clouds,
+            cand_values=cand_H,
+            value_name="H",
+            colorize_candidates=bool(enforce_color),
+        )
+        st.pyplot(fig_main)
+        st.pyplot(fig_norm)
+
+        # score / coverage curves
+        st.subheader("📈 Score / Coverage over accepted steps")
+        df_curves = pd.DataFrame({
+            "step": np.arange(len(score_path)),
+            "score": score_path,
+            "coverage": coverage_path,
+            "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+        }).set_index("step")
+        st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+
+        # show a compact gallery: first, last, and a few intermediates
+        st.subheader("🖼️ Reconstructions along the accepted path")
+        show_idx = list(dict.fromkeys(
+            [0, min(1, len(recon_path) - 1), len(recon_path) // 4, len(recon_path) // 2, (3 * len(recon_path)) // 4,
+             len(recon_path) - 1]
+        ))
+        cols = st.columns(len(show_idx))
+        for col, idx in zip(cols, show_idx):
+            with col:
+                st.markdown(f"**step {idx}**")
+                show_coolwarm(recon_path[idx][..., 0], caption=f"recon step {idx}")
+
+        st.subheader("🔍 Detailed analysis figures (optional)")
+        if st.checkbox("Show analysis figure for each accepted step (can be slow)", value=False, key="tab5_show_all"):
+            for i, fig in enumerate(analysis_figs):
+                with st.container(border=True):
+                    st.markdown(f"**Accepted step {i}**  · score={score_path[i]:.4f} · coverage={coverage_path[i]:.4f}")
+                    st.pyplot(fig)
 
 # Footer
 st.markdown("---")

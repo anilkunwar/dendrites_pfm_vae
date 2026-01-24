@@ -6,13 +6,12 @@ import tqdm
 from skimage import metrics
 from torch.utils.data import DataLoader
 
-from generative_ai.src.dataloader import DendritePFMDataset
-from generative_ai.src.tools import fractal_dimension_boxcount
+from src.dataloader import DendritePFMDataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 test_dataset = DendritePFMDataset(
-    (3, 64, 64),
+    (3, 48, 48),
     os.path.join("data", "dataset_split.json"),
     split="test"
 )
@@ -28,6 +27,13 @@ print(f"Test set size: {len(test_dataset)} samples")
 ssimss_dict = {}
 rmsss_dict = {}
 for f in tqdm.tqdm(os.listdir("results")):
+
+    if not os.path.exists(os.path.join(
+        "results", f,
+        "ckpt", "best.pt"
+    )):
+        continue
+
     vae = torch.load(os.path.join(
         "results", f,
         "ckpt", "best.pt"
@@ -42,7 +48,7 @@ for f in tqdm.tqdm(os.listdir("results")):
         for i, (x, y, did, xo) in enumerate(test_dataloader):
             x = x.to(device)
             y = y.to(device)
-            # recon_x = vae.inference()
+
             recon_x = vae(x)[0]
             x_np = x.detach().cpu().numpy()[0]
             r_np = recon_x.detach().cpu().numpy()[0]
