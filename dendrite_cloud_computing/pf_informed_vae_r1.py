@@ -127,7 +127,6 @@ def process_image(image, model, image_size):
     recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
 
     # Get control parameters
-    var_scale = st.session_state.get("var_scale", 1.0)
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
         pi_s, mu_s, log_sigma_s, var_scale=var_scale, topk=3
     )
@@ -167,6 +166,12 @@ with st.sidebar:
         st.info(f"Found {len(test_images)} images in '{os.path.basename(test_folder)}' folder")
     else:
         st.warning("No test images found. Create a 'test_input' folder with images.")
+
+    var_scale = st.slider(
+        "var_scale",
+        0.01, 10.0, 1.0, 0.01,
+        key="var_scale"
+    )
 
 # Load model
 model = load_model()
@@ -211,19 +216,7 @@ def analyze_image(image, image_name:str):
             f"Resized from: {expected_size}, Max value: {np.max(recon_image[..., 0]):.2f}, Min value: {np.min(recon_image[..., 0]):.2f}")
 
     # Display control parameters
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.subheader("📈 Predicted Control Parameters")
-    with col2:
-        var_scale = st.slider(
-            "var_scale",
-            min_value=0.01,
-            max_value=10.0,
-            value=st.session_state.get(f"var_scale_{image_name}", 1.0),
-            step=0.01,
-            key="var_scale_slider",  # ✅ 唯一 key
-        )
-        st.session_state[f"var_scale{image_name}"] = var_scale
+    st.subheader("📈 Predicted Control Parameters")
 
     # Create parameter table
     param_df = pd.DataFrame({
