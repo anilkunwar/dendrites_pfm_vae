@@ -636,6 +636,11 @@ with tab5:
 
     # show results in one step
     log_container = st.container(height=220)
+    with log_container:
+        st.code(
+            "\n".join(st.session_state.log_lines[-300:]),  # 防止无限增长
+            language="text"
+        )
 
     # show live
     left, right = st.columns([1.2, 1.0], gap="large")
@@ -770,7 +775,7 @@ with tab5:
                     H_list.append(float(H))
 
                     if c_cand < c or t_cand < t:
-                        log_container.info(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
+                        st.session_state.log_lines.append(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
                         continue
 
                     if H > best_H_score:
@@ -783,10 +788,10 @@ with tab5:
                         best_coverage = c_cand
 
                 if best_z is None:
-                    log_container.info("[Stop] no valid candidate (all rejected).")
+                    st.session_state.log_lines.append("[Stop] no valid candidate (all rejected).")
                     break
                 else:
-                    log_container.info(f"[Next] find best candidate with H score={best_H_score:.2f}")
+                    st.session_state.log_lines.append(f"[Next] find best candidate with H score={best_H_score:.2f}")
 
                 z = best_z
                 s = best_score
