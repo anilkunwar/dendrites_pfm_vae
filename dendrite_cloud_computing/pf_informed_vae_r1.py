@@ -211,7 +211,7 @@ def analyze_image(image, image_name:str):
             f"Resized from: {expected_size}, Max value: {np.max(recon_image[..., 0]):.2f}, Min value: {np.min(recon_image[..., 0]):.2f}")
 
     # Display control parameters
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([3, 1])
     with col1:
         st.subheader("📈 Predicted Control Parameters")
     with col2:
@@ -229,7 +229,7 @@ def analyze_image(image, image_name:str):
         "Parameter": param_names,
         "Predict Value (Normalized)": ctr_array,
         "Predict Value (Denormalized)": inv_scale_params(ctr_array),
-        "Confidence": conf_s
+        f"Confidence under var={var_scale}": conf_s
     })
 
     st.dataframe(
