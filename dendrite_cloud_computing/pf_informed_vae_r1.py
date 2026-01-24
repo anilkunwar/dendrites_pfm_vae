@@ -1,6 +1,7 @@
 import hashlib
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib import colors, cm
 
@@ -82,7 +83,7 @@ with st.sidebar:
     st.markdown("### Model Information")
     st.info("""
     This VAE model:
-    - Reconstructs 128×128 RGB images
+    - Reconstructs 256×256 RGB images
     - Predicts 15 control parameters
     - Uses a multi-kernel residual architecture
     """)
@@ -369,7 +370,7 @@ with tab4:
             progress_bar = st.progress(0)
             for idx, item in enumerate(st.session_state.tab4_items):
                 if item["result"] is None:
-                    result_img, _, scores = generate_analysis_figure(img[..., 0])
+                    result_img, _, scores = generate_analysis_figure(np.clip(item["origin"][..., 0], 0, 1))
                     item["result"] = result_img
                     item["score"] = scores["empirical_score"]
                 container = st.container(border=True)
