@@ -651,11 +651,11 @@ with tab5:
         live_img_placeholder = st.empty()
         live_caption_placeholder = st.empty()
 
-        # show selected historical by default (updates after run)
-        if len(st.session_state.explore_hist["step"]) > 0:
-            i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-            show_coolwarm(st.session_state.explore_hist["recon"][i], caption=f"Step {i}")
-            live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
+        # # show selected historical by default (updates after run)
+        # if len(st.session_state.explore_hist["step"]) > 0:
+        #     i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
+        #     show_coolwarm(st.session_state.explore_hist["recon"][i], caption=f"Step {i}")
+        #     live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
 
     # ---- Metrics / params panel for selected step ----
     with metrics_box:
@@ -663,19 +663,19 @@ with tab5:
 
         metrics_placeholder = st.empty()
 
-        if len(st.session_state.explore_hist["step"]) > 0:
-            i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-            y_pred = st.session_state.explore_hist["params"][i]
-            y_confidence = st.session_state.explore_hist["params_confidence"][i]
-            extra = {
-                "score": st.session_state.explore_hist["score"][i],
-                "coverage": st.session_state.explore_hist["coverage"][i],
-                "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
-            }
-            df = _params_to_table(y_pred, y_confidence, extra)
-            metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
-        else:
-            metrics_placeholder.info("Metrics table will appear after the first accepted step.")
+        # if len(st.session_state.explore_hist["step"]) > 0:
+        #     i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
+        #     y_pred = st.session_state.explore_hist["params"][i]
+        #     y_confidence = st.session_state.explore_hist["params_confidence"][i]
+        #     extra = {
+        #         "score": st.session_state.explore_hist["score"][i],
+        #         "coverage": st.session_state.explore_hist["coverage"][i],
+        #         "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
+        #     }
+        #     df = _params_to_table(y_pred, y_confidence, extra)
+        #     metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
+        # else:
+        #     metrics_placeholder.info("Metrics table will appear after the first accepted step.")
 
     if run_btn and seed_image is not None:
 
