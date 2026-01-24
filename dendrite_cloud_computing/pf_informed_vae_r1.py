@@ -287,9 +287,10 @@ with tab3:
 def file_fingerprint(data) -> str:
     h = hashlib.sha256(data).hexdigest()
     return h
-def tab4_add_item(img: np.ndarray, id:str, source: str):
+def tab4_add_item(img: np.ndarray, name:str, id:str, source: str):
     st.session_state.tab4_items.append({
         "id": id,
+        "name": name,
         "origin": img,
         "source": source,
         "result": None,
@@ -324,7 +325,7 @@ with tab4:
                     img = np.load(buf)
                 else:
                     img = np.array(Image.open(uf).convert("RGB")) / 255.0
-                tab4_add_item(img, fid, source="upload")
+                tab4_add_item(img, uf.name, fid, source="upload")
         st.caption("Tip: you can upload multiple times. Newly uploaded images will be added to the list below.")
     with right_col:
         st.subheader("Select from Test Images")
@@ -344,7 +345,7 @@ with tab4:
                         continue
                     try:
                         img = load_image_from_path(name_to_path[nm])
-                        tab4_add_item(img, nm, source="test")
+                        tab4_add_item(img, nm, fid, source="test")
                     except Exception as e:
                         st.error(f"Error loading image {nm}: {e}")
         else:
