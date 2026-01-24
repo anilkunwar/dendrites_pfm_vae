@@ -284,11 +284,9 @@ with tab3:
     else:
         st.warning("No test images found for batch analysis.")
 
-def file_fingerprint(uploaded_file) -> str:
-    # 注意：getvalue() 会把整个文件读入内存；大文件要谨慎
-    data = uploaded_file.getvalue()
+def file_fingerprint(data) -> str:
     h = hashlib.sha256(data).hexdigest()
-    return f"{uploaded_file.name}|{uploaded_file.size}|{h}"
+    return h
 def tab4_add_item(img: np.ndarray, id:str, source: str):
     st.session_state.tab4_items.append({
         "id": id,
@@ -317,9 +315,9 @@ with tab4:
         )
         if up_files:
             for uf in up_files:
-                fid = file_fingerprint(uf)
+                fid = file_fingerprint(uf.getvalue())
                 if fid in past_files:
-                    past_files.remove(uf)
+                    past_files.remove(fid)
                     continue
                 if uf.name.endswith(".npy"):
                     buf = io.BytesIO(uf.getvalue())
@@ -342,7 +340,7 @@ with tab4:
                 for nm in selected_dendrite_images:
                     fid = file_fingerprint(name_to_path[nm])
                     if fid in past_files:
-                        past_files.remove(uf)
+                        past_files.remove(fid)
                         continue
                     try:
                         img = load_image_from_path(name_to_path[nm])
@@ -355,7 +353,6 @@ with tab4:
     for item in st.session_state.tab4_items.copy():
         if item["id"] in past_files:
             st.session_state.tab4_items.remove(item)
-
     st.markdown("---")
 
     # ========== 3) Gallery: show + delete ==========
