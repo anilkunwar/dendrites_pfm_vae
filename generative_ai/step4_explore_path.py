@@ -21,46 +21,108 @@ def get_init_tensor(image_size: tuple):
 
     return tensor_t
 
+def plot_latent_path(run_dir, z_path, scores=None, coverages=None):
+    """
+    z_path: (T, D)
+    画：PCA投影到2D的隐空间轨迹 + 箭头 + 步号
+    """
+    Z = np.stack(z_path, axis=0)  # (T, D)
+    Zc = Z - Z.mean(axis=0, keepdims=True)
+
+    # --- PCA to 2D (no sklearn needed) ---
+    # SVD: Zc = U S V^T, principal axes in V
+    U, S, Vt = np.linalg.svd(Zc, full_matrices=False)
+    Z2 = Zc @ Vt[:2].T  # (T, 2)
+
+    plt.figure(figsize=(7, 6))
+    plt.plot(Z2[:, 0], Z2[:, 1], marker="o", linewidth=1)
+
+    # arrows
+    for i in range(len(Z2) - 1):
+        plt.annotate(
+            "",
+            xy=(Z2[i + 1, 0], Z2[i + 1, 1]),
+            xytext=(Z2[i, 0], Z2[i, 1]),
+            arrowprops=dict(arrowstyle="->", lw=0.8),
+        )
+
+    # step labels (太密就只标一部分)
+    T = len(Z2)
+    stride = max(1, T // 30)
+    for i in range(0, T, stride):
+        plt.text(Z2[i, 0], Z2[i, 1], str(i), fontsize=8)
+
+    plt.title("Latent exploration path (PCA 2D projection)")
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.tight_layout()
+    plt.savefig(os.path.join(run_dir, "latent_path_pca2d.png"), dpi=200)
+    plt.close()
+
+    # 可选：再画 norm / score / coverage 随 step
+    steps = np.arange(T)
+    plt.figure(figsize=(7, 4))
+    plt.plot(steps, np.linalg.norm(Z, axis=1))
+    plt.title("||z|| over steps")
+    plt.xlabel("step")
+    plt.ylabel("||z||")
+    plt.tight_layout()
+    plt.savefig(os.path.join(run_dir, "latent_norm_over_steps.png"), dpi=200)
+    plt.close()
+
+    if scores is not None:
+        plt.figure(figsize=(7, 4))
+        plt.plot(steps, scores)
+        plt.title("empirical_score over steps")
+        plt.xlabel("step")
+        plt.ylabel("score")
+        plt.tight_layout()
+        plt.savefig(os.path.join(run_dir, "score_over_steps.png"), dpi=200)
+        plt.close()
+
+    if coverages is not None:
+        plt.figure(figsize=(7, 4))
+        plt.plot(steps, coverages)
+        plt.title("dendrite_coverage over steps")
+        plt.xlabel("step")
+        plt.ylabel("coverage")
+        plt.tight_layout()
+        plt.savefig(os.path.join(run_dir, "coverage_over_steps.png"), dpi=200)
+        plt.close()
 
 # ====== CONFIG ======
-MODEL_ROOT = "results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/"
+MODEL_ROOT = "results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1/"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search")
 
 IMAGE_SIZE = (48, 48)
+# SEED = 0
+
 VAR_SCALE = 1
 TOPK_MODES = 3
-
 STEPS = 200
-SEED = 0
 
 # --- naive random walk params ---
-RW_SIGMA = 0.25          # 扰动幅度（大一点就更容易崩）
+RW_SIGMA = 0.25          # 扰动幅度
 NUM_CAND = 32            # 每步试多少个候选
-
-# --- safe guards ---
-PRIOR_L2_W = 0.03        # 惩罚 ||z||^2
-MAX_NORM   = 3.5         # 限制 z 的范数（粗暴但有效）
-PIX_CLIP_MIN = -0.2      # 用于检测异常 decode
-PIX_CLIP_MAX =  1.2
 
 def save_step(out_dir, step, img, z, params, coverage, score):
     plt.figure(figsize=(6, 5))
     plt.imshow(img, cmap="coolwarm")
     plt.colorbar(fraction=0.046)
-    plt.title(f"step={step} score={score:.3f}\n t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
+    plt.title(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
     plt.close()
-    print(f"step={step} score={score:.3f}\n t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
+    print(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
 
 def main():
 
     run_dir = os.path.join(OUT_DIR, str(time.time()))
     os.makedirs(run_dir, exist_ok=True)
-    np.random.seed(SEED)
-    torch.manual_seed(SEED)
+    # np.random.seed(SEED)
+    # torch.manual_seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.load(CKPT_PATH, map_location=device, weights_only=False)
@@ -86,6 +148,9 @@ def main():
     c = metrics["dendrite_coverage"]
     save_step(run_dir, 0, recon, z, y_pred_s, c, s)
 
+    z_path = [z.copy()]
+    score_path = [float(s)]
+    coverage_path = [float(c)]
     for step in range(1, STEPS + 1):
         # 生成候选
         best_z = None
@@ -111,16 +176,20 @@ def main():
             s_cand = scores_cand["empirical_score"]
             c_cand = metrics_cand["dendrite_coverage"]
 
+            if c_cand < c:
+                print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f}")
+                continue
+
             # 总结全局匹配度
             H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
 
-            if H > best_H_score and c_cand > c:
+            if H > best_H_score:
                 best_H_score = H
-                best_score = s
+                best_score = s_cand
                 best_z = z_cand
-                best_img = recon
-                best_params = y_pred_s
-                best_coverage = c
+                best_img = recon_cand
+                best_params = y_pred_s_cand
+                best_coverage = c_cand
 
         if best_z is None:
             print("[Stop] no valid candidate (all rejected).")
@@ -129,8 +198,16 @@ def main():
             print(f"[Next] find best candidate with H score={best_H_score:.2f}")
 
         z = best_z
-        save_step(run_dir, 0, best_img, best_z, best_params, best_coverage, best_score)
+        s = best_score
+        c = best_coverage
+        y_pred_s = best_params
+        save_step(run_dir, step, best_img, best_z, best_params, best_coverage, best_score)
 
+        z_path.append(z.copy())
+        score_path.append(float(s))
+        coverage_path.append(float(c))
+
+    plot_latent_path(run_dir, z_path, scores=score_path, coverages=coverage_path)
     print("Done. Saved to:", run_dir)
 
 

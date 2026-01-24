@@ -10,7 +10,7 @@ from PIL import Image
 from matplotlib import colors, cm
 
 from src.evaluate_metrics import generate_analysis_figure
-from src.dataloader import inv_scale_params, smooth_scale, PARAM_RANGES
+from src.dataloader import inv_scale_params, smooth_scale, inv_smooth_scale, PARAM_RANGES
 from src.modelv11 import mdn_point_and_confidence
 
 # ==========================================================
@@ -123,7 +123,8 @@ def process_image(image, model, image_size):
         recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t[None])
 
     # Ensure reconstruction is in valid range
-    recon_img = recon.detach().cpu().numpy()[0].transpose(1, 2, 0)
+    recon_img = inv_smooth_scale(recon)     # post processing
+    recon_img = recon_img.detach().cpu().numpy()[0].transpose(1, 2, 0)
     recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
 
     # Get control parameters

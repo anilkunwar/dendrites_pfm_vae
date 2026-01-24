@@ -16,4 +16,4 @@ def split_file(file_path, save_dir="../knowledge_base", save_name="vae_model.pt"
             chunk_num += 1
 
 # Run it
-split_file("/home/xtanghao/THPycharm/dendrites_pfm_vae/generative_ai/results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/ckpt/best.pt")
+split_file("/home/xtanghao/THPycharm/dendrites_pfm_vae/generative_ai/results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1/ckpt/best.pt")
