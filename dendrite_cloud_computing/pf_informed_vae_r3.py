@@ -834,20 +834,39 @@ with tab5:
         RW_SIGMA_UI = 0.25
         hopping_strengths = [RW_SIGMA_UI] * (STEPS_UI + 1)
         
-        # Modified to support multiple hopping strengths
+        # Modified to support multiple hopping strengths including functional decreasing
         HOPPING_MODE = st.selectbox("Hopping Mode", 
-                                   ["Single Strength", "Multiple Strengths"],
+                                   ["Single Strength", "Multiple Strengths", "Functional Decreasing"],
                                    index=0)
         
         if HOPPING_MODE == "Single Strength":
             RW_SIGMA_UI = st.slider("Hopping Strength (σ)", 0.01, 2.0, 0.25, 0.01)
             hopping_strengths = [RW_SIGMA_UI] * (STEPS_UI + 1)
-        else:
+        elif HOPPING_MODE == "Multiple Strengths":
             MIN_SIGMA = st.slider("Min Strength", 0.01, 1.0, 0.05, 0.01)
             MAX_SIGMA = st.slider("Max Strength", 0.1, 2.0, 0.5, 0.01)
             # Create linear progression of hopping strengths
             hopping_strengths = np.linspace(MIN_SIGMA, MAX_SIGMA, STEPS_UI + 1)
             st.caption(f"Strengths range from {MIN_SIGMA:.2f} to {MAX_SIGMA:.2f}")
+        else:  # Functional Decreasing
+            MAX_SIGMA_FUNC = st.slider("Starting Strength (max)", 0.1, 5.0, 2.0, 0.1)
+            MIN_SIGMA_FUNC = st.slider("Ending Strength (min)", 0.01, 1.0, 0.05, 0.01)
+            DECAY_MODE = st.selectbox("Decay Function", ["Exponential", "Linear", "Logarithmic"], index=0)
+            
+            if DECAY_MODE == "Exponential":
+                DECAY_RATE = st.slider("Decay Rate", 0.1, 5.0, 1.0, 0.1)
+                # Create exponential decay from max to min
+                t = np.linspace(0, 1, STEPS_UI + 1)
+                hopping_strengths = MIN_SIGMA_FUNC + (MAX_SIGMA_FUNC - MIN_SIGMA_FUNC) * np.exp(-DECAY_RATE * t)
+            elif DECAY_MODE == "Linear":
+                # Linear decrease from max to min
+                hopping_strengths = np.linspace(MAX_SIGMA_FUNC, MIN_SIGMA_FUNC, STEPS_UI + 1)
+            else:  # Logarithmic
+                # Logarithmic decrease from max to min
+                t = np.linspace(0, 1, STEPS_UI + 1)
+                hopping_strengths = MIN_SIGMA_FUNC + (MAX_SIGMA_FUNC - MIN_SIGMA_FUNC) * (1 - np.log(1 + 9*t) / np.log(10))
+            
+            st.caption(f"Strengths decrease from {MAX_SIGMA_FUNC:.2f} to {MIN_SIGMA_FUNC:.2f} using {DECAY_MODE} decay")
     with c4:
         STRICT_UI = st.checkbox("Strict mode", value=False)
     with c5:
@@ -960,7 +979,13 @@ with tab5:
             t_val = y_pred_s[0]
 
             # Initialize with first hopping strength
-            initial_hopping = RW_SIGMA_UI if HOPPING_MODE == "Single Strength" else hopping_strengths[0]
+            if HOPPING_MODE == "Single Strength":
+                initial_hopping = RW_SIGMA_UI
+            elif HOPPING_MODE == "Multiple Strengths":
+                initial_hopping = hopping_strengths[0]
+            else:  # Functional Decreasing
+                initial_hopping = hopping_strengths[0]
+                
             st.session_state.explore_hist["hopping_strength"].append(initial_hopping)
 
             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
