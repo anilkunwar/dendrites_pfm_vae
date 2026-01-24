@@ -409,8 +409,10 @@ def _update_live(step_i: int,
     hist["params_confidence"].append(y_pred_conf)
     hist["score"].append(float(score))
     hist["coverage"].append(float(coverage))
-    hist["cand_clouds"].append(np.ndarray([]) if cand_clouds is None else cand_clouds)
-    hist["cand_H"].append(np.ndarray([]) if cand_H is None else cand_H)
+    if cand_clouds is not None:
+        hist["cand_clouds"].append(cand_clouds)
+    if cand_H is not None:
+        hist["cand_H"].append(cand_H)
 
     # auto-jump viewer to latest step
     st.session_state["tab5_view_step"] = len(hist["step"]) - 1
