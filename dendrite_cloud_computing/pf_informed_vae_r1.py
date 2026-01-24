@@ -95,8 +95,8 @@ with st.sidebar:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(current_dir, "knowledge_base")
     model_paths = {p: os.path.join(model_dir, p) for p in os.listdir(model_dir)}
-    selected_model_path = st.selectbox("Choose a model:", list(model_paths.keys()))
-    model = load_model(selected_model_path, device)
+    selected_model_name = st.selectbox("Choose a model:", list(model_paths.keys()))
+    model = load_model(os.path.join(model_dir, selected_model_name), device)
 
     # Check for test images
     test_folder, test_images = get_test_images()
