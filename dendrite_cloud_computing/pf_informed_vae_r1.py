@@ -665,7 +665,7 @@ with tab5:
                 "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
             }
             df = _params_to_table(y_pred, y_confidence, extra)
-            metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
+            metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
         else:
             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
 
@@ -709,7 +709,7 @@ with tab5:
             "coverage": float(coverage),
             "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
         })
-        metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
+        metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
 
         # update cand summary if given
         if cand_H_list is not None:
@@ -727,6 +727,7 @@ with tab5:
 
         with st.spinner("Running exploration..."):
 
+            progress_bar = st.progress(0)
             with torch.no_grad():
                 seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
                 recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
@@ -753,75 +754,79 @@ with tab5:
             cand_H = []
             score_path = [float(s)]
             coverage_path = [float(c)]
-    #         for step in range(1, STEPS_UI + 1):
-    #             # 生成候选
-    #             best_z = None
-    #             best_H_score = -1e18
-    #             best_score = -1e18
-    #             best_img = None
-    #             best_params = None
-    #             best_coverage = None
-    #             z_cands = []
-    #             H_list = []
-    #             for _ in range(NUM_CAND_UI):
-    #
-    #                 dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
-    #                 z_cand = z + dz
-    #                 z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
-    #                 with torch.no_grad():
-    #                     recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-    #                         inference(model, z_cand_tensor, var_scale=var_scale)
-    #                 recon_cand = inv_smooth_scale(recon_cand)
-    #                 recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
-    #                 y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
-    #                 conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
-    #                 conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
-    #
-    #                 _, metrics_cand, scores_cand = generate_analysis_figure(recon_cand)
-    #                 t_cand = y_pred_s_cand[0]
-    #                 s_cand = scores_cand["empirical_score"]
-    #                 c_cand = metrics_cand["dendrite_coverage"]
-    #
-    #                 # 总结全局匹配度
-    #                 H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
-    #
-    #                 # save cands
-    #                 z_cands.append(z_cand.copy())
-    #                 H_list.append(float(H))
-    #
-    #                 if c_cand < c or t_cand < t:
-    #                     print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
-    #                     continue
-    #
-    #                 if H > best_H_score:
-    #                     best_H_score = H
-    #                     best_score = s_cand
-    #                     best_z = z_cand
-    #                     best_img = recon_cand
-    #                     best_params = y_pred_s_cand
-    #                     best_coverage = c_cand
-    #
-    #             if best_z is None:
-    #                 print("[Stop] no valid candidate (all rejected).")
-    #                 break
-    #             else:
-    #                 print(f"[Next] find best candidate with H score={best_H_score:.2f}")
-    #
-    #             z = best_z
-    #             s = best_score
-    #             c = best_coverage
-    #             t = best_params[0]
-    #             y_pred_s = best_params
-    #
-    #             _update_live(0, best_img, best_z, best_params, best_score, best_coverage, best_params[0], cand_H)
-    #
-    #             z_path.append(z.copy())
-    #             score_path.append(float(s))
-    #             coverage_path.append(float(c))
-    #
-    #             cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
-    #             cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
-    #
+            for step in range(1, STEPS_UI + 1):
+                # 生成候选
+                best_z = None
+                best_H_score = -1e18
+                best_score = -1e18
+                best_img = None
+                best_params = None
+                best_params_confidence = None
+                best_coverage = None
+                z_cands = []
+                H_list = []
+                for _ in range(NUM_CAND_UI):
+
+                    dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
+                    z_cand = z + dz
+                    z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+                            inference(model, z_cand_tensor, var_scale=var_scale)
+                    recon_cand = inv_smooth_scale(recon_cand)
+                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+                    y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
+                    conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
+                    conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
+
+                    _, metrics_cand, scores_cand = generate_analysis_figure(recon_cand)
+                    t_cand = y_pred_s_cand[0]
+                    s_cand = scores_cand["empirical_score"]
+                    c_cand = metrics_cand["dendrite_coverage"]
+
+                    # 总结全局匹配度
+                    H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
+
+                    # save cands
+                    z_cands.append(z_cand.copy())
+                    H_list.append(float(H))
+
+                    if c_cand < c or t_cand < t:
+                        print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
+                        continue
+
+                    if H > best_H_score:
+                        best_H_score = H
+                        best_score = s_cand
+                        best_z = z_cand
+                        best_img = recon_cand
+                        best_params = y_pred_s_cand
+                        best_params_confidence = conf_s_cand
+                        best_coverage = c_cand
+
+                if best_z is None:
+                    print("[Stop] no valid candidate (all rejected).")
+                    break
+                else:
+                    print(f"[Next] find best candidate with H score={best_H_score:.2f}")
+
+                z = best_z
+                s = best_score
+                c = best_coverage
+                t = best_params[0]
+                y_pred_s = best_params
+
+                _update_live(0, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage, cand_H)
+
+                z_path.append(z.copy())
+                score_path.append(float(s))
+                coverage_path.append(float(c))
+
+                cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
+                cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
+
+                progress_bar.progress(step / STEPS_UI)
+
         # -----------------------------
         # Display results
         # -----------------------------
