@@ -924,9 +924,8 @@ with tab5:
     # -----------------------------
     # Display results
     # -----------------------------
-    st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
-
     if len(st.session_state.explore_hist["step"]) > 0:
+        st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
         st.subheader("🧭 Latent exploration visualization")
         enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
         fig_main, fig_norm = _plot_latent_exploration_fig(
