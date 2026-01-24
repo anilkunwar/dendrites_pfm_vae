@@ -286,18 +286,11 @@ with tab4:
     st.header("Dendrite Intensity Analysis")
 
     # ========== 1) Session state for tab4 ==========
-    session_item_id = 0
     st.session_state.tab4_items = []
-
-    def _tab4_make_id(prefix: str, name: str) -> str:
-        global session_item_id
-        session_item_id += 1
-        return f"{prefix}:{name}:{session_item_id}"
 
     def tab4_add_item(img: np.ndarray, name: str, source: str):
         result_img, _, scores = generate_analysis_figure(img[..., 0])
         st.session_state.tab4_items.append({
-            "id": _tab4_make_id(source, name),
             "name": name,
             "source": source,
             "orig": img,
@@ -498,441 +491,442 @@ def _plot_latent_exploration_fig(
 
     return fig_main, fig_norm
 
-with tab5:
-    st.header("Heuristic Latent Space Exploration")
-
-    st.subheader("Initial state")
-    seed_mode = st.radio(
-        "Choose initial state source",
-        ["Default", "Upload image", "From test images"],
-        index=0,  # ✅ 默认选 Synthetic
-        horizontal=True,
-        key="tab5_seed_mode"
-    )
-
-    seed_image = None
-    seed_name = None
-    if seed_mode == "Default":
-        seed_name = "Default"
-        # ---- step 1: generate 50x50 base image ----
-        base_eta = np.zeros((50, 50), dtype=np.float32)
-        base_eta[:, :5] = 1.0  # 左侧 5 列为 1
-
-        base_c = np.zeros((50, 50), dtype=np.float32)
-        base_c[:, :5] = 0.2
-        base_c[:, 5:] = 0.8
-
-        base_p = np.zeros((50, 50), dtype=np.float32)
-
-        # ---- step 2: expand to 3 channels ----
-        seed_image = np.stack([base_eta, base_c, base_p], axis=-1)  # (50, 50, 3)
-
-    elif seed_mode == "Upload image":
-        up_seed = st.file_uploader(
-            "Upload a seed image (.npy or image file). This seed is only used to get an initial latent z.",
-            type=["npy", "jpg", "png", "jpeg", "bmp", "tiff"],
-            key="tab5_seed_uploader",
-        )
-        if up_seed is not None:
-            if up_seed.name.endswith(".npy"):
-                buf = io.BytesIO(up_seed.getvalue())
-                seed_image = np.load(buf)
-            else:
-                seed_image = np.array(Image.open(up_seed).convert("RGB")) / 255.0
-            seed_name = up_seed.name
-    else:
-        if test_images:
-            test_names = [p.name for p in test_images]
-            seed_name = st.selectbox("Choose a seed from test images", test_names, key="tab5_seed_select")
-            if seed_name:
-                name_to_path = {p.name: p for p in test_images}
-                seed_image = load_image_from_path(name_to_path[seed_name])
-        else:
-            st.warning("No test images available.")
-
-    st.markdown("---")
-
-    # -----------------------------
-    # UI: exploration hyperparameters
-    # -----------------------------
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        STEPS_UI = st.number_input("Steps", min_value=1, max_value=500, value=60, step=1, key="tab5_steps")
-    with c2:
-        NUM_CAND_UI = st.number_input("Number of candidates each step", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
-    with c3:
-        RW_SIGMA_UI = st.slider("Exploration strength", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
-
-    st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
-               "Reject if coverage decreases or t decreases.")
-
-    run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
-
-    st.markdown("---")
-
-    # -----------------------------
-    # TAB5: Live viewer + history + params/score panel
-    # -----------------------------
-    st.subheader("🖼️ Live Exploration Viewer")
-
-    def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
-        rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
-        for k, v in extra.items():
-            rows.append({"name": k, "value": float(v), f"confidence under {var_scale}": -1})
-        return pd.DataFrame(rows)
-
-    def _update_live(step_i: int,
-                     recon_rgb: np.ndarray,
-                     z_1d: np.ndarray,
-                     y_pred_s: np.ndarray,
-                     y_pred_conf: np.ndarray,
-                     score: float,
-                     coverage: float):
-        """
-        Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
-        Safe for repeated calls.
-        """
-        hist = st.session_state.explore_hist
-
-        hist["step"].append(int(step_i))
-        hist["recon"].append(np.asarray(recon_rgb))
-        hist["z"].append(np.asarray(z_1d).reshape(-1))
-        hist["params"].append(np.asarray(y_pred_s).reshape(-1))
-        hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
-        hist["score"].append(float(score))
-        hist["coverage"].append(float(coverage))
-
-        # auto-jump viewer to latest step
-        st.session_state["tab5_view_step"] = len(hist["step"]) - 1
-
-        # update live image
-        show_coolwarm(recon_rgb, f"Step {step_i} (latest accepted)", live_img_placeholder)
-
-        # update metrics table (latest)
-        df = _params_to_table(y_pred_s, y_pred_conf, {
-            "score": float(score),
-            "coverage": float(coverage),
-            "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
-        })
-        metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
-
-        log_container.code(
-            f"step={step_i} score={score:.3f} t={y_pred_s[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
-            language="text"
-        )
-
-    # show results in one step
-    log_container = st.container(height=220)
-
-    # show live
-    left, right = st.columns([1.2, 1.0], gap="large")
-    with left:
-        # Viewer containers
-        live_box = st.container(border=True)
-    with right:
-        metrics_box = st.container(border=True, height=800)
-
-    # ---- Live viewer (current + selected historical) ----
-    with live_box:
-        st.markdown("### Live")
-
-        live_img_placeholder = st.empty()
-        live_caption_placeholder = st.empty()
-
-        # show selected historical by default (updates after run)
-        if len(st.session_state.explore_hist["step"]) > 0:
-            i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-            show_coolwarm(st.session_state.explore_hist["recon"][i], caption=f"Step {i}")
-            live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
-
-    # ---- Metrics / params panel for selected step ----
-    with metrics_box:
-        st.markdown("### Params & Scores")
-
-        metrics_placeholder = st.empty()
-
-        if len(st.session_state.explore_hist["step"]) > 0:
-            i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-            y_pred = st.session_state.explore_hist["params"][i]
-            y_confidence = st.session_state.explore_hist["params_confidence"][i]
-            extra = {
-                "score": st.session_state.explore_hist["score"][i],
-                "coverage": st.session_state.explore_hist["coverage"][i],
-                "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
-            }
-            df = _params_to_table(y_pred, y_confidence, extra)
-            metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
-        else:
-            metrics_placeholder.info("Metrics table will appear after the first accepted step.")
-
-    # ---- History: thumbnails (default all) + playback + per-step params table ----
-    hist_box = st.container(border=True)
-    with hist_box:
-        st.markdown("### History")
-
-        hist = st.session_state.explore_hist
-        n_hist = len(hist.get("step", []))
-
-        if n_hist == 0:
-            st.info("No history yet. Run exploration to populate.")
-            st.session_state["tab5_view_step"] = 0
-
-        else:
-            # -------------------------
-            # Playback controls
-            # -------------------------
-            c1, c2, c3, c4 = st.columns([1.2, 1.0, 1.0, 1.0])
-            with c1:
-                play = st.toggle("▶️ Play", value=False, key="tab5_play")
-            with c2:
-                fps = st.slider("FPS", min_value=1, max_value=20, value=6, step=1, key="tab5_fps")
-            with c3:
-                loop = st.checkbox("Loop", value=True, key="tab5_loop")
-            with c4:
-                st.caption(f"Total steps: {n_hist}")
-
-            # Ensure view_step exists and is valid
-            if "tab5_view_step" not in st.session_state:
-                st.session_state["tab5_view_step"] = n_hist - 1
-            st.session_state["tab5_view_step"] = int(np.clip(st.session_state["tab5_view_step"], 0, n_hist - 1))
-
-            # Manual step selector (still useful when not playing)
-            view_step = st.slider(
-                "View step",
-                min_value=0,
-                max_value=n_hist - 1,
-                value=int(st.session_state["tab5_view_step"]),
-                key="tab5_view_step",
-            )
-
-            # Auto-play (advances view_step)
-            # NOTE: this drives reruns; keep it lightweight
-            if play:
-                import time
-
-                time.sleep(1.0 / float(fps))
-                nxt = int(st.session_state["tab5_view_step"]) + 1
-                if nxt >= n_hist:
-                    nxt = 0 if loop else (n_hist - 1)
-                    if not loop:
-                        st.session_state["tab5_play"] = False
-                st.session_state["tab5_view_step"] = nxt
-                st.rerun()
-
-            st.divider()
-
-            # -------------------------
-            # Thumbnails (default: ALL)
-            # -------------------------
-            st.markdown("#### Thumbnails (click slider / play to preview above)")
-
-            # Optional: layout controls
-            thumb_cols = st.slider("Columns", min_value=4, max_value=12, value=8, step=1, key="tab5_thumb_cols")
-
-            # Render all thumbnails in a grid
-            idxs = list(range(n_hist))
-            rows = (n_hist + thumb_cols - 1) // thumb_cols
-
-            for r in range(rows):
-                cols = st.columns(thumb_cols)
-                for c in range(thumb_cols):
-                    i = r * thumb_cols + c
-                    if i >= n_hist:
-                        break
-                    with cols[c]:
-                        # highlight current selected step
-                        is_sel = (i == int(st.session_state["tab5_view_step"]))
-                        cap = f"✅ {i}" if is_sel else f"{i}"
-
-                        # show_coolwarm expects 2D; if you store RGB recon, use channel 0
-                        img = hist["recon"][i]
-                        if isinstance(img, np.ndarray) and img.ndim == 3:
-                            img2d = img[..., 0]
-                        else:
-                            img2d = img
-
-                        show_coolwarm(img2d, cap)
-
-            st.divider()
-
-            # -------------------------
-            # Per-step parameter list / table
-            # -------------------------
-            st.markdown("### Parameters per step")
-
-            # Build a table: one row per step
-            # Expect: hist["params"][i] is 1D array, hist has score/coverage/t
-            max_p = max(len(np.asarray(p).reshape(-1)) for p in hist.get("params", [])) if hist.get(
-                "params") else 0
-
-            rows = []
-            for i in range(n_hist):
-                y = np.asarray(hist["params"][i]).reshape(-1) if hist.get("params") and i < len(
-                    hist["params"]) else np.array([])
-                row = {
-                    "step": int(hist["step"][i]) if i < len(hist["step"]) else i,
-                    "score": float(hist["score"][i]) if i < len(hist.get("score", [])) else np.nan,
-                    "coverage": float(hist["coverage"][i]) if i < len(hist.get("coverage", [])) else np.nan,
-                    "t": float(hist["t"][i]) if i < len(hist.get("t", [])) else (
-                        float(y[0]) if y.size > 0 else np.nan),
-                }
-                for k in range(max_p):
-                    row[f"param[{k}]"] = float(y[k]) if k < y.size else np.nan
-                rows.append(row)
-
-            df_params = pd.DataFrame(rows)
-
-            # Make it easy to inspect:
-            st.dataframe(
-                df_params,
-                width='stretch',
-                hide_index=True,
-            )
-
-    if run_btn and seed_image is not None:
-
-        # clean all the images
-        st.session_state.explore_hist = {
-            "recon": [],  # list of (H,W,3) float
-            "analysis_fig": [],  # list of matplotlib figs (optional)
-            "z": [],  # list of (D,)
-            "params": [],  # list of (P,) y_pred_s
-            "params_confidence": [],
-            "score": [],  # list of float
-            "coverage": [],  # list of float
-            "step": [],  # list of int
-        }
-
-        with st.spinner("Running exploration..."):
-
-            progress_bar = st.progress(0)
-            with torch.no_grad():
-                seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
-                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
-                # ---- stochastic prediction + confidence (from sampled z) ----
-                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-                    pi_s, mu_s, log_sigma_s, var_scale=var_scale
-                )
-
-            recon = inv_smooth_scale(recon)
-            recon = recon.cpu().detach().numpy()[0, 0]
-            z = z.cpu().detach().numpy()[0]
-            y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
-            conf_s = conf_param_s.detach().cpu().numpy()[0]
-            conf_global_s = conf_global_s.detach().cpu().numpy()[0]
-
-            _, metrics, scores = generate_analysis_figure(np.clip(recon, 0, 1))
-            s = scores["empirical_score"]
-            c = metrics["dendrite_coverage"]
-            t = y_pred_s[0]
-            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
-
-            z_path = [z.copy()]
-            cand_clouds = []
-            cand_H = []
-            score_path = [float(s)]
-            coverage_path = [float(c)]
-            for step in range(1, STEPS_UI + 1):
-                # 生成候选
-                best_z = None
-                best_H_score = -1e18
-                best_score = -1e18
-                best_img = None
-                best_params = None
-                best_params_confidence = None
-                best_coverage = None
-                z_cands = []
-                H_list = []
-                for _ in range(NUM_CAND_UI):
-
-                    dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
-                    z_cand = z + dz
-                    z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
-                    with torch.no_grad():
-                        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-                            inference(model, z_cand_tensor, var_scale=var_scale)
-                    recon_cand = inv_smooth_scale(recon_cand)
-                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
-                    y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
-                    conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
-                    conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
-
-                    _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
-                    t_cand = y_pred_s_cand[0]
-                    s_cand = scores_cand["empirical_score"]
-                    c_cand = metrics_cand["dendrite_coverage"]
-
-                    # 总结全局匹配度
-                    H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
-
-                    # save cands
-                    z_cands.append(z_cand.copy())
-                    H_list.append(float(H))
-
-                    if c_cand < c or t_cand < t:
-                        log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}", language="text")
-                        continue
-
-                    if H > best_H_score:
-                        best_H_score = H
-                        best_score = s_cand
-                        best_z = z_cand
-                        best_img = recon_cand
-                        best_params = y_pred_s_cand
-                        best_params_confidence = conf_s_cand
-                        best_coverage = c_cand
-
-                if best_z is None:
-                    log_container.code("[Stop] no valid candidate (all rejected).", language="text")
-                    break
-                else:
-                    log_container.code(f"[Next] find best candidate with H score={best_H_score:.2f}", language="text")
-
-                z = best_z
-                s = best_score
-                c = best_coverage
-                t = best_params[0]
-                y_pred_s = best_params
-
-                _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage)
-
-                z_path.append(z.copy())
-                score_path.append(float(s))
-                coverage_path.append(float(c))
-
-                cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
-                cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
-
-                progress_bar.progress(step / STEPS_UI)
-
-    # -----------------------------
-    # Display results
-    # -----------------------------
-    st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
-
-    st.subheader("🧭 Latent exploration visualization")
-    enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
-    fig_main, fig_norm = _plot_latent_exploration_fig(
-        z_path=z_path,
-        cand_clouds=cand_clouds,
-        cand_values=cand_H,
-        value_name="H",
-        colorize_candidates=bool(enforce_color),
-    )
-    st.pyplot(fig_main)
-    st.pyplot(fig_norm)
-
-    # score / coverage curves
-    st.subheader("📈 Score / Coverage over accepted steps")
-    df_curves = pd.DataFrame({
-        "step": np.arange(len(score_path)),
-        "score": score_path,
-        "coverage": coverage_path,
-        "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
-    }).set_index("step")
-    st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+# with tab5:
+#     st.header("Heuristic Latent Space Exploration")
+#
+#     st.subheader("Initial state")
+#     seed_mode = st.radio(
+#         "Choose initial state source",
+#         ["Default", "Upload image", "From test images"],
+#         index=0,  # ✅ 默认选 Synthetic
+#         horizontal=True,
+#         key="tab5_seed_mode"
+#     )
+#
+#     seed_image = None
+#     seed_name = None
+#     if seed_mode == "Default":
+#         seed_name = "Default"
+#         # ---- step 1: generate 50x50 base image ----
+#         base_eta = np.zeros((50, 50), dtype=np.float32)
+#         base_eta[:, :5] = 1.0  # 左侧 5 列为 1
+#
+#         base_c = np.zeros((50, 50), dtype=np.float32)
+#         base_c[:, :5] = 0.2
+#         base_c[:, 5:] = 0.8
+#
+#         base_p = np.zeros((50, 50), dtype=np.float32)
+#
+#         # ---- step 2: expand to 3 channels ----
+#         seed_image = np.stack([base_eta, base_c, base_p], axis=-1)  # (50, 50, 3)
+#
+#     elif seed_mode == "Upload image":
+#         up_seed = st.file_uploader(
+#             "Upload a seed image (.npy or image file). This seed is only used to get an initial latent z.",
+#             type=["npy", "jpg", "png", "jpeg", "bmp", "tiff"],
+#             key="tab5_seed_uploader",
+#         )
+#         if up_seed is not None:
+#             if up_seed.name.endswith(".npy"):
+#                 buf = io.BytesIO(up_seed.getvalue())
+#                 seed_image = np.load(buf)
+#             else:
+#                 seed_image = np.array(Image.open(up_seed).convert("RGB")) / 255.0
+#             seed_name = up_seed.name
+#     else:
+#         if test_images:
+#             test_names = [p.name for p in test_images]
+#             seed_name = st.selectbox("Choose a seed from test images", test_names, key="tab5_seed_select")
+#             if seed_name:
+#                 name_to_path = {p.name: p for p in test_images}
+#                 seed_image = load_image_from_path(name_to_path[seed_name])
+#         else:
+#             st.warning("No test images available.")
+#
+#     st.markdown("---")
+#
+#     # -----------------------------
+#     # UI: exploration hyperparameters
+#     # -----------------------------
+#     c1, c2, c3 = st.columns(3)
+#     with c1:
+#         STEPS_UI = st.number_input("Steps", min_value=1, max_value=500, value=60, step=1, key="tab5_steps")
+#     with c2:
+#         NUM_CAND_UI = st.number_input("Number of candidates each step", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
+#     with c3:
+#         RW_SIGMA_UI = st.slider("Exploration strength", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
+#
+#     st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
+#                "Reject if coverage decreases or t decreases.")
+#
+#     run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
+#
+#     st.markdown("---")
+#
+#     # -----------------------------
+#     # TAB5: Live viewer + history + params/score panel
+#     # -----------------------------
+#     st.subheader("🖼️ Live Exploration Viewer")
+#
+#     def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
+#         rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
+#         for k, v in extra.items():
+#             rows.append({"name": k, "value": float(v), f"confidence under {var_scale}": -1})
+#         return pd.DataFrame(rows)
+#
+#     def _update_live(step_i: int,
+#                      recon_rgb: np.ndarray,
+#                      z_1d: np.ndarray,
+#                      y_pred_s: np.ndarray,
+#                      y_pred_conf: np.ndarray,
+#                      score: float,
+#                      coverage: float):
+#         """
+#         Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
+#         Safe for repeated calls.
+#         """
+#         hist = st.session_state.explore_hist
+#
+#         hist["step"].append(int(step_i))
+#         hist["recon"].append(np.asarray(recon_rgb))
+#         hist["z"].append(np.asarray(z_1d).reshape(-1))
+#         hist["params"].append(np.asarray(y_pred_s).reshape(-1))
+#         hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
+#         hist["score"].append(float(score))
+#         hist["coverage"].append(float(coverage))
+#
+#         # auto-jump viewer to latest step
+#         st.session_state["tab5_view_step"] = len(hist["step"]) - 1
+#
+#         # update live image
+#         show_coolwarm(recon_rgb, f"Step {step_i} (latest accepted)", live_img_placeholder)
+#
+#         # update metrics table (latest)
+#         df = _params_to_table(y_pred_s, y_pred_conf, {
+#             "score": float(score),
+#             "coverage": float(coverage),
+#             "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
+#         })
+#         metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
+#
+#         log_container.code(
+#             f"step={step_i} score={score:.3f} t={y_pred_s[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
+#             language="text"
+#         )
+#
+#     # show results in one step
+#     log_container = st.container(height=220)
+#
+#     # show live
+#     left, right = st.columns([1.2, 1.0], gap="large")
+#     with left:
+#         # Viewer containers
+#         live_box = st.container(border=True)
+#     with right:
+#         metrics_box = st.container(border=True, height=800)
+#
+#     # ---- Live viewer (current + selected historical) ----
+#     with live_box:
+#         st.markdown("### Live")
+#
+#         live_img_placeholder = st.empty()
+#         live_caption_placeholder = st.empty()
+#
+#         # show selected historical by default (updates after run)
+#         if len(st.session_state.explore_hist["step"]) > 0:
+#             i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
+#             show_coolwarm(st.session_state.explore_hist["recon"][i], caption=f"Step {i}")
+#             live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
+#
+#     # ---- Metrics / params panel for selected step ----
+#     with metrics_box:
+#         st.markdown("### Params & Scores")
+#
+#         metrics_placeholder = st.empty()
+#
+#         if len(st.session_state.explore_hist["step"]) > 0:
+#             i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
+#             y_pred = st.session_state.explore_hist["params"][i]
+#             y_confidence = st.session_state.explore_hist["params_confidence"][i]
+#             extra = {
+#                 "score": st.session_state.explore_hist["score"][i],
+#                 "coverage": st.session_state.explore_hist["coverage"][i],
+#                 "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
+#             }
+#             df = _params_to_table(y_pred, y_confidence, extra)
+#             metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
+#         else:
+#             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
+#
+#     # ---- History: thumbnails (default all) + playback + per-step params table ----
+#     hist_box = st.container(border=True)
+#     with hist_box:
+#         st.markdown("### History")
+#
+#         hist = st.session_state.explore_hist
+#         n_hist = len(hist.get("step", []))
+#
+#         if n_hist == 0:
+#             st.info("No history yet. Run exploration to populate.")
+#             st.session_state["tab5_view_step"] = 0
+#
+#         else:
+#             # -------------------------
+#             # Playback controls
+#             # -------------------------
+#             c1, c2, c3, c4 = st.columns([1.2, 1.0, 1.0, 1.0])
+#             with c1:
+#                 play = st.toggle("▶️ Play", value=False, key="tab5_play")
+#             with c2:
+#                 fps = st.slider("FPS", min_value=1, max_value=20, value=6, step=1, key="tab5_fps")
+#             with c3:
+#                 loop = st.checkbox("Loop", value=True, key="tab5_loop")
+#             with c4:
+#                 st.caption(f"Total steps: {n_hist}")
+#
+#             # Ensure view_step exists and is valid
+#             if "tab5_view_step" not in st.session_state:
+#                 st.session_state["tab5_view_step"] = n_hist - 1
+#             st.session_state["tab5_view_step"] = int(np.clip(st.session_state["tab5_view_step"], 0, n_hist - 1))
+#
+#             # Manual step selector (still useful when not playing)
+#             view_step = st.slider(
+#                 "View step",
+#                 min_value=0,
+#                 max_value=n_hist - 1,
+#                 value=int(st.session_state["tab5_view_step"]),
+#                 key="tab5_view_step",
+#             )
+#
+#             # Auto-play (advances view_step)
+#             # NOTE: this drives reruns; keep it lightweight
+#             if play:
+#                 import time
+#
+#                 time.sleep(1.0 / float(fps))
+#                 nxt = int(st.session_state["tab5_view_step"]) + 1
+#                 if nxt >= n_hist:
+#                     nxt = 0 if loop else (n_hist - 1)
+#                     if not loop:
+#                         st.session_state["tab5_play"] = False
+#                 st.session_state["tab5_view_step"] = nxt
+#                 st.rerun()
+#
+#             st.divider()
+#
+#             # -------------------------
+#             # Thumbnails (default: ALL)
+#             # -------------------------
+#             st.markdown("#### Thumbnails (click slider / play to preview above)")
+#
+#             # Optional: layout controls
+#             thumb_cols = st.slider("Columns", min_value=4, max_value=12, value=8, step=1, key="tab5_thumb_cols")
+#
+#             # Render all thumbnails in a grid
+#             idxs = list(range(n_hist))
+#             rows = (n_hist + thumb_cols - 1) // thumb_cols
+#
+#             for r in range(rows):
+#                 cols = st.columns(thumb_cols)
+#                 for c in range(thumb_cols):
+#                     i = r * thumb_cols + c
+#                     if i >= n_hist:
+#                         break
+#                     with cols[c]:
+#                         # highlight current selected step
+#                         is_sel = (i == int(st.session_state["tab5_view_step"]))
+#                         cap = f"✅ {i}" if is_sel else f"{i}"
+#
+#                         # show_coolwarm expects 2D; if you store RGB recon, use channel 0
+#                         img = hist["recon"][i]
+#                         if isinstance(img, np.ndarray) and img.ndim == 3:
+#                             img2d = img[..., 0]
+#                         else:
+#                             img2d = img
+#
+#                         show_coolwarm(img2d, cap)
+#
+#             st.divider()
+#
+#             # -------------------------
+#             # Per-step parameter list / table
+#             # -------------------------
+#             st.markdown("### Parameters per step")
+#
+#             # Build a table: one row per step
+#             # Expect: hist["params"][i] is 1D array, hist has score/coverage/t
+#             max_p = max(len(np.asarray(p).reshape(-1)) for p in hist.get("params", [])) if hist.get(
+#                 "params") else 0
+#
+#             rows = []
+#             for i in range(n_hist):
+#                 y = np.asarray(hist["params"][i]).reshape(-1) if hist.get("params") and i < len(
+#                     hist["params"]) else np.array([])
+#                 row = {
+#                     "step": int(hist["step"][i]) if i < len(hist["step"]) else i,
+#                     "score": float(hist["score"][i]) if i < len(hist.get("score", [])) else np.nan,
+#                     "coverage": float(hist["coverage"][i]) if i < len(hist.get("coverage", [])) else np.nan,
+#                     "t": float(hist["t"][i]) if i < len(hist.get("t", [])) else (
+#                         float(y[0]) if y.size > 0 else np.nan),
+#                 }
+#                 for k in range(max_p):
+#                     row[f"param[{k}]"] = float(y[k]) if k < y.size else np.nan
+#                 rows.append(row)
+#
+#             df_params = pd.DataFrame(rows)
+#
+#             # Make it easy to inspect:
+#             st.dataframe(
+#                 df_params,
+#                 width='stretch',
+#                 hide_index=True,
+#             )
+#
+#     if run_btn and seed_image is not None:
+#
+#         # clean all the images
+#         st.session_state.explore_hist = {
+#             "recon": [],  # list of (H,W,3) float
+#             "analysis_fig": [],  # list of matplotlib figs (optional)
+#             "z": [],  # list of (D,)
+#             "params": [],  # list of (P,) y_pred_s
+#             "params_confidence": [],
+#             "score": [],  # list of float
+#             "coverage": [],  # list of float
+#             "step": [],  # list of int
+#         }
+#
+#         with st.spinner("Running exploration..."):
+#
+#             progress_bar = st.progress(0)
+#             with torch.no_grad():
+#                 seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
+#                 recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
+#                 # ---- stochastic prediction + confidence (from sampled z) ----
+#                 theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
+#                     pi_s, mu_s, log_sigma_s, var_scale=var_scale
+#                 )
+#
+#             recon = inv_smooth_scale(recon)
+#             recon = recon.cpu().detach().numpy()[0, 0]
+#             z = z.cpu().detach().numpy()[0]
+#             y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+#             conf_s = conf_param_s.detach().cpu().numpy()[0]
+#             conf_global_s = conf_global_s.detach().cpu().numpy()[0]
+#
+#             _, metrics, scores = generate_analysis_figure(np.clip(recon, 0, 1))
+#             s = scores["empirical_score"]
+#             c = metrics["dendrite_coverage"]
+#             t = y_pred_s[0]
+#             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
+#
+#             z_path = [z.copy()]
+#             cand_clouds = []
+#             cand_H = []
+#             score_path = [float(s)]
+#             coverage_path = [float(c)]
+#             for step in range(1, STEPS_UI + 1):
+#                 # 生成候选
+#                 best_z = None
+#                 best_H_score = -1e18
+#                 best_score = -1e18
+#                 best_img = None
+#                 best_params = None
+#                 best_params_confidence = None
+#                 best_coverage = None
+#                 z_cands = []
+#                 H_list = []
+#                 for _ in range(NUM_CAND_UI):
+#
+#                     dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
+#                     z_cand = z + dz
+#                     z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
+#                     with torch.no_grad():
+#                         recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+#                             inference(model, z_cand_tensor, var_scale=var_scale)
+#                     recon_cand = inv_smooth_scale(recon_cand)
+#                     recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+#                     y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
+#                     conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
+#                     conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
+#
+#                     _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
+#                     t_cand = y_pred_s_cand[0]
+#                     s_cand = scores_cand["empirical_score"]
+#                     c_cand = metrics_cand["dendrite_coverage"]
+#
+#                     # 总结全局匹配度
+#                     H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
+#
+#                     # save cands
+#                     z_cands.append(z_cand.copy())
+#                     H_list.append(float(H))
+#
+#                     if c_cand < c or t_cand < t:
+#                         log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}", language="text")
+#                         continue
+#
+#                     if H > best_H_score:
+#                         best_H_score = H
+#                         best_score = s_cand
+#                         best_z = z_cand
+#                         best_img = recon_cand
+#                         best_params = y_pred_s_cand
+#                         best_params_confidence = conf_s_cand
+#                         best_coverage = c_cand
+#
+#                 if best_z is None:
+#                     log_container.code("[Stop] no valid candidate (all rejected).", language="text")
+#                     break
+#                 else:
+#                     log_container.code(f"[Next] find best candidate with H score={best_H_score:.2f}", language="text")
+#
+#                 z = best_z
+#                 s = best_score
+#                 c = best_coverage
+#                 t = best_params[0]
+#                 y_pred_s = best_params
+#
+#                 _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage)
+#
+#                 z_path.append(z.copy())
+#                 score_path.append(float(s))
+#                 coverage_path.append(float(c))
+#
+#                 cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
+#                 cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
+#
+#                 progress_bar.progress(step / STEPS_UI)
+#
+#     # -----------------------------
+#     # Display results
+#     # -----------------------------
+#     st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
+#
+#     st.subheader("🧭 Latent exploration visualization")
+#     enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
+#     fig_main, fig_norm = _plot_latent_exploration_fig(
+#         z_path=z_path,
+#         cand_clouds=cand_clouds,
+#         cand_values=cand_H,
+#         value_name="H",
+#         colorize_candidates=bool(enforce_color),
+#     )
+#     st.pyplot(fig_main)
+#     st.pyplot(fig_norm)
+#
+#     # score / coverage curves
+#     st.subheader("📈 Score / Coverage over accepted steps")
+#     df_curves = pd.DataFrame({
+#         "step": np.arange(len(score_path)),
+#         "score": score_path,
+#         "coverage": coverage_path,
+#         "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+#     }).set_index("step")
+#     st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
 # Footer
+
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: gray;">
