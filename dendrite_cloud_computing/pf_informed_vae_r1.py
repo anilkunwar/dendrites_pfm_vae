@@ -394,7 +394,8 @@ def _update_live(step_i: int,
                  y_pred_s: np.ndarray,
                  y_pred_conf: np.ndarray,
                  score: float,
-                 coverage: float):
+                 coverage: float,
+                 cand_clouds=None, cand_H=None):
     """
     Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
     Safe for repeated calls.
@@ -402,12 +403,14 @@ def _update_live(step_i: int,
     hist = st.session_state.explore_hist
 
     hist["step"].append(int(step_i))
-    hist["recon"].append(np.asarray(recon_rgb))
-    hist["z"].append(np.asarray(z_1d).reshape(-1))
-    hist["params"].append(np.asarray(y_pred_s).reshape(-1))
-    hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
+    hist["recon"].append(recon_rgb)
+    hist["z"].append(z_1d)
+    hist["params"].append(y_pred_s)
+    hist["params_confidence"].append(y_pred_conf)
     hist["score"].append(float(score))
     hist["coverage"].append(float(coverage))
+    hist["cand_clouds"].append(np.ndarray([]) if cand_clouds is None else cand_clouds)
+    hist["cand_H"].append(np.ndarray([]) if cand_H is None else cand_H)
 
     # auto-jump viewer to latest step
     st.session_state["tab5_view_step"] = len(hist["step"]) - 1
@@ -635,6 +638,8 @@ with tab5:
             "score": [],  # list of float
             "coverage": [],  # list of float
             "step": [],  # list of int
+            "cand_clouds": [],
+            "cand_H": []
         }
 
     # show results in one step
@@ -646,7 +651,7 @@ with tab5:
         # Viewer containers
         live_box = st.container(border=True)
     with right:
-        metrics_box = st.container(border=True, height=800)
+        metrics_box = st.container(border=True)
 
     # ---- Live viewer (current + selected historical) ----
     with live_box:
@@ -817,6 +822,8 @@ with tab5:
             "score": [],  # list of float
             "coverage": [],  # list of float
             "step": [],  # list of int
+            "cand_clouds": [],
+            "cand_H": []
         }
 
         with st.spinner("Running exploration..."):
@@ -842,11 +849,6 @@ with tab5:
             c = metrics["dendrite_coverage"]
             t = y_pred_s[0]
 
-            z_path = [z.copy()]
-            cand_clouds = []
-            cand_H = []
-            score_path = [float(s)]
-            coverage_path = [float(c)]
             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
             for step in range(1, STEPS_UI + 1):
                 # 生成候选
@@ -910,14 +912,8 @@ with tab5:
                 t = best_params[0]
                 y_pred_s = best_params
 
-                _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage)
-
-                z_path.append(z.copy())
-                score_path.append(float(s))
-                coverage_path.append(float(c))
-
-                cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
-                cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
+                _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage,
+                             cand_clouds=np.stack(z_cands, axis=0), cand_H=np.array(H_list, dtype=float))
 
                 progress_bar.progress(step / STEPS_UI)
 
@@ -925,13 +921,13 @@ with tab5:
     # Display results
     # -----------------------------
     if len(st.session_state.explore_hist["step"]) > 0:
-        st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
+        st.success(f"✅ Finished. Accepted steps: {len(st.session_state.explore_hist['z']) - 1}")
         st.subheader("🧭 Latent exploration visualization")
         enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
         fig_main, fig_norm = _plot_latent_exploration_fig(
-            z_path=z_path,
-            cand_clouds=cand_clouds,
-            cand_values=cand_H,
+            z_path=st.session_state.explore_hist["z"],
+            cand_clouds=st.session_state.explore_hist["cand_clouds"],
+            cand_values=st.session_state.explore_hist["cand_H"],
             value_name="H",
             colorize_candidates=bool(enforce_color),
         )
@@ -941,10 +937,10 @@ with tab5:
         # score / coverage curves
         st.subheader("📈 Score / Coverage over accepted steps")
         df_curves = pd.DataFrame({
-            "step": np.arange(len(score_path)),
-            "score": score_path,
-            "coverage": coverage_path,
-            "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+            "step": np.arange(len(st.session_state.explore_hist['z'])),
+            "score": st.session_state.explore_hist['score'],
+            "coverage": st.session_state.explore_hist['coverage'],
+            "z_norm": np.linalg.norm(np.asarray(st.session_state.explore_hist['z']), axis=1),
         }).set_index("step")
         st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
