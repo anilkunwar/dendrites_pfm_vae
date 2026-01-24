@@ -788,6 +788,7 @@ with tab5:
             "cand_clouds": [],
             "cand_H": []
         }
+        st.session_state.tab5_view_step = 0
 
         with st.spinner("Running exploration..."):
 
@@ -903,9 +904,11 @@ with tab5:
             "score": st.session_state.explore_hist['score'],
             "coverage": st.session_state.explore_hist['coverage'],
             "z_norm": np.linalg.norm(np.asarray(st.session_state.explore_hist['z']), axis=1),
+            "t": [p[0] for p in st.session_state.explore_hist["params"]],
         }).set_index("step")
         st.line_chart(df_curves[["score"]], x_label="steps", y_label="Score")
         st.line_chart(df_curves[["coverage"]], x_label="steps", y_label="Dendrite coverage")
+        st.line_chart(df_curves[["t"]], x_label="steps", y_label="t")
         st.line_chart(df_curves[["z_norm"]],  x_label="steps", y_label="Z_norm")
 
 # Footer
