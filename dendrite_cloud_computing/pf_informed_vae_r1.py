@@ -746,7 +746,7 @@ with tab5:
             s = scores["empirical_score"]
             c = metrics["dendrite_coverage"]
             t = y_pred_s[0]
-            _update_live(0, recon, z, y_pred_s, conf_s, s, c, t)
+            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
 
     #         z_path = [z.copy()]
     #         cand_clouds = []
