@@ -591,8 +591,6 @@ with tab5:
             "coverage": [],  # list of float
             "step": [],  # list of int
         }
-    if "log_lines" not in st.session_state:
-        st.session_state.log_lines = []
 
     def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
         rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
@@ -638,11 +636,6 @@ with tab5:
 
     # show results in one step
     log_container = st.container(height=220)
-    with log_container:
-        st.code(
-            "\n".join(st.session_state.log_lines[-300:]),  # 防止无限增长
-            language="text"
-        )
 
     # show live
     left, right = st.columns([1.2, 1.0], gap="large")
@@ -777,7 +770,7 @@ with tab5:
                     H_list.append(float(H))
 
                     if c_cand < c or t_cand < t:
-                        st.session_state.log_lines.append(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
+                        log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}", language="text")
                         continue
 
                     if H > best_H_score:
@@ -790,10 +783,10 @@ with tab5:
                         best_coverage = c_cand
 
                 if best_z is None:
-                    st.session_state.log_lines.append("[Stop] no valid candidate (all rejected).")
+                    log_container.code("[Stop] no valid candidate (all rejected).", language="text")
                     break
                 else:
-                    st.session_state.log_lines.append(f"[Next] find best candidate with H score={best_H_score:.2f}")
+                    log_container.code(f"[Next] find best candidate with H score={best_H_score:.2f}", language="text")
 
                 z = best_z
                 s = best_score
