@@ -651,31 +651,11 @@ with tab5:
         live_img_placeholder = st.empty()
         live_caption_placeholder = st.empty()
 
-        # # show selected historical by default (updates after run)
-        # if len(st.session_state.explore_hist["step"]) > 0:
-        #     i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-        #     show_coolwarm(st.session_state.explore_hist["recon"][i], caption=f"Step {i}")
-        #     live_caption_placeholder.caption("Tip: during a run, this panel updates every accepted step.")
-
     # ---- Metrics / params panel for selected step ----
     with metrics_box:
         st.markdown("### Params & Scores")
 
         metrics_placeholder = st.empty()
-
-        # if len(st.session_state.explore_hist["step"]) > 0:
-        #     i = int(st.session_state.get("tab5_view_step", len(st.session_state.explore_hist["step"]) - 1))
-        #     y_pred = st.session_state.explore_hist["params"][i]
-        #     y_confidence = st.session_state.explore_hist["params_confidence"][i]
-        #     extra = {
-        #         "score": st.session_state.explore_hist["score"][i],
-        #         "coverage": st.session_state.explore_hist["coverage"][i],
-        #         "||z||": float(np.linalg.norm(st.session_state.explore_hist["z"][i])),
-        #     }
-        #     df = _params_to_table(y_pred, y_confidence, extra)
-        #     metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
-        # else:
-        #     metrics_placeholder.info("Metrics table will appear after the first accepted step.")
 
     if run_btn and seed_image is not None:
 
@@ -786,6 +766,12 @@ with tab5:
 
                 progress_bar.progress(step / STEPS_UI)
 
+    if len(st.session_state.explore_hist["step"]) > 0:
+        if len(st.session_state.explore_hist["step"]) == STEPS_UI:
+            st.success(f"✅ Finished. Accepted steps: {len(st.session_state.explore_hist['z']) - 1}")
+        else:
+            st.warning(f"✅ Finished due to no matched candidates. Accepted steps: {len(st.session_state.explore_hist['z']) - 1}")
+
     # ---- History: thumbnails (default all) + playback + per-step params table ----
     hist_box = st.container(border=True)
     with hist_box:
@@ -886,7 +872,6 @@ with tab5:
     # Display results
     # -----------------------------
     if len(st.session_state.explore_hist["step"]) > 0:
-        st.success(f"✅ Finished. Accepted steps: {len(st.session_state.explore_hist['z']) - 1}")
         st.subheader("🧭 Latent exploration visualization")
         enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
         fig_main = _plot_latent_exploration_fig(
