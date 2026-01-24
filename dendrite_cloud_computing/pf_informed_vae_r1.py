@@ -599,7 +599,7 @@ with tab5:
     def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
         rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
         for k, v in extra.items():
-            rows.append({"name": k, "value": float(v), f"confidence under {var_scale}": "-"})
+            rows.append({"name": k, "value": float(v), f"confidence under {var_scale}": -1})
         return pd.DataFrame(rows)
 
     # --- Layout: left = live image + history, right = params/metrics ---
@@ -638,7 +638,7 @@ with tab5:
 
     # ---- Live viewer (current + selected historical) ----
     with live_box:
-        st.markdown("### Live / Selected Image")
+        st.markdown("### Live")
 
         live_img_placeholder = st.empty()
         live_caption_placeholder = st.empty()
@@ -682,7 +682,6 @@ with tab5:
                      y_pred_conf: np.ndarray,
                      score: float,
                      coverage: float,
-                     t_val: float,
                      cand_H_list: np.ndarray | None = None):
         """
         Append history + refresh the Live viewer + refresh metrics table + refresh candidate summary.
@@ -743,7 +742,7 @@ with tab5:
             conf_s = conf_param_s.detach().cpu().numpy()[0]
             conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
-            _, metrics, scores = generate_analysis_figure(recon)
+            _, metrics, scores = generate_analysis_figure(np.clip(recon, 0, 1))
             s = scores["empirical_score"]
             c = metrics["dendrite_coverage"]
             t = y_pred_s[0]
