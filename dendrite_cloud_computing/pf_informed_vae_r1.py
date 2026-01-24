@@ -697,7 +697,6 @@ with tab5:
         hist["params_confidence"].append(np.asarray(y_pred_conf).reshape(-1))
         hist["score"].append(float(score))
         hist["coverage"].append(float(coverage))
-        hist["t"].append(float(t_val))
 
         # auto-jump viewer to latest step
         st.session_state["tab5_view_step"] = len(hist["step"]) - 1
