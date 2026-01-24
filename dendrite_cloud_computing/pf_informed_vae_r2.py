@@ -11,7 +11,7 @@ from sklearn.manifold import TSNE
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import pearsonr
-import streamlit as st  # Critical missing import
+import streamlit as st
 
 from src.modelv11 import mdn_point_and_confidence
 from src.evaluate_metrics import generate_analysis_figure
@@ -830,6 +830,10 @@ with tab5:
     with c2:
         NUM_CAND_UI = st.number_input("Candidates/step", min_value=4, max_value=256, value=32, step=4)
     with c3:
+        # Define default RW_SIGMA_UI outside the conditional block
+        RW_SIGMA_UI = 0.25
+        hopping_strengths = [RW_SIGMA_UI] * (STEPS_UI + 1)
+        
         # Modified to support multiple hopping strengths
         HOPPING_MODE = st.selectbox("Hopping Mode", 
                                    ["Single Strength", "Multiple Strengths"],
@@ -947,8 +951,10 @@ with tab5:
             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
             for step in range(1, STEPS_UI + 1):
                 # Get current hopping strength based on mode
-                current_hopping = RW_SIGMA_UI
-                if HOPPING_MODE == "Multiple Strengths":
+                if HOPPING_MODE == "Single Strength":
+                    current_hopping = RW_SIGMA_UI
+                else:
+                    # Use the pre-computed hopping strengths array
                     current_hopping = hopping_strengths[step % len(hopping_strengths)]
                 
                 # 生成候选
@@ -1294,3 +1300,4 @@ Features:
 - Batch process multiple images
 - View parameter visualizations
 - Download results
+"""
