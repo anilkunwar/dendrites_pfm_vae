@@ -841,13 +841,13 @@ with tab5:
             s = scores["empirical_score"]
             c = metrics["dendrite_coverage"]
             t = y_pred_s[0]
-            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
 
             z_path = [z.copy()]
             cand_clouds = []
             cand_H = []
             score_path = [float(s)]
             coverage_path = [float(c)]
+            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
             for step in range(1, STEPS_UI + 1):
                 # 生成候选
                 best_z = None
@@ -926,28 +926,28 @@ with tab5:
     # -----------------------------
     st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
 
-    # if len(st.session_state.explore_hist["step"]) > 0:
-    st.subheader("🧭 Latent exploration visualization")
-    enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
-    fig_main, fig_norm = _plot_latent_exploration_fig(
-        z_path=z_path,
-        cand_clouds=cand_clouds,
-        cand_values=cand_H,
-        value_name="H",
-        colorize_candidates=bool(enforce_color),
-    )
-    st.pyplot(fig_main)
-    st.pyplot(fig_norm)
+    if len(st.session_state.explore_hist["step"]) > 0:
+        st.subheader("🧭 Latent exploration visualization")
+        enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
+        fig_main, fig_norm = _plot_latent_exploration_fig(
+            z_path=z_path,
+            cand_clouds=cand_clouds,
+            cand_values=cand_H,
+            value_name="H",
+            colorize_candidates=bool(enforce_color),
+        )
+        st.pyplot(fig_main)
+        st.pyplot(fig_norm)
 
-    # score / coverage curves
-    st.subheader("📈 Score / Coverage over accepted steps")
-    df_curves = pd.DataFrame({
-        "step": np.arange(len(score_path)),
-        "score": score_path,
-        "coverage": coverage_path,
-        "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
-    }).set_index("step")
-    st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+        # score / coverage curves
+        st.subheader("📈 Score / Coverage over accepted steps")
+        df_curves = pd.DataFrame({
+            "step": np.arange(len(score_path)),
+            "score": score_path,
+            "coverage": coverage_path,
+            "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+        }).set_index("step")
+        st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
 # Footer
 
