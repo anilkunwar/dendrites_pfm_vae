@@ -736,20 +736,20 @@ with tab5:
                 theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
                     pi_s, mu_s, log_sigma_s, var_scale=var_scale
                 )
-    #
-    #         recon = inv_smooth_scale(recon)
-    #         recon = recon.cpu().detach().numpy()[0, 0]
-    #         z = z.cpu().detach().numpy()[0]
-    #         y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
-    #         conf_s = conf_param_s.detach().cpu().numpy()[0]
-    #         conf_global_s = conf_global_s.detach().cpu().numpy()[0]
-    #
-    #         _, metrics, scores = generate_analysis_figure(recon)
-    #         s = scores["empirical_score"]
-    #         c = metrics["dendrite_coverage"]
-    #         t = y_pred_s[0]
-    #         _update_live(0, recon, z, y_pred_s, s, c, t)
-    #
+
+            recon = inv_smooth_scale(recon)
+            recon = recon.cpu().detach().numpy()[0, 0]
+            z = z.cpu().detach().numpy()[0]
+            y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+            conf_s = conf_param_s.detach().cpu().numpy()[0]
+            conf_global_s = conf_global_s.detach().cpu().numpy()[0]
+
+            _, metrics, scores = generate_analysis_figure(recon)
+            s = scores["empirical_score"]
+            c = metrics["dendrite_coverage"]
+            t = y_pred_s[0]
+            _update_live(0, recon, z, y_pred_s, conf_s, s, c, t)
+
     #         z_path = [z.copy()]
     #         cand_clouds = []
     #         cand_H = []
