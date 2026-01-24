@@ -442,7 +442,7 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.001)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.1)
 
-    parser.add_argument("--phy_weight", type=float, default=0.00) # 设置为0可以实现重建效果
+    parser.add_argument("--phy_weight", type=float, default=0.0001) # 设置为0可以实现重建效果
     parser.add_argument("--phy_alpha", type=float, default=1)
     parser.add_argument("--phy_beta", type=float, default=1)
 

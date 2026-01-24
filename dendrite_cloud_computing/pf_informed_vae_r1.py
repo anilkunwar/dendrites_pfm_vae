@@ -219,11 +219,11 @@ def analyze_image(image, image_name:str):
             "var_scale",
             min_value=0.01,
             max_value=10.0,
-            value=st.session_state.get("var_scale", 1.0),
+            value=st.session_state.get(f"var_scale_{image_name}", 1.0),
             step=0.01,
             key="var_scale_slider",  # ✅ 唯一 key
         )
-        st.session_state["var_scale"] = var_scale
+        st.session_state[f"var_scale{image_name}"] = var_scale
 
     # Create parameter table
     param_df = pd.DataFrame({
