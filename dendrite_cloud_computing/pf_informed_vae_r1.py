@@ -315,17 +315,18 @@ with tab4:
             accept_multiple_files=True,
             key="tab4_uploader",
         )
-        for uf in up_files:
-            fid = file_fingerprint(uf)
-            if fid in past_files:
-                past_files.remove(uf)
-                continue
-            if uf.name.endswith(".npy"):
-                buf = io.BytesIO(uf.getvalue())
-                img = np.load(buf)
-            else:
-                img = np.array(Image.open(uf).convert("RGB")) / 255.0
-            tab4_add_item(img, fid, source="upload")
+        if up_files:
+            for uf in up_files:
+                fid = file_fingerprint(uf)
+                if fid in past_files:
+                    past_files.remove(uf)
+                    continue
+                if uf.name.endswith(".npy"):
+                    buf = io.BytesIO(uf.getvalue())
+                    img = np.load(buf)
+                else:
+                    img = np.array(Image.open(uf).convert("RGB")) / 255.0
+                tab4_add_item(img, fid, source="upload")
         st.caption("Tip: you can upload multiple times. Newly uploaded images will be added to the list below.")
     with right_col:
         st.subheader("Select from Test Images")
