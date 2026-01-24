@@ -18,7 +18,7 @@ def load_model(device="cpu"):
     folder_found = None
 
     for f in possible_folders:
-        test_path = os.path.join(current_dir, f)
+        test_path = os.path.join(current_dir, "..", f)
         if os.path.exists(test_path) and os.path.isdir(test_path):
             # Check if part1 exists
             part1_path = os.path.join(test_path, "vae_model.pt.part1")
