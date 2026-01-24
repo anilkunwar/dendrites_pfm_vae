@@ -561,7 +561,7 @@ with tab5:
     with c2:
         NUM_CAND_UI = st.number_input("Number of candidates each step", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
     with c3:
-        RW_SIGMA_UI = st.slider("RW_SIGMA", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
+        RW_SIGMA_UI = st.slider("Exploration strength", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
 
     st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
                "Reject if coverage decreases or t decreases.")
@@ -643,7 +643,7 @@ with tab5:
         # Viewer containers
         live_box = st.container(border=True)
     with right:
-        metrics_box = st.container(border=True, height=520)
+        metrics_box = st.container(border=True, height=800)
 
     # ---- Live viewer (current + selected historical) ----
     with live_box:
@@ -906,32 +906,32 @@ with tab5:
 
                 progress_bar.progress(step / STEPS_UI)
 
-        # -----------------------------
-        # Display results
-        # -----------------------------
-        st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
+    # -----------------------------
+    # Display results
+    # -----------------------------
+    st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
 
-        st.subheader("🧭 Latent exploration visualization")
-        enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
-        fig_main, fig_norm = _plot_latent_exploration_fig(
-            z_path=z_path,
-            cand_clouds=cand_clouds,
-            cand_values=cand_H,
-            value_name="H",
-            colorize_candidates=bool(enforce_color),
-        )
-        st.pyplot(fig_main)
-        st.pyplot(fig_norm)
+    st.subheader("🧭 Latent exploration visualization")
+    enforce_color = st.checkbox("Colorize candidates by H", value=True, key="tab5_colorize")
+    fig_main, fig_norm = _plot_latent_exploration_fig(
+        z_path=z_path,
+        cand_clouds=cand_clouds,
+        cand_values=cand_H,
+        value_name="H",
+        colorize_candidates=bool(enforce_color),
+    )
+    st.pyplot(fig_main)
+    st.pyplot(fig_norm)
 
-        # score / coverage curves
-        st.subheader("📈 Score / Coverage over accepted steps")
-        df_curves = pd.DataFrame({
-            "step": np.arange(len(score_path)),
-            "score": score_path,
-            "coverage": coverage_path,
-            "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
-        }).set_index("step")
-        st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+    # score / coverage curves
+    st.subheader("📈 Score / Coverage over accepted steps")
+    df_curves = pd.DataFrame({
+        "step": np.arange(len(score_path)),
+        "score": score_path,
+        "coverage": coverage_path,
+        "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+    }).set_index("step")
+    st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
 # Footer
 st.markdown("---")
