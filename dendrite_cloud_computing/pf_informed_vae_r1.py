@@ -229,7 +229,7 @@ with tab3:
 
                     if image is not None:
                         # Process image
-                        recon_img, ctr_array, conf_s, conf_global_s = process_image(image, model, expected_size)
+                        recon_img, ctr_array, conf_s, conf_global_s = process_image(image, model, expected_size, var_scale)
 
                         # Store results
                         result = {
