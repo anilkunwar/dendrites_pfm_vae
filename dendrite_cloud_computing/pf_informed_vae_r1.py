@@ -141,7 +141,17 @@ def process_image(image, model, image_size):
     conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
     return recon_img, y_pred_s, conf_s, conf_global_s
+@torch.no_grad()
+def inference(model, z, var_scale: float = 1.0, topk: int = 3):
 
+    recon = model.decoder(z)
+
+    pi, mu, log_sigma = model.mdn_head(z)
+    theta_hat, conf_param, conf_global, modes = mdn_point_and_confidence(
+        pi, mu, log_sigma, var_scale=var_scale, topk=topk
+    )
+
+    return recon, (theta_hat, conf_param, conf_global, modes)
 
 # ==========================================================
 # 5. STREAMLIT UI & INFERENCE
@@ -544,7 +554,7 @@ def _inference_from_z(z_1d: np.ndarray):
     with torch.no_grad():
         # model.inference returns: recon, (theta_hat_s, conf_param_s, conf_global_s, modes_s)
         recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-            model.inference(z_tensor, var_scale=var_scale)
+            inference(model, z_tensor, var_scale=var_scale)
 
     recon_img = inv_smooth_scale(recon_cand).detach().cpu().numpy()[0].transpose(1, 2, 0)
     # NOTE: inference recon is in model's native resolution; we keep it native for metrics
