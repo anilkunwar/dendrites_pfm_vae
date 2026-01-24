@@ -591,6 +591,8 @@ with tab5:
             "coverage": [],  # list of float
             "step": [],  # list of int
         }
+    if "log_lines" not in st.session_state:
+        st.session_state.log_lines = []
 
     def _params_to_table(y_pred: np.ndarray, confidence, extra: dict):
         rows = [{"name": f"{param_names[i]}", "value": float(y_pred[i]), f"confidence under {var_scale}": confidence[i]} for i in range(len(y_pred))]
@@ -650,29 +652,6 @@ with tab5:
     with right:
         metrics_box = st.container(border=True)
 
-    # ---- Controls: history browsing ----
-    hist_box = st.container(border=True)
-    with hist_box:
-        st.markdown("### History")
-        hist = st.session_state.explore_hist
-        n_hist = len(hist["step"])
-        if n_hist == 0:
-            st.info("No history yet. Run exploration to populate.")
-            view_step = 0
-        else:
-            view_step = st.slider("View step", min_value=0, max_value=n_hist, value=n_hist,
-                                  key="tab5_view_step")
-
-            # Compact thumbnail strip (optional)
-            show_thumbs = st.checkbox("Show thumbnails", value=False, key="tab5_show_thumbs")
-            if show_thumbs:
-                # show up to 10 evenly spaced thumbs
-                idxs = np.linspace(0, n_hist - 1, num=min(10, n_hist), dtype=int).tolist()
-                cols = st.columns(len(idxs))
-                for col, i in zip(cols, idxs):
-                    with col:
-                        show_coolwarm(hist["recon"][i], f"{i}")
-
     # ---- Live viewer (current + selected historical) ----
     with live_box:
         st.markdown("### Live")
@@ -705,6 +684,29 @@ with tab5:
             metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
         else:
             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
+
+    # ---- Controls: history browsing ----
+    hist_box = st.container(border=True)
+    with hist_box:
+        st.markdown("### History")
+        hist = st.session_state.explore_hist
+        n_hist = len(hist["step"])
+        if n_hist == 0:
+            st.info("No history yet. Run exploration to populate.")
+            view_step = 0
+        else:
+            view_step = st.slider("View step", min_value=0, max_value=n_hist, value=n_hist,
+                                  key="tab5_view_step")
+
+            # Compact thumbnail strip (optional)
+            show_thumbs = st.checkbox("Show thumbnails", value=False, key="tab5_show_thumbs")
+            if show_thumbs:
+                # show up to 10 evenly spaced thumbs
+                idxs = np.linspace(0, n_hist - 1, num=min(10, n_hist), dtype=int).tolist()
+                cols = st.columns(len(idxs))
+                for col, i in zip(cols, idxs):
+                    with col:
+                        show_coolwarm(hist["recon"][i], f"{i}")
 
     if run_btn and seed_image is not None:
 
@@ -814,27 +816,27 @@ with tab5:
         # Display results
         # -----------------------------
         st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
-    #
-    #     st.subheader("🧭 Latent exploration visualization")
-    #     fig_main, fig_norm = _plot_latent_exploration_fig(
-    #         z_path=z_path,
-    #         cand_clouds=cand_clouds,
-    #         cand_values=cand_H,
-    #         value_name="H",
-    #         colorize_candidates=bool(enforce_color),
-    #     )
-    #     st.pyplot(fig_main)
-    #     st.pyplot(fig_norm)
-    #
-    #     # score / coverage curves
-    #     st.subheader("📈 Score / Coverage over accepted steps")
-    #     df_curves = pd.DataFrame({
-    #         "step": np.arange(len(score_path)),
-    #         "score": score_path,
-    #         "coverage": coverage_path,
-    #         "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
-    #     }).set_index("step")
-    #     st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+
+        # st.subheader("🧭 Latent exploration visualization")
+        # fig_main, fig_norm = _plot_latent_exploration_fig(
+        #     z_path=z_path,
+        #     cand_clouds=cand_clouds,
+        #     cand_values=cand_H,
+        #     value_name="H",
+        #     colorize_candidates=bool(enforce_color),
+        # )
+        # st.pyplot(fig_main)
+        # st.pyplot(fig_norm)
+        #
+        # # score / coverage curves
+        # st.subheader("📈 Score / Coverage over accepted steps")
+        # df_curves = pd.DataFrame({
+        #     "step": np.arange(len(score_path)),
+        #     "score": score_path,
+        #     "coverage": coverage_path,
+        #     "z_norm": np.linalg.norm(np.asarray(z_path), axis=1),
+        # }).set_index("step")
+        # st.line_chart(df_curves[["score", "coverage", "z_norm"]])
 
         # # show a compact gallery: first, last, and a few intermediates
         # st.subheader("🖼️ Reconstructions along the accepted path")
