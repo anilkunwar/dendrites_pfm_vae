@@ -623,7 +623,7 @@ with tab5:
             st.info("No history yet. Run exploration to populate.")
             view_step = 0
         else:
-            view_step = st.slider("View step", min_value=0, max_value=n_hist - 1, value=n_hist - 1,
+            view_step = st.slider("View step", min_value=0, max_value=n_hist, value=n_hist,
                                   key="tab5_view_step")
 
             # Compact thumbnail strip (optional)
@@ -748,11 +748,11 @@ with tab5:
             t = y_pred_s[0]
             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
 
-    #         z_path = [z.copy()]
-    #         cand_clouds = []
-    #         cand_H = []
-    #         score_path = [float(s)]
-    #         coverage_path = [float(c)]
+            z_path = [z.copy()]
+            cand_clouds = []
+            cand_H = []
+            score_path = [float(s)]
+            coverage_path = [float(c)]
     #         for step in range(1, STEPS_UI + 1):
     #             # 生成候选
     #             best_z = None
@@ -822,10 +822,10 @@ with tab5:
     #             cand_clouds.append(np.stack(z_cands, axis=0))  # (NUM_CAND, D)
     #             cand_H.append(np.array(H_list, dtype=float))  # (NUM_CAND,)
     #
-    #     # -----------------------------
-    #     # Display results
-    #     # -----------------------------
-    #     st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
+        # -----------------------------
+        # Display results
+        # -----------------------------
+        st.success(f"✅ Finished. Accepted steps: {len(z_path) - 1}")
     #
     #     st.subheader("🧭 Latent exploration visualization")
     #     fig_main, fig_norm = _plot_latent_exploration_fig(
