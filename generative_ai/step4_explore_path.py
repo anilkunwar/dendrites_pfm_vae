@@ -8,15 +8,37 @@ import torch
 import matplotlib.pyplot as plt
 
 from src.evaluate_metrics import generate_analysis_figure
-from src.dataloader import smooth_scale
+from src.dataloader import smooth_scale, inv_smooth_scale
 from src.modelv11 import mdn_point_and_confidence
 
 def get_init_tensor(image_size: tuple):
+    """
+    生成一个 50x50 的初始图像：
+    - 左侧 5 列为 1
+    - 其余为 0
+    - 扩展为 3 通道
+    - resize 到 image_size
+    - 做 smooth_scale
+    """
 
-    arr = np.load("data/case_000/npy_files/0.000000.npy")  # shape (H, W, 3)
+    # ---- step 1: generate 50x50 base image ----
+    base_eta = np.zeros((50, 50), dtype=np.float32)
+    base_eta[:, :5] = 1.0   # 左侧 5 列为 1
 
-    arr = cv2.resize(arr, image_size)
-    tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)
+    base_c = np.zeros((50, 50), dtype=np.float32)
+    base_c[:, :5] = 0.2
+    base_c[:, 5:] = 0.8
+
+    base_p = np.zeros((50, 50), dtype=np.float32)
+
+    # ---- step 2: expand to 3 channels ----
+    arr = np.stack([base_eta, base_c, base_p], axis=-1)  # (50, 50, 3)
+
+    # ---- step 3: resize ----
+    arr = cv2.resize(arr, image_size, interpolation=cv2.INTER_LINEAR)
+
+    # ---- step 4: to tensor + smooth_scale ----
+    tensor_t = torch.from_numpy(arr).float().permute(2, 0, 1)  # (3, H, W)
     tensor_t = smooth_scale(tensor_t)
 
     return tensor_t
@@ -217,7 +239,7 @@ def main():
         theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
             pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE
         )
-
+    recon = inv_smooth_scale(recon)
     recon = recon.cpu().detach().numpy()[0, 0]
     z = z.cpu().detach().numpy()[0]
     y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
@@ -253,7 +275,7 @@ def main():
             with torch.no_grad():
                 recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
                     model.inference(z_cand_tensor, var_scale=VAR_SCALE)
-
+            recon_cand = inv_smooth_scale(recon_cand)
             recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
             y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
             conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
