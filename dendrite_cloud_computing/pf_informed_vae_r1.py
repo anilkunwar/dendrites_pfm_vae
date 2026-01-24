@@ -434,13 +434,13 @@ def _update_live(step_i: int,
     )
 
 def _plot_latent_exploration_fig(
-        z_path,
-        cand_clouds,
-        cand_values=None,
-        value_name="H",
-        colorize_candidates=False,
-        show_step_labels=True,
-        max_step_labels=30,
+    z_path,
+    cand_clouds,
+    cand_values=None,
+    value_name="H",
+    colorize_candidates=False,
+    show_step_labels=True,
+    max_step_labels=30,
 ):
     """
     Returns matplotlib figures: (fig_main, fig_norm, fig_score, fig_cov)
@@ -701,19 +701,7 @@ with tab5:
             st.session_state["tab5_view_step"] = 0
 
         else:
-            # -------------------------
-            # Playback controls
-            # -------------------------
-            c1, c2, c3, c4 = st.columns([1.2, 1.0, 1.0, 1.0])
-            with c1:
-                play = st.toggle("▶️ Play", value=False, key="tab5_play")
-            with c2:
-                fps = st.slider("FPS", min_value=1, max_value=20, value=6, step=1, key="tab5_fps")
-            with c3:
-                loop = st.checkbox("Loop", value=True, key="tab5_loop")
-            with c4:
-                st.caption(f"Total steps: {n_hist}")
-
+            st.caption(f"Total steps: {n_hist}")
             # Ensure view_step exists and is valid
             if "tab5_view_step" not in st.session_state:
                 st.session_state["tab5_view_step"] = n_hist - 1
@@ -728,26 +716,12 @@ with tab5:
                 key="tab5_view_step",
             )
 
-            # Auto-play (advances view_step)
-            # NOTE: this drives reruns; keep it lightweight
-            if play:
-                import time
-
-                time.sleep(1.0 / float(fps))
-                nxt = int(st.session_state["tab5_view_step"]) + 1
-                if nxt >= n_hist:
-                    nxt = 0 if loop else (n_hist - 1)
-                    if not loop:
-                        st.session_state["tab5_play"] = False
-                st.session_state["tab5_view_step"] = nxt
-                st.rerun()
-
             st.divider()
 
             # -------------------------
             # Thumbnails (default: ALL)
             # -------------------------
-            st.markdown("#### Thumbnails (click slider / play to preview above)")
+            st.markdown("#### Thumbnails")
 
             # Optional: layout controls
             thumb_cols = st.slider("Columns", min_value=4, max_value=12, value=8, step=1, key="tab5_thumb_cols")
@@ -944,7 +918,9 @@ with tab5:
             "coverage": st.session_state.explore_hist['coverage'],
             "z_norm": np.linalg.norm(np.asarray(st.session_state.explore_hist['z']), axis=1),
         }).set_index("step")
-        st.line_chart(df_curves[["score", "coverage", "z_norm"]])
+        st.line_chart(df_curves[["score"]])
+        st.line_chart(df_curves[["coverage"]])
+        st.line_chart(df_curves[["z_norm"]])
 
 # Footer
 
