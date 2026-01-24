@@ -904,9 +904,9 @@ with tab5:
             "coverage": st.session_state.explore_hist['coverage'],
             "z_norm": np.linalg.norm(np.asarray(st.session_state.explore_hist['z']), axis=1),
         }).set_index("step")
-        st.line_chart(df_curves[["score"]], caption="Score over accepted steps")
-        st.line_chart(df_curves[["coverage"]], caption="Dendrite coverage over accepted steps")
-        st.line_chart(df_curves[["z_norm"]], caption="Z_norm over accepted steps")
+        st.line_chart(df_curves[["score"]], x_label="steps", y_label="Score")
+        st.line_chart(df_curves[["coverage"]], x_label="steps", y_label="Dendrite coverage")
+        st.line_chart(df_curves[["z_norm"]],  x_label="steps", y_label="Z_norm")
 
 # Footer
 
