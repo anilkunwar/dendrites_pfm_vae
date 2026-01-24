@@ -169,7 +169,7 @@ with st.sidebar:
 
     var_scale = st.slider(
         "Var Scale (How much uncertainty is allowed)",
-        0.01, 1, 0.1, 0.01,
+        0.01, 1.0, 0.1, 0.01,
         key="var_scale"
     )
 
