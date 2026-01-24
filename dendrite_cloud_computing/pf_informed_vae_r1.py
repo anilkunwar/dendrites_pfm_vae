@@ -7,7 +7,6 @@ from matplotlib import colors, cm
 
 from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import inv_scale_params, smooth_scale, inv_smooth_scale, PARAM_RANGES
-from src.modelv11 import mdn_point_and_confidence
 from src.helper import *
 
 def show_coolwarm(gray_image, caption, container=None):
@@ -90,6 +89,7 @@ with st.sidebar:
 
     # Check for test images
     test_folder, test_images = get_test_images()
+    test_names = [p.name for p in test_images]
 
     if test_images:
         st.markdown("### Available Test Images")
@@ -156,12 +156,11 @@ with tab2:
 
     if test_images:
         # Create image selector
-        image_names = [img.name for img in test_images]
-        selected_image_name = st.selectbox("Choose a test image:", image_names)
+        selected_image_name = st.selectbox("Choose a test image:", test_names)
 
         if selected_image_name:
             # Find the selected image path
-            selected_idx = image_names.index(selected_image_name)
+            selected_idx = test_names.index(selected_image_name)
             selected_path = test_images[selected_idx]
 
             # Load and display the image
@@ -213,7 +212,7 @@ with tab3:
         # Multi-select for batch processing
         selected_images = st.multiselect(
             "Select images for batch analysis:",
-            options=[img.name for img in test_images],
+            options=test_names,
             default=[img.name for img in test_images[:3]] if len(test_images) >= 3 else []
         )
 
@@ -331,10 +330,9 @@ with tab4:
     with right_col:
         st.subheader("Select from Test Images")
         if test_images:
-            test_names = [p.name for p in test_images]
             selected_dendrite_images = st.multiselect(
                 "Select images for analysis:",
-                options=[img.name for img in test_images],
+                options=test_names,
                 default=[]
             )
             if selected_dendrite_images:
@@ -344,11 +342,8 @@ with tab4:
                     if fid in past_files:
                         past_files.remove(fid)
                         continue
-                    try:
-                        img = load_image_from_path(name_to_path[nm])
-                        tab4_add_item(img, nm, fid, source="test")
-                    except Exception as e:
-                        st.error(f"Error loading image {nm}: {e}")
+                    img = load_image_from_path(name_to_path[nm])
+                    tab4_add_item(img, nm, fid, source="test")
         else:
             st.warning("No test images found for analysis.")
     # delete file that no longer here
@@ -373,6 +368,8 @@ with tab4:
                     result_img, _, scores = generate_analysis_figure(np.clip(item["origin"][..., 0], 0, 1))
                     item["result"] = result_img
                     item["score"] = scores["empirical_score"]
+                else:
+                    st.info("Use old results for analysis.")
                 container = st.container(border=True)
                 with container:
                     header_cols = st.columns([1, 1])
