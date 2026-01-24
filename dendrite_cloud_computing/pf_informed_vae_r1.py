@@ -127,6 +127,7 @@ def process_image(image, model, image_size):
     recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
 
     # Get control parameters
+    var_scale = st.session_state.get("var_scale", 1.0)
     theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
         pi_s, mu_s, log_sigma_s, var_scale=var_scale, topk=3
     )
@@ -181,7 +182,6 @@ else:
 
 param_names = ["t"]
 param_names += list(PARAM_RANGES.keys())
-var_scale = 1.0
 
 # Main interface with tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload Image", "📂 Select from Test Images", "📊 Batch Analysis", "🧪 Dendrite Intensity Score", "Heuristic Latent Space Exploration"])
@@ -215,14 +215,15 @@ def analyze_image(image, image_name:str):
     with col1:
         st.subheader("📈 Predicted Control Parameters")
     with col2:
-        global var_scale
         var_scale = st.slider(
             "var_scale",
             min_value=0.01,
             max_value=10.0,
-            value=1.0,
-            step=0.01
+            value=st.session_state.get("var_scale", 1.0),
+            step=0.01,
+            key="var_scale_slider",  # ✅ 唯一 key
         )
+        st.session_state["var_scale"] = var_scale
 
     # Create parameter table
     param_df = pd.DataFrame({
