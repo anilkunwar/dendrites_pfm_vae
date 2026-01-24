@@ -442,6 +442,8 @@ class ComprehensiveDendriteAnalyzer:
         metrics["sholl_regression_coef"] = float(sholl["regression_coefficient"])
         metrics["sholl_total_intersections"] = float(sholl["total_intersections"])
 
+        num_labels, _ = cv2.connectedComponents(self.binary.astype(np.uint8), connectivity=8)
+        metrics["connected_components"] = num_labels
         metrics["dendrite_coverage"] = self.dendrite_density()  # 0..1
 
         curv = self.principal_curvatures()

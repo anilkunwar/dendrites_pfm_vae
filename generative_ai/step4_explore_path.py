@@ -208,6 +208,7 @@ STEPS = 100
 # --- naive random walk params ---
 RW_SIGMA = 0.25          # 扰动幅度
 NUM_CAND = 48            # 每步试多少个候选
+STRICT = False
 
 def save_step(out_dir, step, img, z, params, coverage, score):
     plt.figure(figsize=(6, 5))
@@ -246,7 +247,7 @@ def main():
     conf_s = conf_param_s.detach().cpu().numpy()[0]
     conf_global_s = conf_global_s.detach().cpu().numpy()[0]
 
-    _, metrics, scores = generate_analysis_figure(recon)
+    _, metrics, scores = generate_analysis_figure(np.clip(recon, 0, 1))
     s = scores["empirical_score"]
     c = metrics["dendrite_coverage"]
     t = y_pred_s[0]
@@ -281,9 +282,10 @@ def main():
             conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
             conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
 
-            _, metrics_cand, scores_cand = generate_analysis_figure(recon_cand)
+            _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
             t_cand = y_pred_s_cand[0]
             s_cand = scores_cand["empirical_score"]
+            cnn_cand = metrics_cand["connected_components"]
             c_cand = metrics_cand["dendrite_coverage"]
 
             # 总结全局匹配度
@@ -293,8 +295,8 @@ def main():
             z_cands.append(z_cand.copy())
             H_list.append(float(H))
 
-            if c_cand < c or t_cand < t:
-                print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}")
+            if c_cand < c or t_cand < t or (cnn_cand >= 3 and STRICT):
+                print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f} connected_components={cnn_cand}")
                 continue
 
             if H > best_H_score:

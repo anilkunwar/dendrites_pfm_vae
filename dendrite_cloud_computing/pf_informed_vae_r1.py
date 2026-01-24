@@ -598,13 +598,15 @@ with tab5:
     # -----------------------------
     # UI: exploration hyperparameters
     # -----------------------------
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
-        STEPS_UI = st.number_input("Steps", min_value=1, max_value=500, value=60, step=1, key="tab5_steps")
+        STEPS_UI = st.number_input("Steps", min_value=1, max_value=500, value=30, step=1)
     with c2:
-        NUM_CAND_UI = st.number_input("Number of candidates each step", min_value=4, max_value=256, value=48, step=4, key="tab5_num_cand")
+        NUM_CAND_UI = st.number_input("Number of candidates each step", min_value=4, max_value=256, value=32, step=4)
     with c3:
-        RW_SIGMA_UI = st.slider("Exploration strength", 0.01, 2.0, 0.25, 0.01, key="tab5_sigma")
+        RW_SIGMA_UI = st.slider("Exploration strength", 0.01, 2.0, 0.25, 0.01)
+    with c4:
+        STRICT_UI = st.checkbox("Strict mode", value=False)
 
     st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
                "Reject if coverage decreases or t decreases.")
@@ -674,6 +676,115 @@ with tab5:
             metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
         else:
             metrics_placeholder.info("Metrics table will appear after the first accepted step.")
+
+    if run_btn and seed_image is not None:
+
+        # clean all the images
+        st.session_state.explore_hist = {
+            "recon": [],  # list of (H,W,3) float
+            "analysis_fig": [],  # list of matplotlib figs (optional)
+            "z": [],  # list of (D,)
+            "params": [],  # list of (P,) y_pred_s
+            "params_confidence": [],
+            "score": [],  # list of float
+            "coverage": [],  # list of float
+            "step": [],  # list of int
+            "cand_clouds": [],
+            "cand_H": []
+        }
+        st.session_state.tab5_view_step = 0
+
+        with st.spinner("Running exploration..."):
+
+            progress_bar = st.progress(0)
+            with torch.no_grad():
+                seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
+                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
+                # ---- stochastic prediction + confidence (from sampled z) ----
+                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
+                    pi_s, mu_s, log_sigma_s, var_scale=var_scale
+                )
+
+            recon = inv_smooth_scale(recon)
+            recon = recon.cpu().detach().numpy()[0, 0]
+            z = z.cpu().detach().numpy()[0]
+            y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
+            conf_s = conf_param_s.detach().cpu().numpy()[0]
+            conf_global_s = conf_global_s.detach().cpu().numpy()[0]
+
+            _, metrics, scores = generate_analysis_figure(np.clip(recon, 0, 1))
+            s = scores["empirical_score"]
+            c = metrics["dendrite_coverage"]
+            t = y_pred_s[0]
+
+            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
+            for step in range(1, STEPS_UI + 1):
+                # 生成候选
+                best_z = None
+                best_H_score = -1e18
+                best_score = -1e18
+                best_img = None
+                best_params = None
+                best_params_confidence = None
+                best_coverage = None
+                z_cands = []
+                H_list = []
+                for _ in range(NUM_CAND_UI):
+
+                    dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
+                    z_cand = z + dz
+                    z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
+                            inference(model, z_cand_tensor, var_scale=var_scale)
+                    recon_cand = inv_smooth_scale(recon_cand)
+                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+                    y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
+                    conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
+                    conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
+
+                    _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
+                    t_cand = y_pred_s_cand[0]
+                    s_cand = scores_cand["empirical_score"]
+                    cnn_cand = metrics_cand["connected_components"]
+                    c_cand = metrics_cand["dendrite_coverage"]
+
+                    # 总结全局匹配度
+                    H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
+
+                    # save cands
+                    z_cands.append(z_cand.copy())
+                    H_list.append(float(H))
+
+                    if c_cand < c or t_cand < t or (cnn_cand >= 3 and STRICT_UI):
+                        log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f} connected_components={cnn_cand}")
+                        continue
+
+                    if H > best_H_score:
+                        best_H_score = H
+                        best_score = s_cand
+                        best_z = z_cand
+                        best_img = recon_cand
+                        best_params = y_pred_s_cand
+                        best_params_confidence = conf_s_cand
+                        best_coverage = c_cand
+
+                if best_z is None:
+                    log_container.code("[Stop] no valid candidate (all rejected).", language="text")
+                    break
+                else:
+                    log_container.code(f"[Next] find best candidate with H score={best_H_score:.2f}", language="text")
+
+                z = best_z
+                s = best_score
+                c = best_coverage
+                t = best_params[0]
+                y_pred_s = best_params
+
+                _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage,
+                             cand_clouds=np.stack(z_cands, axis=0), cand_H=np.array(H_list, dtype=float))
+
+                progress_bar.progress(step / STEPS_UI)
 
     # ---- History: thumbnails (default all) + playback + per-step params table ----
     hist_box = st.container(border=True)
@@ -772,114 +883,6 @@ with tab5:
                 width='stretch',
                 hide_index=True,
             )
-
-    if run_btn and seed_image is not None:
-
-        # clean all the images
-        st.session_state.explore_hist = {
-            "recon": [],  # list of (H,W,3) float
-            "analysis_fig": [],  # list of matplotlib figs (optional)
-            "z": [],  # list of (D,)
-            "params": [],  # list of (P,) y_pred_s
-            "params_confidence": [],
-            "score": [],  # list of float
-            "coverage": [],  # list of float
-            "step": [],  # list of int
-            "cand_clouds": [],
-            "cand_H": []
-        }
-        st.session_state.tab5_view_step = 0
-
-        with st.spinner("Running exploration..."):
-
-            progress_bar = st.progress(0)
-            with torch.no_grad():
-                seed_image_tensor = prep_tensor_from_image(seed_image, expected_size)
-                recon, mu_q, logvar_q, (pi_s, mu_s, log_sigma_s), z = model(seed_image_tensor)
-                # ---- stochastic prediction + confidence (from sampled z) ----
-                theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-                    pi_s, mu_s, log_sigma_s, var_scale=var_scale
-                )
-
-            recon = inv_smooth_scale(recon)
-            recon = recon.cpu().detach().numpy()[0, 0]
-            z = z.cpu().detach().numpy()[0]
-            y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
-            conf_s = conf_param_s.detach().cpu().numpy()[0]
-            conf_global_s = conf_global_s.detach().cpu().numpy()[0]
-
-            _, metrics, scores = generate_analysis_figure(np.clip(recon, 0, 1))
-            s = scores["empirical_score"]
-            c = metrics["dendrite_coverage"]
-            t = y_pred_s[0]
-
-            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
-            for step in range(1, STEPS_UI + 1):
-                # 生成候选
-                best_z = None
-                best_H_score = -1e18
-                best_score = -1e18
-                best_img = None
-                best_params = None
-                best_params_confidence = None
-                best_coverage = None
-                z_cands = []
-                H_list = []
-                for _ in range(NUM_CAND_UI):
-
-                    dz = np.random.randn(*z.shape).astype(np.float32) * RW_SIGMA_UI
-                    z_cand = z + dz
-                    z_cand_tensor = torch.from_numpy(z_cand).unsqueeze(0).to(device)
-                    with torch.no_grad():
-                        recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
-                            inference(model, z_cand_tensor, var_scale=var_scale)
-                    recon_cand = inv_smooth_scale(recon_cand)
-                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
-                    y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
-                    conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
-                    conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
-
-                    _, metrics_cand, scores_cand = generate_analysis_figure(np.clip(recon_cand, 0, 1))
-                    t_cand = y_pred_s_cand[0]
-                    s_cand = scores_cand["empirical_score"]
-                    c_cand = metrics_cand["dendrite_coverage"]
-
-                    # 总结全局匹配度
-                    H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
-
-                    # save cands
-                    z_cands.append(z_cand.copy())
-                    H_list.append(float(H))
-
-                    if c_cand < c or t_cand < t:
-                        log_container.code(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f}", language="text")
-                        continue
-
-                    if H > best_H_score:
-                        best_H_score = H
-                        best_score = s_cand
-                        best_z = z_cand
-                        best_img = recon_cand
-                        best_params = y_pred_s_cand
-                        best_params_confidence = conf_s_cand
-                        best_coverage = c_cand
-
-                if best_z is None:
-                    log_container.code("[Stop] no valid candidate (all rejected).", language="text")
-                    break
-                else:
-                    log_container.code(f"[Next] find best candidate with H score={best_H_score:.2f}", language="text")
-
-                z = best_z
-                s = best_score
-                c = best_coverage
-                t = best_params[0]
-                y_pred_s = best_params
-
-                _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage,
-                             cand_clouds=np.stack(z_cands, axis=0), cand_H=np.array(H_list, dtype=float))
-
-                progress_bar.progress(step / STEPS_UI)
 
     # -----------------------------
     # Display results
