@@ -76,7 +76,7 @@ def get_test_images():
     possible_folders = ["test_input", "test_images", "images", "test"]
 
     for folder_name in possible_folders:
-        test_folder = os.path.join(current_dir, folder_name)
+        test_folder = os.path.join(current_dir, "..", folder_name)
         if os.path.exists(test_folder) and os.path.isdir(test_folder):
             # Find all image files
             image_extensions = ['.npy', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
