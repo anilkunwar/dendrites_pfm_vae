@@ -102,7 +102,7 @@ def plot_grid_with_scores(
     scores = [score_fn(img) for img in images]
 
     # 布局：更紧凑但不挤
-    fig, axes = plt.subplots(3, 3, figsize=(12, 10))
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12))
     fig.suptitle(title, fontsize=16, fontweight="bold", y=0.98)
 
     for i, ax in enumerate(axes.flat):
@@ -110,6 +110,7 @@ def plot_grid_with_scores(
         a, b = scores[i]
 
         ax.imshow(img)
+        ax.set_aspect("auto")
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -122,7 +123,7 @@ def plot_grid_with_scores(
             transform=ax.transAxes,
             ha="right",
             va="bottom",
-            fontsize=8,
+            fontsize=9,
             color="white",
             bbox=dict(boxstyle="round,pad=0.35", fc="black", ec="none", alpha=0.55),
         )
@@ -131,6 +132,7 @@ def plot_grid_with_scores(
         ax.set_title(f"#{i+1}", fontsize=11, pad=6)
 
     plt.tight_layout()
+    plt.subplots_adjust(wspace=0.1, hspace=0.1)
     plt.show()
 
 
