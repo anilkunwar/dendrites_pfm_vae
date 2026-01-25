@@ -442,6 +442,8 @@ class ComprehensiveDendriteAnalyzer:
         metrics["sholl_regression_coef"] = float(sholl["regression_coefficient"])
         metrics["sholl_total_intersections"] = float(sholl["total_intersections"])
 
+        num_labels, _ = cv2.connectedComponents(self.binary.astype(np.uint8), connectivity=8)
+        metrics["connected_components"] = num_labels
         metrics["dendrite_coverage"] = self.dendrite_density()  # 0..1
 
         curv = self.principal_curvatures()
@@ -594,7 +596,7 @@ def generate_analysis_figure(
     *,
     save: bool = False,
     save_path: Optional[str] = None,
-    show: bool = True,
+    show: bool = False,
     title: Optional[str] = None,
     random_seed: Optional[int] = None,
 ) -> Tuple[plt.Figure, Dict[str, float], Dict[str, float]]:
@@ -632,7 +634,7 @@ def generate_analysis_figure(
         base_name = os.path.splitext(os.path.basename(image_or_path))[0]
         img = np.load(image_or_path)[..., 0].astype(np.float32)
     else:
-        img = image_or_path
+        img = image_or_path.astype(np.float32)
         if isinstance(img, np.ndarray) and img.ndim == 3:
             base_name = "dendrite_rgb"
 
@@ -687,7 +689,7 @@ def generate_analysis_figure(
     # 5. Branch points
     ax5 = fig.add_subplot(gs[1, 0])
     overlay_b = analyzer.image_rgb.copy()
-    overlay_b[branch_points] = [255, 0, 0]
+    overlay_b[branch_points] = [1.0 if overlay_b.dtype==np.float32 else 255, 0, 0]
     ax5.imshow(overlay_b)
     ax5.set_title("Branch Points (Red)", fontsize=12, fontweight="bold")
     ax5.axis("off")
@@ -695,7 +697,7 @@ def generate_analysis_figure(
     # 6. Tip points
     ax6 = fig.add_subplot(gs[1, 1])
     overlay_t = analyzer.image_rgb.copy()
-    overlay_t[tips] = [0, 255, 0]
+    overlay_t[tips] = [0, 1.0 if overlay_t.dtype==np.float32 else 255, 0]
     ax6.imshow(overlay_t)
     ax6.set_title("Tip Points (Green)", fontsize=12, fontweight="bold")
     ax6.axis("off")
@@ -725,7 +727,9 @@ def generate_analysis_figure(
                     (j, i),
                     (min(j + box_size, box_overlay.shape[1]),
                      min(i + box_size, box_overlay.shape[0])),
-                    (255, 255, 0),
+                    (1.0 if box_overlay.dtype==np.float32 else 1.0 if box_overlay.dtype==np.float32 else 255,
+                     1.0 if box_overlay.dtype==np.float32 else 1.0 if box_overlay.dtype==np.float32 else 255,
+                     0),
                     1,
                 )
     ax8.imshow(box_overlay)
@@ -739,7 +743,11 @@ def generate_analysis_figure(
                                    cv2.CHAIN_APPROX_NONE)
     curvature_overlay = analyzer.image_rgb.copy()
     if len(contours) > 0:
-        cv2.drawContours(curvature_overlay, contours, -1, (0, 255, 255), 2)
+        cv2.drawContours(curvature_overlay, contours, -1,
+                         (0,
+                          1.0 if curvature_overlay.dtype==np.float32 else 1.0 if curvature_overlay.dtype==np.float32 else 255,
+                          1.0 if curvature_overlay.dtype==np.float32 else 1.0 if curvature_overlay.dtype==np.float32 else 255),
+                         2)
     ax9.imshow(curvature_overlay)
     ax9.set_title("Contour (Cyan)", fontsize=12, fontweight="bold")
     ax9.axis("off")
@@ -749,7 +757,8 @@ def generate_analysis_figure(
     filled = ndimage.binary_fill_holes(analyzer.binary)
     holes = filled & ~analyzer.binary
     overlay_h = analyzer.image_rgb.copy()
-    overlay_h[holes] = [255, 0, 255]
+    overlay_h[holes] = [1.0 if overlay_h.dtype==np.float32 else 1.0 if overlay_h.dtype==np.float32 else 255, 0,
+                        1.0 if overlay_h.dtype==np.float32 else 1.0 if overlay_h.dtype==np.float32 else 255]
     ax10.imshow(overlay_h)
     ax10.set_title("Holes (Magenta)", fontsize=12, fontweight="bold")
     ax10.axis("off")
@@ -762,7 +771,9 @@ def generate_analysis_figure(
                         (x_coords - analyzer.centroid_x) ** 2)
     radial_overlay = analyzer.image_rgb.copy()
     for r in range(20, int(np.max(distances)), 40):
-        cv2.circle(radial_overlay, (analyzer.centroid_x, analyzer.centroid_y), r, (255, 165, 0), 1)
+        cv2.circle(radial_overlay, (analyzer.centroid_x, analyzer.centroid_y), r,
+                   (1.0 if radial_overlay.dtype==np.float32 else 1.0 if radial_overlay.dtype==np.float32 else 255,
+                    165/255 if radial_overlay.dtype==np.float32 else 1.0 if radial_overlay.dtype==np.float32 else 255, 0), 1)
     ax11.imshow(radial_overlay)
     ax11.set_title("Radial Rings", fontsize=12, fontweight="bold")
     ax11.axis("off")

@@ -19,6 +19,17 @@ import albumentations as A
 from src.dataloader import DendritePFMDataset
 from src.modelv11 import VAE_MDN, mdn_point_and_confidence
 
+import json
+
+def save_run_args(args, save_root: str):
+    """Save CLI args for reproducibility."""
+    os.makedirs(save_root, exist_ok=True)
+    args_path = os.path.join(save_root, "run_args.json")
+    # argparse Namespace isn't directly JSON serializable if it contains tuples; convert carefully.
+    d = {k: (list(v) if isinstance(v, tuple) else v) for k, v in vars(args).items()}
+    with open(args_path, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+
 
 def save_image_grid(tensor, path, nrow=3):
     grid = vutils.make_grid(
@@ -183,18 +194,21 @@ def main(args):
     # --------------------------
     exp_name = (
         f"VAEv12_MDN_"
-        f"lat={args.latent_size}_"
+        f"lat={args.latent_size}_var_scale={args.var_scale}"
         f"K={args.mdn_components}_"
         f"beta={args.beta}_warm={args.beta_warmup_ratio}_"
         f"gamma={args.gamma}_warm={args.gamma_warmup_ratio}_"
         f"phy_weight={args.phy_weight}_phy_alpha={args.phy_alpha}_phy_beta={args.phy_beta}_"
-        f"scale={args.scale_weight}_"
+        f"scale_weight={args.scale_weight}_"
         f"time={datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
     print(f"Experiment name: {exp_name}")
     save_root = os.path.join(args.save_root, exp_name)
     os.makedirs(save_root, exist_ok=True)
     os.makedirs(os.path.join(save_root, "ckpt"), exist_ok=True)
+
+    # Save CLI args
+    save_run_args(args, save_root)
 
     # --------------------------
     # Dataset
@@ -234,21 +248,29 @@ def main(args):
     # --------------------------
     # Model
     # --------------------------
-    model = VAE_MDN(
-        image_size=args.image_size,
-        latent_size=args.latent_size,
-        hidden_dimension=args.hidden_dim,
-        num_params=args.num_params,
-        mdn_components=args.mdn_components,
-        mdn_hidden=args.mdn_hidden,
-    ).to(device)
+    # model = VAE_MDN(
+    #     image_size=args.image_size,
+    #     latent_size=args.latent_size,
+    #     hidden_dimension=args.hidden_dim,
+    #     num_params=args.num_params,
+    #     mdn_components=args.mdn_components,
+    #     mdn_hidden=args.mdn_hidden,
+    # ).to(device)
+    if args.init_model_path:
+        model = torch.load(args.init_model_path, weights_only=False)
+    else:
+        model = VAE_MDN(
+            image_size=args.image_size,
+            latent_size=args.latent_size,
+            hidden_dimension=args.hidden_dim,
+            num_params=args.num_params,
+            mdn_components=args.mdn_components,
+            mdn_hidden=args.mdn_hidden,
+        )
+    model = model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer,
-        args.T0,
-        eta_min=args.lr_min,
-    )
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=args.lr_factor, patience=args.lr_patience)
 
     beta_warup_epochs = int(args.epochs * args.beta_warmup_ratio)
     gamma_warmup_epochs = int(args.epochs * args.gamma_warmup_ratio)
@@ -265,7 +287,7 @@ def main(args):
     for epoch in range(1, args.epochs+1):
 
         beta_t = beta_warmup(epoch, args.beta, beta_warup_epochs)
-        gamma_t = beta_warmup(epoch, args.beta, gamma_warmup_epochs)
+        gamma_t = beta_warmup(epoch, args.gamma, gamma_warmup_epochs)
 
         # ---------------------- Train ----------------------
         model.train()
@@ -358,11 +380,11 @@ def main(args):
                 vstat["ctr_nll"].append(ctr_nll.item())
                 vstat["ctr_mse_monitor"].append(ctr_mse_monitor.item())
                 vstat["conf_global_mean"].append(conf_global.mean().item())
-                tstat["phy"].append(sm_loss.item())
-                tstat["interface"].append(sm_info["interface"])
-                tstat["two_phase"].append(sm_info["two_phase"])
+                vstat["phy"].append(sm_loss.item())
+                vstat["interface"].append(sm_info["interface"])
+                vstat["two_phase"].append(sm_info["two_phase"])
 
-        lr_scheduler.step()
+        lr_scheduler.step(np.mean(vstat["total"]))
 
         val_epoch = {k: float(np.mean(v)) for k, v in vstat.items()}
         val_epoch["epoch"] = epoch
@@ -420,9 +442,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--T0", type=float, default=1000)
-    parser.add_argument("--lr_min", type=float, default=1e-5)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr_factor", type=float, default=0.5)
+    parser.add_argument("--lr_patience", type=float, default=10)
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
@@ -435,24 +457,26 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=0.001)
+    parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.1)
 
     # weights
-    parser.add_argument("--gamma", type=float, default=0.001)
+    parser.add_argument("--gamma", type=float, default=0.01)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.1)
 
-    parser.add_argument("--phy_weight", type=float, default=0.00) # 设置为0可以实现重建效果
+    parser.add_argument("--phy_weight", type=float, default=0.001) # 设置为0可以实现重建效果
     parser.add_argument("--phy_alpha", type=float, default=1)
     parser.add_argument("--phy_beta", type=float, default=1)
 
-    parser.add_argument("--scale_weight", type=float, default=0.1)
+    parser.add_argument("--scale_weight", type=float, default=1.0)
 
     # confidence scaling
-    parser.add_argument("--var_scale", type=float, default=0.01)
+    parser.add_argument("--var_scale", type=float, default=0.001)
 
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")
+
+    parser.add_argument("--init_model_path", type=str, default=None, help="Optional path to a saved .pt model to initialize (torch.load). If not set, build a fresh VAE_MDN.")
 
     args = parser.parse_args()
     main(args)

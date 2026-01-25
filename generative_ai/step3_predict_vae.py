@@ -13,8 +13,7 @@ from src.modelv11 import mdn_point_and_confidence
 def main(args):
 
     plt.rcParams["image.cmap"] = "coolwarm"
-    VAR_SCALE = 1.0
-    TOPK_MODES = 3
+    VAR_SCALE = 0.1
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -42,7 +41,7 @@ def main(args):
 
             # ---- stochastic prediction + confidence (from sampled z) ----
             theta_hat_s, conf_param_s, conf_global_s, modes_s = mdn_point_and_confidence(
-                pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE, topk=TOPK_MODES
+                pi_s, mu_s, log_sigma_s, var_scale=VAR_SCALE
             )
             y_pred_s = theta_hat_s.detach().cpu().numpy()[0].tolist()
             conf_s = conf_param_s.detach().cpu().numpy()[0].tolist()
@@ -51,7 +50,7 @@ def main(args):
             # determinstic
             pi_d, mu_d, log_sigma_d = vae.mdn_head(mu_q)
             theta_hat_d, conf_param_d, conf_global_d, modes_d = mdn_point_and_confidence(
-                pi_d, mu_d, log_sigma_d, var_scale=VAR_SCALE, topk=TOPK_MODES
+                pi_d, mu_d, log_sigma_d, var_scale=VAR_SCALE
             )
             y_pred_d = theta_hat_d.detach().cpu().numpy()[0].tolist()
             conf_d = conf_param_d.detach().cpu().numpy()[0].tolist()
@@ -125,8 +124,8 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image_size", type=tuple, default=(3, 64, 64))
-    parser.add_argument("--model_root", type=str, default='results/VAEv11_MDN_lat=32_K=16_beta=2.0_warm=0.3_ctr=0.8_smooth=2.0_scale=1.0_time=20260121_132911')
+    parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
+    parser.add_argument("--model_root", type=str, default='results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1')
 
     args = parser.parse_args()
 
