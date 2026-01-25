@@ -821,6 +821,101 @@ with tab5:
     st.markdown("---")
 
     # -----------------------------
+    # UI: Parameter Bias Weights Configuration
+    # -----------------------------
+    st.subheader("PropertyParams Configuration")
+    
+    # Initialize default parameter weights if not in session state
+    if "param_weights" not in st.session_state:
+        st.session_state.param_weights = {param: 1.0 for param in param_names}
+    
+    # Display parameter weights configuration
+    st.markdown("### Parameter Bias Weights")
+    st.caption("Assign weights to each parameter to influence their importance during exploration. Higher weights mean the parameter changes more significantly affect the exploration path.")
+    
+    # Create columns for parameter weight inputs
+    weight_cols = st.columns(3)
+    weight_col_idx = 0
+    
+    # Create input fields for each parameter weight
+    for i, param in enumerate(param_names):
+        with weight_cols[weight_col_idx]:
+            current_weight = st.session_state.param_weights.get(param, 1.0)
+            new_weight = st.number_input(
+                f"Weight for {param}",
+                min_value=-5.0, 
+                max_value=5.0, 
+                value=float(current_weight), 
+                step=0.1,
+                key=f"weight_{param}"
+            )
+            st.session_state.param_weights[param] = new_weight
+        
+        weight_col_idx = (weight_col_idx + 1) % len(weight_cols)
+    
+    # Add options for weight presets
+    st.markdown("### Weight Presets")
+    preset_option = st.selectbox(
+        "Apply weight preset:",
+        ["Custom", "All Equal", "Emphasize t", "Emphasize Physical Parameters", "Random Weights"],
+        index=0,
+        key="weight_preset"
+    )
+    
+    if st.button("Apply Preset"):
+        if preset_option == "All Equal":
+            st.session_state.param_weights = {param: 1.0 for param in param_names}
+        elif preset_option == "Emphasize t":
+            st.session_state.param_weights = {param: 1.0 for param in param_names}
+            st.session_state.param_weights["t"] = 3.0
+        elif preset_option == "Emphasize Physical Parameters":
+            # Physical parameters typically include things like diffusion coefficients, interface energies, etc.
+            physical_params = ["diff", "kappa_eta", "M", "kappa_c"]  # Example physical parameters
+            st.session_state.param_weights = {param: 1.0 for param in param_names}
+            for pp in physical_params:
+                if pp in st.session_state.param_weights:
+                    st.session_state.param_weights[pp] = 2.5
+        elif preset_option == "Random Weights":
+            np.random.seed(42)  # For reproducibility
+            st.session_state.param_weights = {param: round(np.random.uniform(-2, 2), 1) for param in param_names}
+        
+        st.success(f"Applied preset: {preset_option}")
+        st.rerun()
+    
+    # Visualize parameter weights
+    st.markdown("### Weight Visualization")
+    weights_df = pd.DataFrame({
+        "Parameter": list(st.session_state.param_weights.keys()),
+        "Weight": list(st.session_state.param_weights.values())
+    })
+    
+    # Create a bar chart
+    fig_weights, ax_weights = plt.subplots(figsize=(10, 4))
+    colors = ['red' if w < 0 else 'green' for w in weights_df['Weight']]
+    bars = ax_weights.bar(weights_df['Parameter'], weights_df['Weight'], color=colors)
+    ax_weights.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+    ax_weights.set_title('Parameter Bias Weights')
+    ax_weights.set_ylabel('Weight Value')
+    ax_weights.tick_params(axis='x', rotation=45)
+    
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        ax_weights.annotate(f'{height:.1f}',
+                          xy=(bar.get_x() + bar.get_width() / 2, height),
+                          xytext=(0, 3),  # 3 points vertical offset
+                          textcoords="offset points",
+                          ha='center', va='bottom')
+    
+    plt.tight_layout()
+    st.pyplot(fig_weights)
+    
+    # Display the weights table
+    st.dataframe(weights_df.style.format({"Weight": "{:.2f}"}).background_gradient(subset=["Weight"], cmap="coolwarm"))
+
+    st.markdown("---")
+
+    # -----------------------------
     # UI: exploration hyperparameters
     # -----------------------------
     st.subheader("Exploration Configuration")
@@ -891,7 +986,7 @@ with tab5:
     with c5:
         TSNE_PERPLEXITY = st.slider("t-SNE Perplexity", 5, 100, 30, 5)
 
-    st.caption("H = -||params(z_cand) - params(z_current)|| - (score_cand - score_current). "
+    st.caption("H = -||weighted_params(z_cand) - weighted_params(z_current)|| - (score_cand - score_current). "
                "Reject if coverage decreases or t decreases.")
 
     run_btn = st.button("🚀 Run Exploration", type="primary", disabled=(seed_image is None))
@@ -914,7 +1009,8 @@ with tab5:
             "step": [],  # list of int
             "cand_clouds": [],
             "cand_H": [],
-            "hopping_strength": []
+            "hopping_strength": [],
+            "param_weights": []  # Store parameter weights used at each step
         }
 
     # show results in one step
@@ -955,7 +1051,8 @@ with tab5:
             "step": [],  # list of int
             "cand_clouds": [],
             "cand_H": [],
-            "hopping_strength": []
+            "hopping_strength": [],
+            "param_weights": []  # Store parameter weights used at each step
         }
         st.session_state.tab5_view_step = 0
 
@@ -1004,6 +1101,7 @@ with tab5:
                 initial_hopping = hopping_strengths[0]
                 
             st.session_state.explore_hist["hopping_strength"].append(initial_hopping)
+            st.session_state.explore_hist["param_weights"].append(st.session_state.param_weights.copy())
 
             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
             for step in range(1, STEPS_UI + 1):
@@ -1030,6 +1128,9 @@ with tab5:
                         z_padded = np.zeros(latent_dim)
                         z_padded[:z.shape[0]] = z
                         z = z_padded
+                
+                # Get current parameter weights
+                current_weights = np.array([st.session_state.param_weights[param] for param in param_names])
                 
                 for cand_idx in range(NUM_CAND_UI):
                     try:
@@ -1101,8 +1202,10 @@ with tab5:
                         cnn_cand = metrics_cand["connected_components"]
                         c_cand = metrics_cand["dendrite_coverage"]
 
-                        # 总结全局匹配度
-                        H = - np.linalg.norm(y_pred_s_cand - y_pred_s) - (s_cand - s)
+                        # 总结全局匹配度 with parameter weighting
+                        # Apply weights to parameter differences
+                        weighted_diff = current_weights * (y_pred_s_cand - y_pred_s)
+                        H = - np.linalg.norm(weighted_diff) - (s_cand - s)
 
                         # save cands
                         z_cands.append(z_cand.copy())
@@ -1137,8 +1240,9 @@ with tab5:
                 t_val = best_params[0]
                 y_pred_s = best_params
 
-                # Record hopping strength for this step
+                # Record hopping strength and parameter weights for this step
                 st.session_state.explore_hist["hopping_strength"].append(current_hopping)
+                st.session_state.explore_hist["param_weights"].append(st.session_state.param_weights.copy())
 
                 _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage,
                              cand_clouds=np.stack(z_cands, axis=0), cand_H=np.array(H_list, dtype=float))
@@ -1216,37 +1320,46 @@ with tab5:
             st.divider()
 
             # -------------------------
-            # Per-step parameter list / table
+            # Per-step parameter list / table with weights
             # -------------------------
-            st.markdown("### Parameters per step")
+            st.markdown("### Parameters and Weights per step")
 
             # Build a table: one row per step
-            # Expect: hist["params"][i] is 1D array, hist has score/coverage/t
-            max_p = max(len(np.asarray(p).reshape(-1)) for p in hist.get("params", [])) if hist.get(
-                "params") else 0
+            max_p = max(len(np.asarray(p).reshape(-1)) for p in hist.get("params", [])) if hist.get("params") else 0
 
             rows = []
+            weight_rows = []  # Separate rows for weights for better visualization
+            
             for i in range(n_hist):
-                y = np.asarray(hist["params"][i]).reshape(-1) if hist.get("params") and i < len(
-                    hist["params"]) else np.array([])
+                y = np.asarray(hist["params"][i]).reshape(-1) if hist.get("params") and i < len(hist["params"]) else np.array([])
+                weights = hist["param_weights"][i] if i < len(hist.get("param_weights", [])) else st.session_state.param_weights
+                
                 row = {
                     "step": int(hist["step"][i]) if i < len(hist["step"]) else i,
                     "score": float(hist["score"][i]) if i < len(hist.get("score", [])) else np.nan,
                     "coverage": float(hist["coverage"][i]) if i < len(hist.get("coverage", [])) else np.nan,
                     "hopping_strength": float(hist["hopping_strength"][i]) if i < len(hist.get("hopping_strength", [])) else np.nan,
                 }
+                weight_row = {"step": int(hist["step"][i]) if i < len(hist["step"]) else i}
+                
                 for k in range(max_p):
-                    row[param_names[k]] = float(y[k]) if k < y.size else np.nan
+                    if k < y.size:
+                        param_name = param_names[k] if k < len(param_names) else f"param_{k}"
+                        row[param_name] = float(y[k])
+                        weight_row[param_name] = weights.get(param_name, 1.0)
+                
                 rows.append(row)
+                weight_rows.append(weight_row)
 
+            # Display parameter values
+            st.markdown("#### Parameter Values")
             df_params = pd.DataFrame(rows)
-
-            # Make it easy to inspect:
-            st.dataframe(
-                df_params,
-                width='stretch',
-                hide_index=True,
-            )
+            st.dataframe(df_params, width='stretch', hide_index=True)
+            
+            # Display parameter weights
+            st.markdown("#### Parameter Weights")
+            df_weights = pd.DataFrame(weight_rows)
+            st.dataframe(df_weights.style.format("{:.2f}").background_gradient(cmap="coolwarm"), width='stretch', hide_index=True)
 
     # -----------------------------
     # Display results
