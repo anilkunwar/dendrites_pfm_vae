@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import colors, cm
 
-from src.modelv11 import mdn_point_and_confidence
+from src.modelv11 import mdn_point_and_confidence, postprocess_image
 from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import inv_scale_params, smooth_scale, inv_smooth_scale, PARAM_RANGES
 from src.helper import *
@@ -693,7 +693,7 @@ with tab5:
                 )
 
             recon = inv_smooth_scale(recon)
-            recon = recon.cpu().detach().numpy()[0, 0]
+            recon = postprocess_image(recon.cpu().detach().numpy()[0, 0])
             z = z.cpu().detach().numpy()[0]
             y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
             conf_s = conf_param_s.detach().cpu().numpy()[0]
@@ -725,7 +725,7 @@ with tab5:
                         recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
                             inference(model, z_cand_tensor, var_scale=var_scale)
                     recon_cand = inv_smooth_scale(recon_cand)
-                    recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+                    recon_cand = postprocess_image(recon_cand.cpu().detach().numpy()[0, 0])
                     y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
                     conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
                     conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
