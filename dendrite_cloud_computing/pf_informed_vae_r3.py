@@ -834,9 +834,9 @@ with tab5:
         RW_SIGMA_UI = 0.25
         hopping_strengths = [RW_SIGMA_UI] * (STEPS_UI + 1)
         
-        # Modified to support multiple hopping strengths including functional decreasing
+        # Modified to support multiple hopping strengths including functional options
         HOPPING_MODE = st.selectbox("Hopping Mode", 
-                                   ["Single Strength", "Multiple Strengths", "Functional Decreasing"],
+                                   ["Single Strength", "Multiple Strengths", "Functional Decreasing", "Functional Increasing"],
                                    index=0)
         
         if HOPPING_MODE == "Single Strength":
@@ -848,7 +848,7 @@ with tab5:
             # Create linear progression of hopping strengths
             hopping_strengths = np.linspace(MIN_SIGMA, MAX_SIGMA, STEPS_UI + 1)
             st.caption(f"Strengths range from {MIN_SIGMA:.2f} to {MAX_SIGMA:.2f}")
-        else:  # Functional Decreasing
+        elif HOPPING_MODE == "Functional Decreasing":
             MAX_SIGMA_FUNC = st.slider("Starting Strength (max)", 0.1, 5.0, 2.0, 0.1)
             MIN_SIGMA_FUNC = st.slider("Ending Strength (min)", 0.01, 1.0, 0.05, 0.01)
             DECAY_MODE = st.selectbox("Decay Function", ["Exponential", "Linear", "Logarithmic"], index=0)
@@ -867,6 +867,25 @@ with tab5:
                 hopping_strengths = MIN_SIGMA_FUNC + (MAX_SIGMA_FUNC - MIN_SIGMA_FUNC) * (1 - np.log(1 + 9*t) / np.log(10))
             
             st.caption(f"Strengths decrease from {MAX_SIGMA_FUNC:.2f} to {MIN_SIGMA_FUNC:.2f} using {DECAY_MODE} decay")
+        else:  # Functional Increasing
+            MIN_SIGMA_FUNC_INC = st.slider("Starting Strength (min)", 0.01, 1.0, 0.05, 0.01)
+            MAX_SIGMA_FUNC_INC = st.slider("Ending Strength (max)", 0.1, 5.0, 2.0, 0.1)
+            GROWTH_MODE = st.selectbox("Growth Function", ["Exponential", "Linear", "Logarithmic"], index=0)
+            
+            if GROWTH_MODE == "Exponential":
+                GROWTH_RATE = st.slider("Growth Rate", 0.1, 5.0, 1.0, 0.1)
+                # Create exponential growth from min to max
+                t = np.linspace(0, 1, STEPS_UI + 1)
+                hopping_strengths = MIN_SIGMA_FUNC_INC + (MAX_SIGMA_FUNC_INC - MIN_SIGMA_FUNC_INC) * (1 - np.exp(-GROWTH_RATE * t))
+            elif GROWTH_MODE == "Linear":
+                # Linear increase from min to max
+                hopping_strengths = np.linspace(MIN_SIGMA_FUNC_INC, MAX_SIGMA_FUNC_INC, STEPS_UI + 1)
+            else:  # Logarithmic
+                # Logarithmic growth from min to max
+                t = np.linspace(0, 1, STEPS_UI + 1)
+                hopping_strengths = MIN_SIGMA_FUNC_INC + (MAX_SIGMA_FUNC_INC - MIN_SIGMA_FUNC_INC) * (np.log(1 + 9*t) / np.log(10))
+            
+            st.caption(f"Strengths increase from {MIN_SIGMA_FUNC_INC:.2f} to {MAX_SIGMA_FUNC_INC:.2f} using {GROWTH_MODE} growth")
     with c4:
         STRICT_UI = st.checkbox("Strict mode", value=False)
     with c5:
@@ -981,9 +1000,7 @@ with tab5:
             # Initialize with first hopping strength
             if HOPPING_MODE == "Single Strength":
                 initial_hopping = RW_SIGMA_UI
-            elif HOPPING_MODE == "Multiple Strengths":
-                initial_hopping = hopping_strengths[0]
-            else:  # Functional Decreasing
+            else:
                 initial_hopping = hopping_strengths[0]
                 
             st.session_state.explore_hist["hopping_strength"].append(initial_hopping)
@@ -991,11 +1008,7 @@ with tab5:
             _update_live(0, recon, z, y_pred_s, conf_s, s, c)
             for step in range(1, STEPS_UI + 1):
                 # Get current hopping strength based on mode
-                if HOPPING_MODE == "Single Strength":
-                    current_hopping = RW_SIGMA_UI
-                else:
-                    # Use the pre-computed hopping strengths array
-                    current_hopping = hopping_strengths[step % len(hopping_strengths)]
+                current_hopping = hopping_strengths[step % len(hopping_strengths)]
                 
                 # 生成候选
                 best_z = None
