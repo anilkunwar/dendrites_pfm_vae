@@ -1,5 +1,7 @@
 # src/modelvae_mdn.py
 import math
+import numpy as np
+from scipy import ndimage as ndi
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -345,3 +347,41 @@ class VAE_MDN(nn.Module):
         )
 
         return recon, (theta_hat, conf_param, conf_global, modes)
+
+def postprocess_image(
+    img: np.ndarray,
+    thresh: float | None = None,
+    percentile: float = 10.0,
+    border_width: int = 3,
+    foreground_use_max: bool = True
+) -> np.ndarray:
+
+    if img.ndim != 2:
+        raise ValueError("img should be 2D")
+
+    img = img.astype(np.float32)
+
+    if thresh is None:
+        thresh = np.percentile(img, percentile)
+
+    fg = img > thresh
+    bg = ~fg
+
+    dist_fg = ndi.distance_transform_edt(fg)
+    dist_bg = ndi.distance_transform_edt(bg)
+
+    fg_val = img[fg].max() if fg.any() else img.max()
+    bg_val = img[bg].min() if bg.any() else img.min()
+
+    if not foreground_use_max:
+        fg_val, bg_val = bg_val, fg_val
+
+    out = img.copy()
+
+    fg_inner = fg & (dist_fg >= border_width)
+    out[fg_inner] = fg_val
+
+    bg_inner = bg & (dist_bg >= border_width)
+    out[bg_inner] = bg_val
+
+    return out

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, ConcatDataset
 
 from src.dataloader import DendritePFMDataset
-from src.modelv11 import mdn_point_and_confidence
+from src.modelv11 import mdn_point_and_confidence, postprocess_image
 
 
 def main(args):
@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
-    parser.add_argument("--model_root", type=str, default='results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1')
+    parser.add_argument("--model_root", type=str, default='results/final_model')
 
     args = parser.parse_args()
 
