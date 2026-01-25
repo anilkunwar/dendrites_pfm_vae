@@ -103,8 +103,8 @@ def process_image(image, model, image_size, var_scale):
 
     # Ensure reconstruction is in valid range
     recon_img = inv_smooth_scale(recon)    # post processing
-    # recon_img = postprocess_image(recon_img.detach().cpu().numpy()[0, 0])
-    recon_img = recon_img.detach().cpu().numpy()[0, 0]
+    recon_img = recon_img.detach().cpu().numpy()[0].transpose((1, 2, 0))
+    recon_img[..., 0] = postprocess_image(recon_img[..., 0])
     recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
 
     # Get control parameters
