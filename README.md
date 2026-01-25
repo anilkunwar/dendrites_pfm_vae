@@ -15,6 +15,8 @@
 
 [![vaemodel](https://img.shields.io/badge/dendritevae4-streamlit-red)](https://phase-field-informed-vae4.streamlit.app/)  ( development version,interfacial microstructure construction app, functional expression for hopping strength, initial values for control params, t-SNE visualization) 
 
+[![vaemodel](https://img.shields.io/badge/dendritevaetest-streamlit-red)](https://phase-field-informed-vae5-test.streamlit.app/) (test code )
+
 # Postprocessing the Results 
 - Radar charts
 - Hierarchical data visualization
