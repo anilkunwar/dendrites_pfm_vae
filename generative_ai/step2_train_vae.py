@@ -461,13 +461,13 @@ if __name__ == "__main__":
 
     # VAE losses
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--beta_warmup_ratio", type=float, default=0.01)
+    parser.add_argument("--beta_warmup_ratio", type=float, default=1)
 
     # weights
     parser.add_argument("--gamma", type=float, default=0.01)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.2)
 
-    parser.add_argument("--phy_weight", type=float, default=0.0001)
+    parser.add_argument("--phy_weight", type=float, default=0.005)
     parser.add_argument("--phy_alpha", type=float, default=3)
     parser.add_argument("--phy_beta", type=float, default=1)
 
@@ -481,7 +481,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--init_model_path", type=str,
                         # default=None,
-                        default="/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/oldv12/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/ckpt/best.pt",
+                        default="results/good/ckpt/best.pt",
                         help="Optional path to a saved .pt model to initialize (torch.load). If not set, build a fresh VAE_MDN.")
 
     args = parser.parse_args()

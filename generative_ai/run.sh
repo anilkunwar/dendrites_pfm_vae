@@ -6,7 +6,7 @@ set -euo pipefail
 # - 训练脚本会自动保存 run_args.json 到实验目录
 # ============================================================
 
-PY_SCRIPT="step2_train_vaev12.py"
+PY_SCRIPT="step2_train_vae.py"
 
 # 运行次数 & 最大并行数（可按需修改）
 N_RUNS=50
@@ -15,9 +15,9 @@ MAX_JOBS=1
 # ---------- 可调的“合理范围” ----------
 epochs=(2000)
 batch_size=(512)
-latent_size=(8 16 32)
-mdn_components=(8 16 32)
-mdn_hidden=(32 64 128)
+#latent_size=(8 16 32)
+#mdn_components=(8 16 32)
+#mdn_hidden=(32 64 128)
 
 beta=(0.001 0.003 0.005 0.01 0.02 0.03 0.1)
 gamma=(0.001 0.003 0.005 0.01 0.02 0.03 0.1)
@@ -54,9 +54,9 @@ for ((i=1; i<=N_RUNS; i++)); do
   E=$(pick epochs)
   BS=$(pick batch_size)
   LR=$(pick lr)
-  LAT=$(pick latent_size)
-  K=$(pick mdn_components)
-  MH=$(pick mdn_hidden)
+#  LAT=$(pick latent_size)
+#  K=$(pick mdn_components)
+#  MH=$(pick mdn_hidden)
 
   BETA=$(pick beta)
   BW=$(pick beta_warm)
@@ -73,15 +73,15 @@ for ((i=1; i<=N_RUNS; i++)); do
   PAT=$(pick patience)
   SEED=$(rand_seed)
 
-  echo "[$i/$N_RUNS] epochs=$E bs=$BS lr=$LR lat=$LAT K=$K mdn_hidden=$MH beta=$BETA bw=$BW gamma=$GAMMA gw=$GW phy_w=$PW a=$PA b=$PB sw=$SW var=$VS pat=$PAT seed=$SEED"
+#  echo "[$i/$N_RUNS] epochs=$E bs=$BS lr=$LR lat=$LAT K=$K mdn_hidden=$MH beta=$BETA bw=$BW gamma=$GAMMA gw=$GW phy_w=$PW a=$PA b=$PB sw=$SW var=$VS pat=$PAT seed=$SEED"
 
   python "$PY_SCRIPT" \
     --epochs "$E" \
     --batch_size "$BS" \
     --lr "$LR" \
-    --latent_size "$LAT" \
-    --mdn_components "$K" \
-    --mdn_hidden "$MH" \
+#    --latent_size "$LAT" \
+#    --mdn_components "$K" \
+#    --mdn_hidden "$MH" \
     --beta "$BETA" \
     --beta_warmup_ratio "$BW" \
     --gamma "$GAMMA" \

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.dataloader import smooth_scale
+from src.dataloader import smooth_scale, inv_smooth_scale
 
 
 def init_weights(model):
@@ -350,38 +350,81 @@ class VAE_MDN(nn.Module):
 
 def postprocess_image(
     img: np.ndarray,
-    thresh: float | None = None,
-    percentile: float = 10.0,
-    border_width: int = 3,
-    foreground_use_max: bool = True
+    grad_thresh: float | None = None,
+    grad_percentile: float = 90.0,
+    boundary_width: int = 3,
+    connectivity: int = 2,   # 1 = 4-connectivity, 2 = 8-connectivity
 ) -> np.ndarray:
+    """
+    Split the image into connected regions using high-gradient interfaces,
+    and normalize each connected region to its mean value.
 
+    Steps:
+      1. Compute gradient magnitude using Sobel filters
+      2. Detect high-gradient pixels as region boundaries
+      3. Dilate boundaries to avoid thin connections between regions
+      4. Label connected components in non-boundary regions
+      5. Replace each connected component with its mean intensity
+
+    Parameters
+    ----------
+    img : np.ndarray
+        2D input image.
+    grad_thresh : float or None
+        Gradient magnitude threshold. If None, it is computed from
+        `grad_percentile`.
+    grad_percentile : float
+        Percentile of gradient magnitude used when `grad_thresh` is None.
+    boundary_width : int
+        Dilation width of the boundary mask.
+    connectivity : int
+        Connectivity for connected components:
+        1 = 4-connectivity, 2 = 8-connectivity.
+
+    Returns
+    -------
+    out : np.ndarray
+        Image where each connected region is replaced by its mean value.
+        Boundary pixels keep their original values.
+    """
     if img.ndim != 2:
         raise ValueError("img should be 2D")
 
-    img = img.astype(np.float32)
+    img_f = inv_smooth_scale(img.astype(np.float32))
 
-    if thresh is None:
-        thresh = np.percentile(img, percentile)
+    # 1) Gradient magnitude (Sobel)
+    gx = ndi.sobel(img_f, axis=1, mode="reflect")
+    gy = ndi.sobel(img_f, axis=0, mode="reflect")
+    grad_mag = np.hypot(gx, gy)
 
-    fg = img > thresh
-    bg = ~fg
+    # 2) Boundary detection
+    if grad_thresh is None:
+        grad_thresh = float(np.percentile(grad_mag, grad_percentile))
 
-    dist_fg = ndi.distance_transform_edt(fg)
-    dist_bg = ndi.distance_transform_edt(bg)
+    boundary = grad_mag >= grad_thresh
 
-    fg_val = img[fg].max() if fg.any() else img.max()
-    bg_val = img[bg].min() if bg.any() else img.min()
+    # 3) Thicken boundaries
+    if boundary_width > 0:
+        boundary = ndi.binary_dilation(boundary, iterations=int(boundary_width))
 
-    if not foreground_use_max:
-        fg_val, bg_val = bg_val, fg_val
+    # 4) Connected components on non-boundary regions
+    region_mask = ~boundary
 
-    out = img.copy()
+    if connectivity == 1:
+        structure = np.array([[0, 1, 0],
+                              [1, 1, 1],
+                              [0, 1, 0]], dtype=bool)
+    else:
+        structure = np.ones((3, 3), dtype=bool)
 
-    fg_inner = fg & (dist_fg >= border_width)
-    out[fg_inner] = fg_val
+    labels, num = ndi.label(region_mask, structure=structure)
 
-    bg_inner = bg & (dist_bg >= border_width)
-    out[bg_inner] = bg_val
+    out = img_f.copy()
+
+    # 5) Normalize each connected component to its mean value
+    for lab in range(1, num + 1):
+        mask = (labels == lab)
+        if mask.any():
+            out[mask] = img_f[mask].mean()
 
     return out
