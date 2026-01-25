@@ -18,13 +18,105 @@ from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import inv_scale_params, smooth_scale, inv_smooth_scale, PARAM_RANGES
 from src.helper import *
 
+def ensure_valid_image(image):
+    """
+    Ensure image is a valid 2D numpy array for display
+    """
+    if image is None:
+        st.error("Image is None")
+        return None
+    
+    # Convert to numpy array if not already
+    if not isinstance(image, np.ndarray):
+        try:
+            image = np.array(image)
+        except Exception as e:
+            st.error(f"Could not convert image to numpy array: {str(e)}")
+            return None
+    
+    # Handle different dimensionalities
+    if image.ndim == 3:
+        # If RGB or RGBA, take first channel
+        if image.shape[2] >= 1:
+            image = image[:, :, 0]
+    elif image.ndim > 3:
+        # For higher dimensional tensors, take first slice
+        slices = [0] * (image.ndim - 2)
+        image = image[tuple([0, 0] + slices)]
+    elif image.ndim < 2:
+        st.error(f"Image has insufficient dimensions: {image.ndim}. Expected at least 2D.")
+        return None
+    
+    # Ensure the image is float type for proper normalization
+    if not np.issubdtype(image.dtype, np.floating):
+        image = image.astype(np.float32)
+    
+    # Handle NaN or Inf values
+    if np.isnan(image).any() or np.isinf(image).any():
+        # Replace NaN with min value, Inf with max value
+        min_val = np.nanmin(image[np.isfinite(image)])
+        max_val = np.nanmax(image[np.isfinite(image)])
+        image = np.nan_to_num(image, nan=min_val, posinf=max_val, neginf=min_val)
+    
+    # Ensure image has some variation for visualization
+    if np.allclose(image.min(), image.max(), atol=1e-7):
+        # Add small random noise if image is uniform
+        image = image + np.random.normal(0, 1e-4, image.shape)
+        st.warning("Image has uniform values. Added small noise for visualization.")
+    
+    return image
+
 def show_coolwarm(gray_image, caption, container=None):
-    norm = colors.Normalize(vmin=gray_image.min(), vmax=gray_image.max())
-    colored_img = cm.coolwarm(norm(gray_image))  # shape: (H, W, 4)
-    if container is None:
-        st.image(colored_img, caption=caption, width='stretch')
-    else:
-        container.image(colored_img, caption=caption, width='stretch')
+    """
+    Display image using coolwarm colormap with robust error handling
+    """
+    # Ensure image is valid before proceeding
+    gray_image = ensure_valid_image(gray_image)
+    if gray_image is None:
+        return
+    
+    try:
+        # Safely compute min and max values
+        vmin = float(gray_image.min())
+        vmax = float(gray_image.max())
+        
+        # Handle case where min and max are too close
+        if abs(vmax - vmin) < 1e-7:
+            mid = (vmax + vmin) / 2
+            vmin = mid - 0.5
+            vmax = mid + 0.5
+            st.warning("Image has very low contrast. Adjusting display range.")
+        
+        # Create normalization and colormap
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+        colored_img = cm.coolwarm(norm(gray_image))
+        
+        # Display the image
+        if container is None:
+            st.image(colored_img, caption=caption, use_container_width=True)
+        else:
+            container.image(colored_img, caption=caption, use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Error displaying image: {str(e)}")
+        # Fallback display with basic info
+        st.text(f"Image shape: {gray_image.shape}, dtype: {gray_image.dtype}")
+        st.text(f"Min value: {gray_image.min()}, Max value: {gray_image.max()}")
+        st.text(f"Mean value: {gray_image.mean()}, Std: {gray_image.std()}")
+        
+        # Try a simpler display method as fallback
+        try:
+            fig, ax = plt.subplots(figsize=(5, 4))
+            im = ax.imshow(gray_image, cmap='coolwarm')
+            ax.set_title(f"Fallback view: {caption}")
+            fig.colorbar(im, ax=ax)
+            if container is None:
+                st.pyplot(fig)
+            else:
+                container.pyplot(fig)
+            plt.close(fig)
+        except Exception as fallback_e:
+            st.error(f"Fallback display also failed: {str(fallback_e)}")
 
 def analyze_image(image, image_name:str):
     # Display original image (without preprocessing)
@@ -1082,8 +1174,13 @@ with tab5:
                     pi_s, mu_s, log_sigma_s, var_scale=var_scale
                 )
 
+            # Ensure reconstruction is properly formatted
             recon = inv_smooth_scale(recon)
             recon = recon.cpu().detach().numpy()[0, 0]
+            # Make sure recon is a proper 2D array
+            if recon.ndim > 2:
+                recon = recon[0]  # Take first channel if multi-dimensional
+            
             z = z.cpu().detach().numpy()[0]
             y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
             conf_s = conf_param_s.detach().cpu().numpy()[0]
@@ -1103,7 +1200,10 @@ with tab5:
             st.session_state.explore_hist["hopping_strength"].append(initial_hopping)
             st.session_state.explore_hist["param_weights"].append(st.session_state.param_weights.copy())
 
-            _update_live(0, recon, z, y_pred_s, conf_s, s, c)
+            # Ensure the image is properly formatted before updating live display
+            recon_for_display = ensure_valid_image(recon)
+            _update_live(0, recon_for_display, z, y_pred_s, conf_s, s, c)
+            
             for step in range(1, STEPS_UI + 1):
                 # Get current hopping strength based on mode
                 current_hopping = hopping_strengths[step % len(hopping_strengths)]
@@ -1190,8 +1290,12 @@ with tab5:
                                 recon_cand, (theta_hat_s_cand, conf_param_s_cand, conf_global_s_cand, modes_s_cand) = \
                                     inference(model, z_cand_tensor, var_scale=var_scale)
                         
+                        # Ensure reconstruction is properly formatted for display
                         recon_cand = inv_smooth_scale(recon_cand)
                         recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+                        if recon_cand.ndim > 2:
+                            recon_cand = recon_cand[0]  # Take first channel if multi-dimensional
+                        
                         y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
                         conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
                         conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
@@ -1240,11 +1344,14 @@ with tab5:
                 t_val = best_params[0]
                 y_pred_s = best_params
 
+                # Ensure best_img is properly formatted for display
+                best_img_for_display = ensure_valid_image(best_img)
+
                 # Record hopping strength and parameter weights for this step
                 st.session_state.explore_hist["hopping_strength"].append(current_hopping)
                 st.session_state.explore_hist["param_weights"].append(st.session_state.param_weights.copy())
 
-                _update_live(step, best_img, best_z, best_params, best_params_confidence, best_score, best_coverage,
+                _update_live(step, best_img_for_display, best_z, best_params, best_params_confidence, best_score, best_coverage,
                              cand_clouds=np.stack(z_cands, axis=0), cand_H=np.array(H_list, dtype=float))
 
                 progress_bar.progress(step / STEPS_UI)
@@ -1315,7 +1422,9 @@ with tab5:
                         else:
                             img2d = img
 
-                        show_coolwarm(img2d, cap)
+                        img2d = ensure_valid_image(img2d)
+                        if img2d is not None:
+                            show_coolwarm(img2d, cap)
 
             st.divider()
 
