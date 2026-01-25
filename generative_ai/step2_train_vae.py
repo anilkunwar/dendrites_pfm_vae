@@ -372,9 +372,9 @@ def main(args):
 
                 total = (
                     recon_loss
-                    + beta_t * kl_loss
-                    + gamma_t * ctr_nll
-                    + args.phy_weight * sm_loss
+                    + kl_loss
+                    + ctr_nll
+                    + sm_loss
                 )
 
                 vstat["total"].append(total.item())
@@ -445,7 +445,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
-    parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--lr_factor", type=float, default=0.75)
     parser.add_argument("--lr_patience", type=float, default=10)
     parser.add_argument("--seed", type=int, default=0)

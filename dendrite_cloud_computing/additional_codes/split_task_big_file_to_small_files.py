@@ -1,6 +1,6 @@
 import os
 
-def split_file(file_path, save_dir="../knowledge_base/model2", save_name="vae_model.pt", chunk_size_mb=21):
+def split_file(file_path, save_dir="../knowledge_base/model1", save_name="vae_model.pt", chunk_size_mb=21):
     chunk_size = chunk_size_mb * 1024 * 1024  # 20MB in bytes
     os.makedirs(save_dir, exist_ok=True)
     with open(file_path, 'rb') as f:
@@ -16,4 +16,4 @@ def split_file(file_path, save_dir="../knowledge_base/model2", save_name="vae_mo
             chunk_num += 1
 
 # Run it
-split_file(r"E:\PhDProject\dendrites_pfm_vae\generative_ai\results\VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.001_phy_alpha=0.5_phy_beta=0.5_scale_weight=0.1_time=20260124_102530\ckpt\best.pt")
+split_file("/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/oldv12/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/ckpt/best.pt")
