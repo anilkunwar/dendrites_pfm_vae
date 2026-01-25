@@ -942,7 +942,7 @@ with tab5:
     
     # Display parameter weights configuration
     st.markdown("### Parameter Bias Weights")
-    st.caption("Assign weights to each parameter to influence their importance during exploration. Higher weights mean the parameter changes more significantly affect the exploration path. Default values are from step 12 of the CSV file - dendrites-attributes.csv.")
+    st.caption("Assign weights to each parameter to influence their importance during exploration. Higher weights mean the parameter changes more significantly affect the exploration path. Default values are from step 12 of the CSV file - dendrites-attributes.csv inside parameters-dataset directory.")
     
     # Create columns for parameter weight inputs
     weight_cols = st.columns(3)
