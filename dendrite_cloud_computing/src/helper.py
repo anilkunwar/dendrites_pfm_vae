@@ -102,8 +102,8 @@ def process_image(image, model, image_size, var_scale):
         recon, _, _, (pi_s, mu_s, log_sigma_s), _ = model(tensor_t)
 
     # Ensure reconstruction is in valid range
-    recon_img = postprocess_image(recon)    # post processing
-    recon_img = recon_img.detach().cpu().numpy()[0].transpose(1, 2, 0)
+    # recon_img = postprocess_image(recon)    # post processing
+    recon_img = recon.detach().cpu().numpy()[0].transpose(1, 2, 0)
     recon_img = cv2.resize(recon_img, (original_shape[1], original_shape[0]))
 
     # Get control parameters
