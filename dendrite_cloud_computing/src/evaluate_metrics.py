@@ -521,17 +521,17 @@ class ComprehensiveDendriteAnalyzer:
             # "morphology": metrics["morphology"],
         }
 
-    def get_severity_level(self, total_score: float) -> str:
-        if total_score < 7.5:
-            return "None"
-        if total_score < 12:
-            return "Mild"
-        elif total_score < 18:
-            return "Moderate"
-        elif total_score < 24:
-            return "Severe"
-        else:
-            return "Extreme"
+def get_severity_level(total_score: float) -> str:
+    if total_score < 7.5:
+        return "None"
+    if total_score < 12:
+        return "Mild"
+    elif total_score < 18:
+        return "Moderate"
+    elif total_score < 24:
+        return "Severe"
+    else:
+        return "Extreme"
 
 def _format_metrics(metrics: Dict[str, float], scores: Dict[str, float], severity: str) -> str:
     """
@@ -606,7 +606,7 @@ def generate_analysis_figure(
     Parameters
     ----------
     image_or_path : str | np.ndarray
-        If str: expects a .npy file (same as your original code path).
+        If str: expects a .npy file.
         If ndarray: grayscale or RGB array.
     pixel_size_um : float
     save : bool
@@ -641,7 +641,7 @@ def generate_analysis_figure(
     analyzer = ComprehensiveDendriteAnalyzer(img, pixel_size_um=pixel_size_um)
     metrics = analyzer.compute_all_metrics()
     scores = analyzer.calculate_severity_score(metrics)
-    severity = analyzer.get_severity_level(scores["empirical_score"])
+    severity = get_severity_level(scores["empirical_score"])
 
     # Add a few display-only fields
     metrics = dict(metrics)

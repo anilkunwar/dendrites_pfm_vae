@@ -445,7 +445,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=8e-5)
     parser.add_argument("--lr_factor", type=float, default=0.75)
     parser.add_argument("--lr_patience", type=float, default=10)
     parser.add_argument("--seed", type=int, default=0)
@@ -461,14 +461,14 @@ if __name__ == "__main__":
 
     # VAE losses
     parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--beta_warmup_ratio", type=float, default=0.1)
+    parser.add_argument("--beta_warmup_ratio", type=float, default=0.01)
 
     # weights
     parser.add_argument("--gamma", type=float, default=0.01)
-    parser.add_argument("--gamma_warmup_ratio", type=float, default=0.1)
+    parser.add_argument("--gamma_warmup_ratio", type=float, default=0.2)
 
-    parser.add_argument("--phy_weight", type=float, default=0.01) # 设置为0可以实现重建效果
-    parser.add_argument("--phy_alpha", type=float, default=1)
+    parser.add_argument("--phy_weight", type=float, default=0.0001)
+    parser.add_argument("--phy_alpha", type=float, default=3)
     parser.add_argument("--phy_beta", type=float, default=1)
 
     parser.add_argument("--scale_weight", type=float, default=0.1)
@@ -480,8 +480,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_root", type=str, default="results")
 
     parser.add_argument("--init_model_path", type=str,
-                        default=None,
-                        # default="/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/oldv12/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/ckpt/best.pt",
+                        # default=None,
+                        default="/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/oldv12/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835/ckpt/best.pt",
                         help="Optional path to a saved .pt model to initialize (torch.load). If not set, build a fresh VAE_MDN.")
 
     args = parser.parse_args()
