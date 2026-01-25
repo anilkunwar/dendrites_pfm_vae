@@ -1056,6 +1056,108 @@ def plot_confidence_summary(conf_param: np.ndarray, conf_global: np.ndarray, pre
         plt.show()
     plt.close()
 
+def plot_mae_confidence_summary(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    conf_param: np.ndarray,
+    prefix: str,
+    save_dir: str = None,
+    param_names=None,
+):
+    """
+    Combined figure:
+      - MAE per parameter: bar (left y-axis)
+      - Mean confidence per parameter: line (right y-axis)
+
+    Inputs are consistent with your original functions:
+      y_true, y_pred: [N, P]
+      conf_param: [N, P] in (0, 1]
+    """
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+
+    N, P = y_true.shape
+    if param_names is None or len(param_names) != P:
+        param_names = [f"p{i}" for i in range(P)]
+
+    # --- compute metrics (same logic as before) ---
+    m = regression_metrics(y_true, y_pred)
+    mae = np.array(m["per_dim"]["MAE"])
+    mean_c = np.array(conf_param.mean(axis=0))
+
+    # --- styling helpers ---
+    def _style_primary_ax(ax):
+        ax.grid(True, which="major", axis="y", linestyle="-", linewidth=0.6, alpha=0.25)
+        ax.set_axisbelow(True)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    plt.rcParams.update({
+        "figure.dpi": 110,
+        "savefig.dpi": 300,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+    })
+
+    x = np.arange(P)
+
+    # --- combined plot ---
+    fig, ax1 = plt.subplots(figsize=(max(10, P * 0.6), 4.6))
+    _style_primary_ax(ax1)
+
+    # MAE bars (left axis)
+    bars = ax1.bar(
+        x, mae, width=0.82,
+        alpha=0.9, edgecolor="white", linewidth=0.8,
+        label="MAE"
+    )
+    ax1.set_ylabel("MAE")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(param_names, rotation=60, ha="right")
+    ax1.margins(x=0.01)
+
+    # Confidence line (right axis)
+    ax2 = ax1.twinx()
+    ax2.spines["top"].set_visible(False)
+    # keep right spine visible (since it's the right axis)
+    ax2.plot(
+        x, mean_c,
+        marker="o", markersize=4,
+        linewidth=1.8,
+        alpha=0.95,
+        label="Mean confidence"
+    )
+    ax2.set_ylim(0.0, 1.0)
+    ax2.set_ylabel("Mean confidence")
+
+    # Title
+    ax1.set_title("MAE (bar) and Mean confidence (line) per parameter")
+
+    # Legend (combine handles from both axes)
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax1.legend(h1 + h2, l1 + l2, loc="upper right", frameon=False)
+
+    # Optional: annotate bars if not too many
+    if P <= 40:
+        y_max = float(np.max(mae)) if len(mae) else 1.0
+        pad = 0.01 * (y_max if y_max != 0 else 1.0)
+        for xi, yi in zip(x, mae):
+            ax1.text(xi, yi + pad, f"{float(yi):.3g}", ha="center", va="bottom", fontsize=8, alpha=0.9)
+
+    fig.tight_layout()
+
+    if save_dir is not None:
+        fig.savefig(os.path.join(save_dir, f"{prefix}_mae_conf_per_param.png"))
+    else:
+        plt.show()
+    plt.close(fig)
+
+    return m
+
 # Example CLI usage:
 if __name__ == "__main__":
     import sys
