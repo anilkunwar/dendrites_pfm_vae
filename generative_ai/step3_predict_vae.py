@@ -65,7 +65,7 @@ def main(args):
             ax1.axis("off")
 
             ax2 = fig.add_subplot(gs[0, 1])
-            ax2.imshow(recon_x[0].view(args.image_size).cpu().data.numpy()[0])
+            ax2.imshow(postprocess_image(recon_x[0].view(args.image_size).cpu().data.numpy()[0]))
             ax2.set_title("eta pd", fontsize=12, fontweight="bold")
             ax2.axis("off")
 
@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
-    parser.add_argument("--model_root", type=str, default='results/final_model')
+    parser.add_argument("--model_root", type=str, default='results/VAEv12_MDN_time=20260126_035348')
 
     args = parser.parse_args()
 

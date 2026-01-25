@@ -390,7 +390,7 @@ def postprocess_image(
     if img.ndim != 2:
         raise ValueError("img should be 2D")
 
-    img_f = inv_smooth_scale(img.astype(np.float32))
+    img_f = img.astype(np.float32)
 
     # 1) Gradient magnitude (Sobel)
     gx = ndi.sobel(img_f, axis=1, mode="reflect")
