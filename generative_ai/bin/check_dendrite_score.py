@@ -93,7 +93,7 @@ def load_images_from_glob(
 def plot_grid_with_scores(
     images: List[np.ndarray],
     score_fn,
-    title: str = "Two Scores Comparison per Image",
+    title: str = "Comparison of two metrics per Image",
     score_names: Tuple[str, str] = ("Fractal Dimension", "Dendrite Intensity Score"),
 ):
     assert len(images) == 9, "需要正好 9 张图片来画 3×3。"
@@ -123,7 +123,7 @@ def plot_grid_with_scores(
             transform=ax.transAxes,
             ha="right",
             va="bottom",
-            fontsize=9,
+            fontsize=10,
             color="white",
             bbox=dict(boxstyle="round,pad=0.35", fc="black", ec="none", alpha=0.55),
         )
