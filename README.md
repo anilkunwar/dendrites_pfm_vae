@@ -7,7 +7,15 @@
 
 # Generative Machine Learning (Dual-branch VAE)
 
-[![vaemodel](https://img.shields.io/badge/dendritevae1-streamlit-red)](https://phase-field-informed-vae1.streamlit.app/) (interfacial microstructure construction app)
+[![vaemodel](https://img.shields.io/badge/dendritevae1-streamlit-red)](https://phase-field-informed-vae1.streamlit.app/) (main app, interfacial microstructure construction app)
+
+[![vaemodel](https://img.shields.io/badge/dendritevae2-streamlit-red)](https://phase-field-informed-vae2.streamlit.app/)  ( development version,interfacial microstructure construction app, t-SNE visualization) 
+
+[![vaemodel](https://img.shields.io/badge/dendritevae3-streamlit-red)](https://phase-field-informed-vae3.streamlit.app/)  ( development version,interfacial microstructure construction app, functional expression for hopping strength, t-SNE visualization) 
+
+[![vaemodel](https://img.shields.io/badge/dendritevae4-streamlit-red)](https://phase-field-informed-vae4.streamlit.app/)  ( development version,interfacial microstructure construction app, functional expression for hopping strength, initial values for control params, t-SNE visualization) 
+
+[![vaemodel](https://img.shields.io/badge/dendritevaetest-streamlit-red)](https://phase-field-informed-vae5-test.streamlit.app/) (test code from development version )
 
 # Postprocessing the Results 
 - Radar charts
