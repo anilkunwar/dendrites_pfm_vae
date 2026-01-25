@@ -5,7 +5,7 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib import colors, cm
+from matplotlib import colors as mpl_colors, cm
 from PIL import Image
 from sklearn.manifold import TSNE
 from sklearn.linear_model import LinearRegression
@@ -23,7 +23,6 @@ def ensure_valid_image(image):
     Ensure image is a valid 2D numpy array for display
     """
     if image is None:
-        st.error("Image is None")
         return None
     
     # Convert to numpy array if not already
@@ -31,7 +30,6 @@ def ensure_valid_image(image):
         try:
             image = np.array(image)
         except Exception as e:
-            st.error(f"Could not convert image to numpy array: {str(e)}")
             return None
     
     # Handle different dimensionalities
@@ -44,7 +42,6 @@ def ensure_valid_image(image):
         slices = [0] * (image.ndim - 2)
         image = image[tuple([0, 0] + slices)]
     elif image.ndim < 2:
-        st.error(f"Image has insufficient dimensions: {image.ndim}. Expected at least 2D.")
         return None
     
     # Ensure the image is float type for proper normalization
@@ -62,7 +59,6 @@ def ensure_valid_image(image):
     if np.allclose(image.min(), image.max(), atol=1e-7):
         # Add small random noise if image is uniform
         image = image + np.random.normal(0, 1e-4, image.shape)
-        st.warning("Image has uniform values. Added small noise for visualization.")
     
     return image
 
@@ -73,6 +69,7 @@ def show_coolwarm(gray_image, caption, container=None):
     # Ensure image is valid before proceeding
     gray_image = ensure_valid_image(gray_image)
     if gray_image is None:
+        st.warning("Invalid image data for visualization")
         return
     
     try:
@@ -85,10 +82,9 @@ def show_coolwarm(gray_image, caption, container=None):
             mid = (vmax + vmin) / 2
             vmin = mid - 0.5
             vmax = mid + 0.5
-            st.warning("Image has very low contrast. Adjusting display range.")
         
         # Create normalization and colormap
-        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+        norm = mpl_colors.Normalize(vmin=vmin, vmax=vmax)
         colored_img = cm.coolwarm(norm(gray_image))
         
         # Display the image
@@ -99,11 +95,6 @@ def show_coolwarm(gray_image, caption, container=None):
             
     except Exception as e:
         st.error(f"Error displaying image: {str(e)}")
-        # Fallback display with basic info
-        st.text(f"Image shape: {gray_image.shape}, dtype: {gray_image.dtype}")
-        st.text(f"Min value: {gray_image.min()}, Max value: {gray_image.max()}")
-        st.text(f"Mean value: {gray_image.mean()}, Std: {gray_image.std()}")
-        
         # Try a simpler display method as fallback
         try:
             fig, ax = plt.subplots(figsize=(5, 4))
@@ -115,8 +106,8 @@ def show_coolwarm(gray_image, caption, container=None):
             else:
                 container.pyplot(fig)
             plt.close(fig)
-        except Exception as fallback_e:
-            st.error(f"Fallback display also failed: {str(fallback_e)}")
+        except:
+            pass
 
 def analyze_image(image, image_name:str):
     # Display original image (without preprocessing)
@@ -355,9 +346,9 @@ def analyze_parameter_importance(df_history):
     sorted_idx_cov = np.argsort(np.abs(list(corr_coverage.values())))[::-1]
     top_params_cov = [list(corr_coverage.keys())[i] for i in sorted_idx_cov[:10]]
     
-    colors = ['green' if corr_coverage[p] > 0 else 'red' for p in top_params_cov]
+    bar_colors = ['green' if corr_coverage[p] > 0 else 'red' for p in top_params_cov]
     axes[1].barh(top_params_cov, [corr_coverage[p] for p in top_params_cov], 
-                color=colors, edgecolor='darkgreen')
+                color=bar_colors, edgecolor='darkgreen')
     axes[1].set_title('Parameter Correlation with Coverage', fontsize=14)
     axes[1].set_xlabel('Pearson Correlation', fontsize=12)
     axes[1].axvline(0, color='k', linestyle='--', alpha=0.3)
@@ -743,7 +734,7 @@ def _update_live(step_i: int,
         "coverage": float(coverage),
         "||z||": float(np.linalg.norm(np.asarray(z_1d).reshape(-1))),
     })
-    metrics_placeholder.dataframe(df, width='stretch', hide_index=True)
+    metrics_placeholder.dataframe(df, use_container_width=True, hide_index=True)
 
     log_container.code(
         f"step={step_i} score={score:.3f} t={y_pred_s[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}",
@@ -917,13 +908,41 @@ with tab5:
     # -----------------------------
     st.subheader("PropertyParams Configuration")
     
+    # Set parameter weights based on step 12 values from CSV file
+    # step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+    # 12,8.543683990691765,0.3723958333333333,0.1662757831681574,0.5105248689651489,0.34250542521476746,0.43922367691993713,0.7341154217720032,1.1102296113967896,0.7483778595924377,0.7128080725669861,0.7358441352844238,0.7393836975097656,0.46837639808654785,0.8202276825904846,0.877817690372467,0.9840682744979858,0.7861328125,0.6163419485092163
+    
+    step12_weights = {
+        "t": 0.5105248689651489,
+        "POT_LEFT": 0.34250542521476746,
+        "fo": 0.43922367691993713,
+        "Al": 0.7341154217720032,
+        "Bl": 1.1102296113967896,
+        "Cl": 0.7483778595924377,
+        "As": 0.7128080725669861,
+        "Bs": 0.7358441352844238,
+        "Cs": 0.7393836975097656,
+        "cleq": 0.46837639808654785,
+        "cseq": 0.8202276825904846,
+        "L1o": 0.877817690372467,
+        "L2o": 0.9840682744979858,
+        "ko": 0.7861328125,
+        "Noise": 0.6163419485092163
+    }
+    
     # Initialize default parameter weights if not in session state
     if "param_weights" not in st.session_state:
-        st.session_state.param_weights = {param: 1.0 for param in param_names}
+        st.session_state.param_weights = {}
+        # Set weights based on step 12 values
+        for param in param_names:
+            if param in step12_weights:
+                st.session_state.param_weights[param] = step12_weights[param]
+            else:
+                st.session_state.param_weights[param] = 1.0
     
     # Display parameter weights configuration
     st.markdown("### Parameter Bias Weights")
-    st.caption("Assign weights to each parameter to influence their importance during exploration. Higher weights mean the parameter changes more significantly affect the exploration path.")
+    st.caption("Assign weights to each parameter to influence their importance during exploration. Higher weights mean the parameter changes more significantly affect the exploration path. Default values are from step 12 of the CSV file.")
     
     # Create columns for parameter weight inputs
     weight_cols = st.columns(3)
@@ -949,13 +968,20 @@ with tab5:
     st.markdown("### Weight Presets")
     preset_option = st.selectbox(
         "Apply weight preset:",
-        ["Custom", "All Equal", "Emphasize t", "Emphasize Physical Parameters", "Random Weights"],
+        ["Custom (Step 12 CSV values)", "All Equal", "Emphasize t", "Emphasize Physical Parameters", "Random Weights"],
         index=0,
         key="weight_preset"
     )
     
     if st.button("Apply Preset"):
-        if preset_option == "All Equal":
+        if preset_option == "Custom (Step 12 CSV values)":
+            # Reset to step 12 values
+            for param in param_names:
+                if param in step12_weights:
+                    st.session_state.param_weights[param] = step12_weights[param]
+                else:
+                    st.session_state.param_weights[param] = 1.0
+        elif preset_option == "All Equal":
             st.session_state.param_weights = {param: 1.0 for param in param_names}
         elif preset_option == "Emphasize t":
             st.session_state.param_weights = {param: 1.0 for param in param_names}
@@ -983,8 +1009,8 @@ with tab5:
     
     # Create a bar chart
     fig_weights, ax_weights = plt.subplots(figsize=(10, 4))
-    colors = ['red' if w < 0 else 'green' for w in weights_df['Weight']]
-    bars = ax_weights.bar(weights_df['Parameter'], weights_df['Weight'], color=colors)
+    bar_colors = ['red' if w < 0 else 'green' for w in weights_df['Weight']]
+    bars = ax_weights.bar(weights_df['Parameter'], weights_df['Weight'], color=bar_colors)
     ax_weights.axhline(y=0, color='black', linestyle='-', alpha=0.3)
     ax_weights.set_title('Parameter Bias Weights')
     ax_weights.set_ylabel('Weight Value')
@@ -1463,12 +1489,12 @@ with tab5:
             # Display parameter values
             st.markdown("#### Parameter Values")
             df_params = pd.DataFrame(rows)
-            st.dataframe(df_params, width='stretch', hide_index=True)
+            st.dataframe(df_params, use_container_width=True, hide_index=True)
             
             # Display parameter weights
             st.markdown("#### Parameter Weights")
             df_weights = pd.DataFrame(weight_rows)
-            st.dataframe(df_weights.style.format("{:.2f}").background_gradient(cmap="coolwarm"), width='stretch', hide_index=True)
+            st.dataframe(df_weights.style.format("{:.2f}").background_gradient(cmap="coolwarm"), use_container_width=True, hide_index=True)
 
     # -----------------------------
     # Display results
@@ -1553,7 +1579,8 @@ with tab5:
                 'Coverage_Correlation': '{:.3f}',
                 'Score_PValue': '{:.4f}',
                 'Coverage_PValue': '{:.4f}'
-            }).background_gradient(subset=['Score_Coefficient', 'Coverage_Correlation'], cmap='coolwarm')
+            }).background_gradient(subset=['Score_Coefficient', 'Coverage_Correlation'], cmap='coolwarm'),
+            use_container_width=True
         )
         
         # Detailed explanation
