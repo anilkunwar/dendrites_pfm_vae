@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import time
@@ -183,15 +184,12 @@ CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search")
 
 IMAGE_SIZE = (48, 48)
-# SEED = 0
+STRICT = False
 
 VAR_SCALE = 1
 STEPS = 100
 
-# --- naive random walk params ---
-RW_SIGMA = 0.25          # 扰动幅度
-NUM_CAND = 48            # 每步试多少个候选
-STRICT = False
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def save_step(out_dir, step, img, z, params, coverage, score):
     plt.figure(figsize=(6, 5))
@@ -204,7 +202,13 @@ def save_step(out_dir, step, img, z, params, coverage, score):
     plt.close()
     print(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
 
-def explore_once():
+def explore_once(model, RW_SIGMA, NUM_CAND):
+
+    run_dir = os.path.join(OUT_DIR, str(time.time()))
+    os.makedirs(run_dir, exist_ok=True)
+    # np.random.seed(SEED)
+    # torch.manual_seed(SEED)
+
     # === 初始化：直接从 prior 采样 ===
     # 这一步本身就可能生成很差的图（取决于你的 VAE prior match 是否好）
     with torch.no_grad():
@@ -315,18 +319,35 @@ def explore_once():
     )
     print("Done. Saved to:", run_dir)
 
+    return score_path, coverage_path
+
 def main():
 
-    run_dir = os.path.join(OUT_DIR, str(time.time()))
-    os.makedirs(run_dir, exist_ok=True)
-    # np.random.seed(SEED)
-    # torch.manual_seed(SEED)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.load(CKPT_PATH, map_location=device, weights_only=False)
     model.eval()
 
+    with open("results.csv", "w", newline="") as f:
+        writer = csv.writer(f)
 
+        writer.writerow([
+            "sigma", "cand_num", "run_id",
+            "ss_len", "ss_mean", "ss_var", "ss_min", "ss_max",
+            "cs_len", "cs_mean", "cs_var", "cs_min", "cs_max"
+        ])
+
+        for sigma in [0.01, 0.1, 0.25, 0.5]:
+            for cand_num in [16, 32, 64, 128]:
+                for run_id in range(5):
+                    ss, cs = explore_once(model, sigma, cand_num)
+
+                    ss = np.array(ss)
+                    cs = np.array(cs)
+
+                    writer.writerow([
+                        sigma, cand_num, run_id,
+                        len(ss), ss.mean(), ss.var(), ss.min(), ss.max(),
+                        len(cs), cs.mean(), cs.var(), cs.min(), cs.max()
+                    ])
 
 
 if __name__ == "__main__":
