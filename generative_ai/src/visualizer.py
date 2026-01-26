@@ -526,7 +526,8 @@ def plot_histogram(
                 alpha=alpha,
                 edgecolor=edgecolor,
                 linewidth=linewidth,
-                kde_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
+                kde_kws={'cut': 0},
+                line_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
                 ax=ax,
                 cumulative=cumulative
             )
@@ -571,7 +572,8 @@ def plot_histogram(
                 alpha=alpha,
                 edgecolor=edgecolor,
                 linewidth=linewidth,
-                kde_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
+                kde_kws={'cut': 0},
+                line_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
                 ax=ax,
                 cumulative=cumulative
             )
