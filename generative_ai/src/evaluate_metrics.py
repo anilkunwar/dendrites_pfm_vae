@@ -14,6 +14,9 @@ from skimage import measure, morphology
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
 
+from src.visualizer import plot_line_evolution
+
+
 class ComprehensiveDendriteAnalyzer:
 
     def __init__(self, image, pixel_size_um=1.0):
@@ -941,33 +944,13 @@ def plot_regression_summary(y_true: np.ndarray, y_pred: np.ndarray, prefix: str,
     m = regression_metrics(y_true, y_pred)
     mae = np.array(m["per_dim"]["MAE"])
     r2 = np.array(m["per_dim"]["R2"])
+    x = np.arange(P)
 
     # 1) MAE bar
-    plt.figure(figsize=(max(10, P * 0.5), 4))
-    x = np.arange(P)
-    plt.bar(x, mae)
-    plt.xticks(x, param_names, rotation=60, ha="right")
-    plt.ylabel("MAE")
-    plt.title("Control parameter regression: MAE per parameter")
-    plt.tight_layout()
-    if save_dir is not None:
-        plt.savefig(os.path.join(save_dir, f"{prefix}_mae_per_param.png"), dpi=300)
-    else:
-        plt.show()
-    plt.close()
+    plot_line_evolution(x, mae, ylabel="MAE", title="Control parameter regression: MAE per parameter")
 
     # 2) R2 bar
-    plt.figure(figsize=(max(10, P * 0.5), 4))
-    plt.bar(x, r2)
-    plt.xticks(x, param_names, rotation=60, ha="right")
-    plt.ylabel("R²")
-    plt.title("Control parameter regression: R² per parameter")
-    plt.tight_layout()
-    if save_dir is not None:
-        plt.savefig(os.path.join(save_dir, f"{prefix}_r2_per_param.png"), dpi=300)
-    else:
-        plt.show()
-    plt.close()
+    plot_line_evolution(x, r2, ylabel="R²", title="Control parameter regression: R² per parameter")
 
     # 3) Overall scatter (flatten)
     yt = y_true.reshape(-1)
@@ -1056,16 +1039,18 @@ def plot_confidence_summary(conf_param: np.ndarray, conf_global: np.ndarray, pre
         plt.show()
     plt.close()
 
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 def plot_mae_confidence_summary(
     y_true: np.ndarray,
     y_pred: np.ndarray,
     conf_param: np.ndarray,
-    prefix: str="",
+    prefix: str = "",
     save_dir: str = None,
-    param_names=None,
+    param_names = None,
 ):
     """
-    Combined figure:
+    Combined interactive figure with Plotly:
       - MAE per parameter: bar (left y-axis)
       - Mean confidence per parameter: line (right y-axis)
     """
@@ -1079,68 +1064,135 @@ def plot_mae_confidence_summary(
     m = regression_metrics(y_true, y_pred)
     mae = np.array(m["per_dim"]["MAE"], dtype=float)
     mean_c = np.array(conf_param.mean(axis=0), dtype=float)
-    x = np.arange(P)
 
-    # --- style (matplotlib only) ---
-    plt.rcParams.update({
-        "figure.dpi": 120,
-        "savefig.dpi": 300,
-        "axes.titlesize": 12,
-        "axes.labelsize": 11,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "legend.fontsize": 9,
-    })
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    fig, ax1 = plt.subplots(figsize=(max(10, P * 0.55), 4.8))
-    fig.set_facecolor("white")
+    # Add MAE bars with gradient color
+    fig.add_trace(
+        go.Bar(
+            x=param_names,
+            y=mae,
+            name="MAE",
+            marker=dict(
+                color=mae,
+                colorscale='Blues',
+                line=dict(width=0),
+                opacity=0.85,
+                colorbar=dict(
+                    title="MAE",
+                    x=1.15,
+                    len=0.5,
+                    thickness=15
+                )
+            ),
+            hovertemplate="<b>%{x}</b><br>MAE: %{y:.4f}<extra></extra>",
+        ),
+        secondary_y=False,
+    )
 
-    # Bars: MAE
-    ax1.bar(x, mae, width=0.78, alpha=0.85, edgecolor="none", label="MAE")
-    ax1.set_ylabel("MAE")
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(param_names, rotation=45, ha="right")
-    ax1.margins(x=0.01)
+    # Add confidence line with markers
+    fig.add_trace(
+        go.Scatter(
+            x=param_names,
+            y=mean_c,
+            name="Mean Confidence",
+            mode='lines+markers',
+            line=dict(color='#FF6B6B', width=3),
+            marker=dict(
+                size=8,
+                color='#FF6B6B',
+                line=dict(color='white', width=1.5)
+            ),
+            hovertemplate="<b>%{x}</b><br>Confidence: %{y:.4f}<extra></extra>",
+        ),
+        secondary_y=True,
+    )
 
-    # Light grid + clean spines
-    ax1.grid(True, axis="y", linestyle="-", linewidth=0.6, alpha=0.20)
-    ax1.set_axisbelow(True)
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["right"].set_visible(False)
-
-    # Line: confidence (secondary axis)
-    ax2 = ax1.twinx()
-    ax2.plot(x, mean_c, marker="o", markersize=3.5, linewidth=1.8, alpha=0.95, label="Mean confidence")
-    ax2.set_ylabel("Mean confidence")
-    ax2.spines["top"].set_visible(False)
-
-    # IMPORTANT: don't force 0..1, zoom to data range (still within [0,1])
+    # Calculate confidence axis range
     c_min = float(np.nanmin(mean_c)) if len(mean_c) else 0.0
     c_max = float(np.nanmax(mean_c)) if len(mean_c) else 1.0
     pad = max(0.01, 0.15 * (c_max - c_min + 1e-12))
     lo = max(0.0, c_min - pad)
     hi = min(1.0, c_max + pad)
-    if hi - lo < 0.05:  # if variation is tiny, still give it some vertical room
+    if hi - lo < 0.05:
         mid = 0.5 * (lo + hi)
         lo = max(0.0, mid - 0.03)
         hi = min(1.0, mid + 0.03)
-    ax2.set_ylim(lo, hi)
 
-    # Title
-    ax1.set_title("MAE (bar) vs Mean confidence (line) per parameter")
+    # Update layout
+    fig.update_layout(
+        title=dict(
+            text="MAE vs Mean Confidence per Parameter",
+            font=dict(size=18, color='#2C3E50', family="Arial Black"),
+            x=0.5,
+            xanchor='center'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='#F8F9FA',
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="#CCCCCC",
+            borderwidth=1
+        ),
+        height=500,
+        width=max(900, P * 55),
+        margin=dict(l=80, r=80, t=100, b=100),
+        font=dict(family="Arial, sans-serif", size=12, color="#2C3E50")
+    )
 
-    # Combined legend: put it above, outside the plot area
-    h1, l1 = ax1.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    fig.legend(h1 + h2, l1 + l2, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    # Update x-axis
+    fig.update_xaxes(
+        title_text="Parameters",
+        title_font=dict(size=14, color='#34495E'),
+        tickangle=-45,
+        showgrid=False,
+        showline=True,
+        linewidth=2,
+        linecolor='#BDC3C7',
+        mirror=True
+    )
 
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    # Update y-axes
+    fig.update_yaxes(
+        title_text="MAE",
+        title_font=dict(size=14, color='#3498DB'),
+        secondary_y=False,
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='#ECF0F1',
+        showline=True,
+        linewidth=2,
+        linecolor='#BDC3C7',
+        mirror=True
+    )
 
+    fig.update_yaxes(
+        title_text="Mean Confidence",
+        title_font=dict(size=14, color='#FF6B6B'),
+        secondary_y=True,
+        range=[lo, hi],
+        showgrid=False,
+        showline=True,
+        linewidth=2,
+        linecolor='#BDC3C7',
+        mirror=True
+    )
+
+    # Save or show
     if save_dir is not None:
-        fig.savefig(os.path.join(save_dir, f"{prefix}_mae_conf_per_param.png"))
+        # Save as interactive HTML
+        fig.write_html(os.path.join(save_dir, f"{prefix}_mae_conf_per_param.html"))
+        # Also save as static PNG
+        fig.write_image(os.path.join(save_dir, f"{prefix}_mae_conf_per_param.png"), scale=2)
     else:
-        plt.show()
-    plt.close(fig)
+        fig.show()
 
     return m
 

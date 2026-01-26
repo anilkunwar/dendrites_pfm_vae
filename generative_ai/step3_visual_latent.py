@@ -14,7 +14,7 @@ from scipy.stats import spearmanr
 import seaborn as sns
 
 from src.dataloader import DendritePFMDataset, PARAM_RANGES
-from src.evaluate_metrics import ComprehensiveDendriteAnalyzer
+from src.evaluate_metrics import ComprehensiveDendriteAnalyzer, get_severity_level
 
 SEVER_MAP = ["None", "Mild", "Moderate", "Severe", "Extreme"]
 @torch.no_grad()
@@ -41,7 +41,7 @@ def collect_latents(model, loader, device, latent_source="mu"):
             analyzer = ComprehensiveDendriteAnalyzer(recon.detach().cpu().numpy()[i, 0])
             metrics = analyzer.compute_all_metrics()
             scores = analyzer.calculate_severity_score(metrics)
-            severity = analyzer.get_severity_level(scores["empirical_score"])
+            severity = get_severity_level(scores["empirical_score"])
             ss.append(SEVER_MAP.index(severity))
         severities.append(ss)
         #
@@ -84,7 +84,7 @@ def main():
 
     # ===== basic =====
     parser.add_argument("--model_root", type=str,
-                        default='/home/xtanghao/THPycharm/dendrites_pfm_vae/tmp/oldv12/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1_time=20260124_055835')
+                        default=r'C:\Users\u0178651a\Desktop\dendrites_pfm_vae\generative_ai\results\final_model')
     parser.add_argument("--image_size", type=int, default=48)
     parser.add_argument("--split_json", type=str, default="data/dataset_split.json")
     parser.add_argument("--split", type=str, default="test")
@@ -154,7 +154,7 @@ def main():
     )
     Y_NAMES = ["t"]
     Y_NAMES += PARAM_RANGES
-    Y_NAMES.append("did")
+    Y_NAMES.append("simulation id")
     Y_NAMES.append("severity")
 
     # ===== PCA =====
@@ -172,7 +172,7 @@ def main():
     emb = tsne.fit_transform(feats)
 
     # ===== 随机选择 did 子集（仅用于 did 可视化）=====
-    did_idx = Y_NAMES.index("did")
+    did_idx = Y_NAMES.index("simulation id")
     all_dids = y_all[:, did_idx].astype(int)
     uniq_dids = np.unique(all_dids)
 
@@ -198,8 +198,8 @@ def main():
             y_plot = y
         # --------------------------------------------
 
-        if name=="severity" or name=="did":
-            cmap_name = args.did_discrete_cmap if name == "did" else "tab20"
+        if name=="severity" or name=="simulation id":
+            cmap_name = args.did_discrete_cmap if name == "simulation id" else "tab20"
 
             mapped, classes, cmap, norm = get_discrete_cmap_and_norm(
                 y_plot, cmap_name=cmap_name

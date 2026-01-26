@@ -7,9 +7,11 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
+from src.modelv11 import postprocess_image, mdn_point_and_confidence
 from src.evaluate_metrics import generate_analysis_figure
 from src.dataloader import smooth_scale, inv_smooth_scale
-from src.modelv11 import mdn_point_and_confidence
+from src.visualizer import plot_line_evolution
+
 
 def get_init_tensor(image_size: tuple):
     """
@@ -149,7 +151,7 @@ def plot_latent_exploration(
         for i in range(0, T_plus_1, stride):
             plt.text(Zp2[i, 0], Zp2[i, 1], str(i), fontsize=8)
 
-    plt.title("Latent exploration (PCA 2D) with candidate clouds")
+    # plt.title("Latent exploration (PCA 2D) with candidate clouds")
     plt.xlabel("PC1")
     plt.ylabel("PC2")
 
@@ -165,44 +167,25 @@ def plot_latent_exploration(
     # ---------- auxiliary plots ----------
     steps = np.arange(T_plus_1)
 
-    plt.figure(figsize=(7, 4))
-    plt.plot(steps, np.linalg.norm(Zpath, axis=1))
-    plt.title("||z|| over accepted steps")
-    plt.xlabel("step")
-    plt.ylabel("||z||")
-    plt.tight_layout()
-    plt.savefig(os.path.join(run_dir, "latent_norm_over_steps.png"), dpi=220)
-    plt.close()
+    plot_line_evolution(steps, np.linalg.norm(Zpath, axis=1), xlabel="step", ylabel="||z||", save_path=os.path.join(run_dir, "latent_norm_over_steps.png"))
 
     if scores is not None:
-        plt.figure(figsize=(7, 4))
-        plt.plot(steps, scores)
-        plt.title("score over accepted steps")
-        plt.xlabel("step")
-        plt.ylabel("score")
-        plt.tight_layout()
-        plt.savefig(os.path.join(run_dir, "score_over_steps.png"), dpi=220)
-        plt.close()
+        plot_line_evolution(steps, scores, xlabel="step", ylabel="score",
+                            save_path=os.path.join(run_dir, "score_over_steps.png"))
 
     if coverages is not None:
-        plt.figure(figsize=(7, 4))
-        plt.plot(steps, coverages)
-        plt.title("coverage over accepted steps")
-        plt.xlabel("step")
-        plt.ylabel("coverage")
-        plt.tight_layout()
-        plt.savefig(os.path.join(run_dir, "coverage_over_steps.png"), dpi=220)
-        plt.close()
+        plot_line_evolution(steps, coverages, xlabel="step", ylabel="dendrite coverage",
+                            save_path=os.path.join(run_dir, "coverage_over_steps.png"))
 
 # ====== CONFIG ======
-MODEL_ROOT = "results/VAEv12_MDN_lat=16_var_scale=0.1K=16_beta=0.01_warm=0.1_gamma=0.001_warm=0.1_phy_weight=0.0_phy_alpha=1_phy_beta=1_scale_weight=0.1/"
+MODEL_ROOT = "results/final_model/"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search")
 
 IMAGE_SIZE = (48, 48)
 # SEED = 0
 
-VAR_SCALE = 0.5
+VAR_SCALE = 1
 STEPS = 100
 
 # --- naive random walk params ---
@@ -213,25 +196,15 @@ STRICT = False
 def save_step(out_dir, step, img, z, params, coverage, score):
     plt.figure(figsize=(6, 5))
     plt.imshow(img, cmap="coolwarm")
-    plt.colorbar(fraction=0.046)
-    plt.title(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
+    # plt.colorbar(fraction=0.046)
+    # plt.title(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
     plt.close()
     print(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
 
-def main():
-
-    run_dir = os.path.join(OUT_DIR, str(time.time()))
-    os.makedirs(run_dir, exist_ok=True)
-    # np.random.seed(SEED)
-    # torch.manual_seed(SEED)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = torch.load(CKPT_PATH, map_location=device, weights_only=False)
-    model.eval()
-
+def explore_once():
     # === 初始化：直接从 prior 采样 ===
     # 这一步本身就可能生成很差的图（取决于你的 VAE prior match 是否好）
     with torch.no_grad():
@@ -242,6 +215,7 @@ def main():
         )
     recon = inv_smooth_scale(recon)
     recon = recon.cpu().detach().numpy()[0, 0]
+    recon = postprocess_image(recon)
     z = z.cpu().detach().numpy()[0]
     y_pred_s = theta_hat_s.detach().cpu().numpy()[0]
     conf_s = conf_param_s.detach().cpu().numpy()[0]
@@ -278,6 +252,7 @@ def main():
                     model.inference(z_cand_tensor, var_scale=VAR_SCALE)
             recon_cand = inv_smooth_scale(recon_cand)
             recon_cand = recon_cand.cpu().detach().numpy()[0, 0]
+            recon_cand = postprocess_image(recon_cand)
             y_pred_s_cand = theta_hat_s_cand.detach().cpu().numpy()[0]
             conf_s_cand = conf_param_s_cand.detach().cpu().numpy()[0]
             conf_global_s_cand = conf_global_s_cand.detach().cpu().numpy()[0]
@@ -296,7 +271,8 @@ def main():
             H_list.append(float(H))
 
             if c_cand < c or t_cand < t or (cnn_cand >= 3 and STRICT):
-                print(f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f} connected_components={cnn_cand}")
+                print(
+                    f"    [Reject]c_cand={c_cand:.3f}<c={c:.3f} or t_cand={t_cand:.3f}<t={t:.3f} connected_components={cnn_cand}")
                 continue
 
             if H > best_H_score:
@@ -338,6 +314,19 @@ def main():
         colorize_candidates=True
     )
     print("Done. Saved to:", run_dir)
+
+def main():
+
+    run_dir = os.path.join(OUT_DIR, str(time.time()))
+    os.makedirs(run_dir, exist_ok=True)
+    # np.random.seed(SEED)
+    # torch.manual_seed(SEED)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = torch.load(CKPT_PATH, map_location=device, weights_only=False)
+    model.eval()
+
+
 
 
 if __name__ == "__main__":
