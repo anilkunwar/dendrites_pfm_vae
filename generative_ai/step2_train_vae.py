@@ -1,6 +1,7 @@
 # train_vae_mdn.py
 import os
 import math
+import json
 import argparse
 from datetime import datetime
 from collections import defaultdict
@@ -18,8 +19,6 @@ import albumentations as A
 
 from src.dataloader import DendritePFMDataset
 from src.modelv11 import VAE_MDN, mdn_point_and_confidence
-
-import json
 
 def save_run_args(args, save_root: str):
     """Save CLI args for reproducibility."""
@@ -251,14 +250,6 @@ def main(args):
     # --------------------------
     # Model
     # --------------------------
-    # model = VAE_MDN(
-    #     image_size=args.image_size,
-    #     latent_size=args.latent_size,
-    #     hidden_dimension=args.hidden_dim,
-    #     num_params=args.num_params,
-    #     mdn_components=args.mdn_components,
-    #     mdn_hidden=args.mdn_hidden,
-    # ).to(device)
     if args.init_model_path:
         model = torch.load(args.init_model_path, weights_only=False)
     else:
@@ -373,8 +364,8 @@ def main(args):
                 total = (
                     recon_loss
                     + kl_loss
-                    + ctr_nll
-                    + sm_loss
+                    # + ctr_nll
+                    # + sm_loss
                 )
 
                 vstat["total"].append(total.item())
@@ -445,8 +436,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=512)
-    parser.add_argument("--lr", type=float, default=8e-5)
-    parser.add_argument("--lr_factor", type=float, default=0.75)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr_factor", type=float, default=0.5)
     parser.add_argument("--lr_patience", type=float, default=10)
     parser.add_argument("--seed", type=int, default=0)
 
@@ -460,28 +451,28 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=0.01)
-    parser.add_argument("--beta_warmup_ratio", type=float, default=1)
+    parser.add_argument("--beta", type=float, default=1)
+    parser.add_argument("--beta_warmup_ratio", type=float, default=0.001)
 
     # weights
-    parser.add_argument("--gamma", type=float, default=0.01)
+    parser.add_argument("--gamma", type=float, default=0.0)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.2)
 
-    parser.add_argument("--phy_weight", type=float, default=0.005)
+    parser.add_argument("--phy_weight", type=float, default=0.0)
     parser.add_argument("--phy_alpha", type=float, default=3)
     parser.add_argument("--phy_beta", type=float, default=1)
 
-    parser.add_argument("--scale_weight", type=float, default=0.1)
+    parser.add_argument("--scale_weight", type=float, default=0.)
 
     # confidence scaling
-    parser.add_argument("--var_scale", type=float, default=0.1)
+    parser.add_argument("--var_scale", type=float, default=1)
 
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")
 
     parser.add_argument("--init_model_path", type=str,
-                        # default=None,
-                        default="results/good/ckpt/best.pt",
+                        default=None,
+                        # default="results/good/ckpt/best.pt",
                         help="Optional path to a saved .pt model to initialize (torch.load). If not set, build a fresh VAE_MDN.")
 
     args = parser.parse_args()
