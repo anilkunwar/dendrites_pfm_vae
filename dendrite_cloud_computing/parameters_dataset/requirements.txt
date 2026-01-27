@@ -1,0 +1,16 @@
+streamlit
+pandas
+matplotlib
+chord
+plotly
+pyCirclize
+scipy
+seaborn
+networkx 
+umap-learn
+scikit-learn
+pynndescent
+hdbscan
+psutil
+
+
