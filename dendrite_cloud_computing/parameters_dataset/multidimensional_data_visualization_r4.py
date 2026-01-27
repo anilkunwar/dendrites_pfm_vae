@@ -1,37 +1,13 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use("Agg")
-
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-from matplotlib.patches import Circle
 import io
-import warnings
-import gc
+import numpy as np
+from pycirclize import Circos
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 
-warnings.filterwarnings("ignore")
-
-# =============================
-# Global matplotlib tuning
-# =============================
-plt.rcParams.update({
-    "figure.max_open_warning": 0,
-    "agg.path.chunksize": 10000,
-    "font.family": "sans-serif",
-    "axes.titleweight": "bold"
-})
-
-# =============================
-# Example CSV (unchanged)
-# =============================
-#EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
-#0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
-#1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
-#"""
-EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+# The CSV data provided (replace with file upload if needed)
+data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
 2,5.304021017662722,0.10460069444444445,0.12041199826559248,0.08961087465286255,0.4117993414402008,0.3086051940917969,0.5759025812149048,0.5457133650779724,0.37897956371307373,0.6828550696372986,0.37128087878227234,0.5426892042160034,0.31361812353134155,0.5300193428993225,0.3330453932285309,0.6396515965461731,0.4162127375602722,0.386873722076416
@@ -64,203 +40,76 @@ EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
 
-# Generate extensive colormap list
-# (CSV truncated here ONLY in explanation — your original CSV remains intact in your file)
+# Load the data
+df = pd.read_csv(io.StringIO(data))
 
-# =============================
-# Constants
-# =============================
-FEATURE_COLS = [
-    "t","POT_LEFT","fo","Al","Bl","Cl",
-    "As","Bs","Cs","cleq","cseq","L1o",
-    "L2o","ko","Noise"
-]
+features = ['t', 'POT_LEFT', 'fo', 'Al', 'Bl', 'Cl', 'As', 'Bs', 'Cs', 'cleq', 'cseq', 'L1o', 'L2o', 'ko', 'Noise']
 
-ALL_COLORMAPS = sorted(m for m in plt.colormaps() if not m.endswith("_r"))
+st.title("Enhanced Chord Diagram App (Inspired by circlize)")
 
-# =============================
-# Data loading
-# =============================
-@st.cache_data(ttl=3600)
-def load_data(uploaded_file=None):
-    if uploaded_file:
-        return pd.read_csv(uploaded_file)
-    return pd.read_csv(io.StringIO(EXAMPLE_CSV))
+# Get all available colormaps
+colormaps = sorted(plt.colormaps())
 
-def compute_statistics(df):
-    return {
-        "mean": df[FEATURE_COLS].mean().values,
-        "corr": df[FEATURE_COLS].corr().fillna(0).values,
-        "cov": df[FEATURE_COLS].cov().fillna(0).values
-    }
+# User controls for circlize-like features
+selected_cmap = st.selectbox("Select Colormap", colormaps, index=colormaps.index('jet') if 'jet' in colormaps else 0)
+label_size = st.slider("Label Size", min_value=5, max_value=20, value=10, step=1)
+transparency = st.slider("Link Transparency (0-1)", min_value=0.0, max_value=1.0, value=0.5, step=0.1)
+big_gap = st.slider("Big Gap Between Groups (degrees)", min_value=0, max_value=30, value=10, step=1)
+small_gap = st.slider("Small Gap Between Sectors (degrees)", min_value=0, max_value=10, value=1, step=1)
+directional = st.checkbox("Directional Links", value=False)
+link_sort = st.checkbox("Sort Links by Width", value=True)
+link_decreasing = st.checkbox("Sort Decreasing", value=True)
+scale = st.checkbox("Scale Sectors to Fractions", value=False)
+link_arrows = st.checkbox("Add Link Arrows", value=False)
+link_border = st.checkbox("Add Link Borders", value=True)
 
-# =============================
-# Enhanced Chord Diagram
-# =============================
-def create_chord_diagram(
-    stats,
-    metric,
-    cmap_name,
-    figsize,
-    label_size,
-    label_pad,
-    bbox_pad,
-    bbox_alpha,
-    node_radius_scale,
-    node_edge_width,
-    edge_threshold,
-    edge_width_scale,
-    edge_alpha,
-    title_pad,
-    cbar_pad
-):
-    matrix = stats["corr"] if metric == "correlation" else stats["cov"]
-    vmin, vmax = (-1, 1) if metric == "correlation" else (-np.max(np.abs(matrix)), np.max(np.abs(matrix)))
+# Note: Directional links, arrows, sorting, and borders may require manual Circos setup for full support.
+# For now, transparency is not directly supported; consider adjusting in post-processing if needed.
 
-    n = len(FEATURE_COLS)
-    angles = np.linspace(0, 2*np.pi, n, endpoint=False)
+# Multiselect for steps
+all_steps = df['step'].tolist()
+selected_steps = st.multiselect("Select Steps", all_steps, default=all_steps)
 
-    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
-    ax.set_theta_zero_location("N")
-    ax.set_theta_direction(-1)
-    ax.set_ylim(0, 3.2)
-    ax.axis("off")
-
-    node_cmap = cm.get_cmap("tab20", n)
-    edge_cmap = cm.get_cmap(cmap_name)
-
-    # -----------------
-    # Nodes + labels
-    # -----------------
-    for i, angle in enumerate(angles):
-        r = 1.6 * node_radius_scale
-        circ = Circle(
-            (0, 0),
-            r,
-            transform=ax.transData._b + matplotlib.transforms.Affine2D().rotate(angle),
-            facecolor=node_cmap(i),
-            edgecolor="white",
-            linewidth=node_edge_width,
-            alpha=0.95
-        )
-        ax.add_patch(circ)
-
-        rot = np.degrees(angle)
-        ha = "left"
-        if 90 < rot < 270:
-            rot += 180
-            ha = "right"
-
-        ax.text(
-            angle,
-            r + label_pad,
-            FEATURE_COLS[i],
-            fontsize=label_size,
-            rotation=rot,
-            rotation_mode="anchor",
-            ha=ha,
-            va="center",
-            bbox=dict(
-                boxstyle=f"round,pad={bbox_pad}",
-                fc="white",
-                ec="0.7",
-                alpha=bbox_alpha
-            )
-        )
-
-    # -----------------
-    # Edges
-    # -----------------
-    for i in range(n):
-        for j in range(i+1, n):
-            val = matrix[i, j]
-            if abs(val) < edge_threshold:
-                continue
-
-            t = np.linspace(0, 1, 50)
-            theta = angles[i] + (angles[j] - angles[i]) * t
-            radius = 1.6 - 0.8*np.sin(np.pi*t)
-
-            ax.plot(
-                theta,
-                radius,
-                lw=edge_width_scale * abs(val),
-                color=edge_cmap((val - vmin)/(vmax - vmin)),
-                alpha=edge_alpha,
-                solid_capstyle="round"
-            )
-
-    ax.set_title(
-        f"{metric.capitalize()} Chord Diagram",
-        fontsize=label_size + 4,
-        pad=title_pad
+for step in selected_steps:
+    row = df[df['step'] == step].iloc[0]
+    v = row[features].values.astype(float)
+    matrix = np.outer(v, v)
+    np.fill_diagonal(matrix, 0)  # No self-loops
+    if scale:
+        row_sums = np.sum(matrix, axis=1)
+        matrix = np.divide(matrix, row_sums[:, np.newaxis], where=row_sums[:, np.newaxis] != 0)
+    matrix_df = pd.DataFrame(matrix, index=features, columns=features)
+    
+    # Sector gaps (big gap between hypothetical groups, small otherwise)
+    gaps = [small_gap] * len(features)
+    if big_gap > 0:
+        mid = len(features) // 2
+        gaps[mid-1] = big_gap
+        gaps[-1] = big_gap
+    
+    # Initialize Circos with supported parameters
+    circos = Circos.initialize_from_matrix(
+        matrix_df,
+        space_deg=gaps,
+        cmap="tab10",  # For sector colors; use a categorical cmap
+        label_kws=dict(size=label_size, orientation="vertical"),
+        link_cmap=selected_cmap,  # For link colors
+        link_lw=0.5,
+        link_style="curve"  # or "line"
+        # Note: transparency, direction, arrows, border not directly supported here.
+        # For advanced features, manual setup is needed.
     )
-
-    sm = cm.ScalarMappable(norm=mcolors.Normalize(vmin, vmax), cmap=edge_cmap)
-    cbar = fig.colorbar(sm, ax=ax, orientation="horizontal", pad=cbar_pad)
-    cbar.set_label(metric.capitalize(), fontsize=label_size)
-
-    plt.tight_layout()
-    return fig
-
-# =============================
-# Streamlit UI
-# =============================
-def main():
-    st.set_page_config("Feature Correlation Explorer", "📊", layout="wide")
-    st.title("📊 Feature Correlation Explorer (Enhanced Visual Controls)")
-
-    with st.sidebar:
-        st.header("Data")
-        file = st.file_uploader("Upload CSV", type="csv")
-        df = load_data(file)
-
-        st.header("Visual Controls")
-
-        metric = st.radio("Metric", ["correlation", "covariance"])
-        cmap_name = st.selectbox("Colormap", ALL_COLORMAPS, index=ALL_COLORMAPS.index("coolwarm"))
-
-        label_size = st.slider("Label Font Size", 8, 20, 12)
-        label_pad = st.slider("Label Radial Padding", 0.1, 1.0, 0.5)
-        bbox_pad = st.slider("Label BBox Padding", 0.1, 0.6, 0.25)
-        bbox_alpha = st.slider("Label BBox Alpha", 0.3, 1.0, 0.85)
-
-        node_radius_scale = st.slider("Node Radius Scale", 0.6, 1.6, 1.0)
-        node_edge_width = st.slider("Node Edge Width", 0.5, 4.0, 2.0)
-
-        edge_threshold = st.slider("Edge Threshold", 0.0, 1.0, 0.3)
-        edge_width_scale = st.slider("Edge Width Scale", 0.5, 6.0, 2.5)
-        edge_alpha = st.slider("Edge Alpha", 0.1, 1.0, 0.7)
-
-        title_pad = st.slider("Title Padding", 10, 50, 30)
-        cbar_pad = st.slider("Colorbar Padding", 0.05, 0.3, 0.12)
-
-        fig_w = st.slider("Figure Width", 8, 18, 12)
-        fig_h = st.slider("Figure Height", 8, 18, 12)
-
-    stats = compute_statistics(df)
-
-    fig = create_chord_diagram(
-        stats,
-        metric,
-        cmap_name,
-        (fig_w, fig_h),
-        label_size,
-        label_pad,
-        bbox_pad,
-        bbox_alpha,
-        node_radius_scale,
-        node_edge_width,
-        edge_threshold,
-        edge_width_scale,
-        edge_alpha,
-        title_pad,
-        cbar_pad
-    )
-
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
-    gc.collect()
-
-if __name__ == "__main__":
-    main()
+    
+    fig = circos.plotfig()
+    
+    # Add colorbar if there's variation
+    min_val, max_val = np.min(matrix), np.max(matrix)
+    if min_val < max_val:
+        norm = mpl.colors.Normalize(vmin=min_val, vmax=max_val)
+        sm = plt.cm.ScalarMappable(cmap=selected_cmap, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=circos.ax, orientation='horizontal', fraction=0.036, pad=0.1)
+        cbar.set_label('Chord Strength')
+    
+    st.subheader(f"Chord Diagram for Step {step}")
+    st.pyplot(fig)
