@@ -4,11 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.path import Path
-from matplotlib.patches import PathPatch, FancyArrowPatch, FancyBboxPatch, Wedge, Arc
+from matplotlib.patches import PathPatch, FancyArrowPatch, FancyBboxPatch, Wedge, Arc, Circle
 from matplotlib.collections import PatchCollection, LineCollection
-from matplotlib.patches import Circle, RegularPolygon
-import matplotlib.colors as mcolors
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
+import matplotlib.colors as mcolors
 import matplotlib.transforms as transforms
 import colorsys
 from scipy import stats
@@ -22,6 +21,8 @@ import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.ticker import FuncFormatter
+import traceback
+
 warnings.filterwarnings('ignore')
 
 # ============================================================================
@@ -232,7 +233,7 @@ class VividChordDiagram:
         
         # Data structures
         self.sectors: List[str] = []
-        self.sector_data: Dict[str, Dict] = {}
+        self.sector_ Dict[str, Dict] = {}
         self.links: List[Dict] = []
         self.tracks: Dict[str, Dict[int, Dict]] = {}
         self.groups: Dict[str, int] = {}
@@ -1085,7 +1086,7 @@ class VividChordDiagram:
 # ============================================================================
 
 def create_vivid_chord_diagram(
-    data: Any,
+     Any,
     data_type: str = 'matrix',
     figsize: Tuple[int, int] = (24, 24),  # LARGER canvas
     dpi: int = 300,                       # HIGHER resolution
@@ -1846,7 +1847,7 @@ def create_vivid_streamlit_app():
     ])
     
     # ============================================================================
-    # VISUALIZATION TAB - ENHANCED
+    # VISUALIZATION TAB - CORRECTED (FIXED UNDEFINED VARIABLES)
     # ============================================================================
     with tab_viz:
         st.header("Ultra-High Resolution Network Visualization")
@@ -1904,6 +1905,11 @@ def create_vivid_streamlit_app():
             with st.expander("➡️ Directional Features", expanded=False):
                 directional = st.checkbox("Enable directional flows", 
                                          value=st.session_state.get('directional', False))
+                
+                # ✅ FIX: Define DEFAULT values BEFORE conditional block
+                direction_type = ["diffHeight", "arrows"]  # Default value
+                arrow_size = 1.5  # Default value
+                
                 if directional:
                     direction_type = st.multiselect(
                         "Direction indicators",
@@ -1911,6 +1917,7 @@ def create_vivid_streamlit_app():
                         default=["diffHeight", "arrows"]
                     )
                     arrow_size = st.slider("Arrow size", 0.5, 3.0, 1.5, 0.1)
+                # ✅ Variables now ALWAYS defined regardless of directional state
             
             with st.expander("⚡ Performance", expanded=False):
                 reduce_threshold = st.slider("Min link value", 0.0, 0.5, 0.01, 0.01)
@@ -1921,12 +1928,12 @@ def create_vivid_streamlit_app():
             # Generate diagram with error handling
             try:
                 with st.spinner("🎨 Rendering vivid network diagram..."):
-                    # Prepare parameters with session state fallbacks
+                    # ✅ FIX: Use variables safely (now always defined)
                     params = {
                         'data': data,
                         'data_type': data_type,
-                        'figsize': (24, 24),  # ULTRA LARGE
-                        'dpi': 300,           # ULTRA HIGH RESOLUTION
+                        'figsize': (24, 24),
+                        'dpi': 300,
                         'title': f"Vivid Network • {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                         'start_degree': start_degree,
                         'direction': direction,
@@ -1947,22 +1954,17 @@ def create_vivid_streamlit_app():
                         'reduce_threshold': reduce_threshold,
                         'max_links': max_links,
                         'directional': directional,
-                        'direction_type': direction_type if directional else [],
-                        'arrow_length': 0.12 * arrow_size,
-                        'arrow_width': 0.07 * arrow_size,
+                        'direction_type': direction_type,  # ✅ Now always safe
+                        'arrow_length': 0.12 * arrow_size,  # ✅ Now always safe
+                        'arrow_width': 0.07 * arrow_size,   # ✅ Now always safe
                         'symmetric': False,
                         'link_gradient': (link_color_palette == 'rainbow'),
                         'show_legend': True,
                         'show_statistics': True
                     }
                     
-                    # Generate figure
                     fig = create_vivid_chord_diagram(**params)
-                    
-                    # Display with responsive sizing
                     st.pyplot(fig, use_container_width=True, clear_figure=True)
-                    
-                    # Store figure in session state for export
                     st.session_state['current_figure'] = fig
                     
             except Exception as e:
