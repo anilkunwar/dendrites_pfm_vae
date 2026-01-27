@@ -6,10 +6,8 @@ from pycirclize import Circos
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-# --- PAGE CONFIG ---
-st.set_page_config(layout="wide", page_title="R-style Circos in Python")
+# --- DATA LOADING ---
 
-# --- DATA (DEFAULT) ---
 default_data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
@@ -43,166 +41,131 @@ default_data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
 
-# --- LOAD DATA ---
 def load_data():
-    # Try to load uploaded file, else default
-    if 'uploaded_file' in st.session_state and st.session_state.uploaded_file is not None:
-        return pd.read_csv(st.session_state.uploaded_file)
+    uploaded = st.file_uploader("Upload CSV", type=["csv"])
+    if uploaded:
+        return pd.read_csv(uploaded)
     return pd.read_csv(io.StringIO(default_data))
 
-st.sidebar.title("Configuration")
-st.session_state.uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+# --- SIDEBAR ---
+
+st.sidebar.title("Circlize Style Controls")
+
 df = load_data()
-
-# --- FEATURES ---
+all_cols = df.columns.tolist()
 metadata_cols = ['step', 'score', 'coverage', 'hopping_strength']
-feature_cols = [c for c in df.columns if c not in metadata_cols]
+feature_candidates = [c for c in all_cols if c not in metadata_cols]
 
-# --- CONTROLS (MAPPING TO R CIRCLIZE ARGS) ---
-selected_features = st.sidebar.multiselect("Select Features", feature_cols, default=feature_cols[:8])
-selected_steps = st.sidebar.multiselect("Select Steps", df['step'].tolist(), default=df['step'].tolist())
+# Controls
+selected_features = st.sidebar.multiselect("Features for Matrix", feature_candidates, default=feature_candidates)
+selected_steps = st.sidebar.multiselect("Steps to Render", df['step'].tolist(), default=df['step'].tolist()[:3])
 
-st.sidebar.subheader("Diagram Settings (R-style)")
-
-# 14.2 Rules for making circular plot - Gaps
-small_gap = st.sidebar.slider("Small Gap (gap.after)", 0, 10, 2)
-big_gap = st.sidebar.slider("Big Gap", 0, 30, 10)
-apply_big_gap = st.sidebar.checkbox("Apply Group Separation (Big Gap)", help="Equivalent to big.gap in R")
-
-# 14.11 Scaling
-scale_sectors = st.sidebar.checkbox("Scale Sectors (Fractions)", value=False, help="R: scale=TRUE. Sectors represent 0-1 fraction.")
-
-# 14.10 Directional Relations
-directional = st.sidebar.checkbox("Directional Links", value=False, help="R: directional=1. Adds arrows/diffHeight.")
-
-# 14.3 Colors
-cmap_name = st.sidebar.selectbox("Colormap", sorted(plt.colormaps()), index=sorted(plt.colormaps()).index('tab20c'))
+# Circlize-like Parameters
+cmap_name = st.sidebar.selectbox("Link Colormap", sorted(plt.colormaps()), index=sorted(plt.colormaps()).index('jet'))
+sector_gap = st.sidebar.slider("Sector Gap (degrees)", 0, 15, 2)
+link_transparency = st.sidebar.slider("Link Transparency (0-1)", 0.0, 1.0, 0.5, 0.05)
+use_link_border = st.sidebar.checkbox("Show Link Borders", value=True)
+link_border_color = st.sidebar.color_picker("Border Color", "#000000")
+is_symmetric = st.sidebar.checkbox("Treat Matrix as Symmetric", value=False)
 
 # --- MAIN APP ---
-st.title("R Circlize-style Chord Diagram in Python")
+
+st.title("Python Equivalent to R Circlize")
+st.caption("Using pycirclize to replicate chordDiagram functionality")
 
 if not selected_features:
-    st.warning("Please select at least one feature.")
+    st.warning("Please select features.")
 else:
+    # Pre-calculate global max for scaling the raw value bars consistently across steps
+    global_v_max = df[selected_features].max().max()
+
     for step in selected_steps:
-        # Extract row
         row = df[df['step'] == step].iloc[0]
-        v = row[selected_features].values.astype(float)
         
-        # Matrix generation
+        # Get Vector and create Matrix
+        v = row[selected_features].values.astype(float)
         matrix = np.outer(v, v)
         np.fill_diagonal(matrix, 0)
         
-        # 14.11 Scaling Logic
-        if scale_sectors:
-            # Normalize matrix so each row sums to 1
-            row_sums = matrix.sum(axis=1)
-            # Avoid division by zero
-            row_sums[row_sums == 0] = 1
-            matrix = matrix / row_sums[:, np.newaxis]
-        
         matrix_df = pd.DataFrame(matrix, index=selected_features, columns=selected_features)
         
-        # 14.2 Gap Logic (space dict)
-        # pycirclize expects {sector_name: gap_value}
-        space_dict = {name: small_gap for name in selected_features}
-        
-        if apply_big_gap:
-            # Apply a big gap at the midpoint to separate "groups" visually
-            # Since our matrix is square, we split features into two halves
-            mid = len(selected_features) // 2
-            if mid < len(selected_features):
-                space_dict[selected_features[mid]] = big_gap
+        if is_symmetric:
+            mask = np.triu(np.ones_like(matrix, dtype=bool))
+            matrix_df = matrix_df.mask(mask)
 
-        # --- INITIALIZATION ---
-        # Using initialize_from_matrix which allows manual control
+        max_val = matrix_df.values.max()
+        if max_val > 0:
+            matrix_df = matrix_df / max_val
+
+        # --- 1. Initialize Circos ---
         circos = Circos.initialize_from_matrix(
             matrix_df,
-            space=space_dict
+            space=float(sector_gap) # Ensure it's a float
         )
-        
-        # Aesthetics
-        circos.fig.set_facecolor("#ffffff")
-        circos.ax.set_axis_off()
-        
-        # 14.3 Set grid colors
+
+        # --- 2. Sector Customization ---
         cmap = mpl.colormaps[cmap_name]
+        
         for idx, sector in enumerate(circos.sectors):
-            # Cycle colors based on index
             color = cmap(idx / len(circos.sectors))
             sector.facecolor = color
             sector.edgecolor = "white"
             sector.linewidth = 1.0
             
-            # Add Label
-            sector.text(sector.name, size=8, orientation="vertical", color="black", r=105)
+            # Add Labels
+            sector.text(sector.name, size=10, orientation="vertical", r=110)
+            
+            # --- FIXED TRACK LOGIC ---
+            # Track is from radius 90 to 100.
+            track = sector.add_track((90, 100))
+            
+            # Normalize v[idx] against global max to get a 0-100 scale for the bar height
+            bar_height = (float(v[idx]) / global_v_max) * 100 if global_v_max != 0 else 0
+            
+            # Draw the bar: r_lim=(lower, upper) where 0 is the start of track (90) and 100 is end (100)
+            track.rect(r_lim=(0, bar_height), fc=color, ec="black", lw=0.5)
 
-        # --- DRAW LINKS ---
-        # 14.9 Symmetric Matrix Handling (Visualize lower triangle to avoid duplicates)
+        # --- 3. Draw Links ---
         for i, name1 in enumerate(selected_features):
             for j, name2 in enumerate(selected_features):
-                if i >= j: continue # Skip self and upper triangle
+                if i >= j and is_symmetric: continue 
+                if not is_symmetric and i == j: continue 
                 
                 val = matrix_df.loc[name1, name2]
-                if val > 0.001:
+                
+                if not np.isnan(val) and val > 0.01:
                     sector1 = circos.get_sector(name1)
                     sector2 = circos.get_sector(name2)
                     
-                    # Calculate thickness (R uses value directly)
-                    # If scaled, val is 0-1. If not scaled, val is raw.
-                    # We normalize thickness slightly to fit nicely
-                    if not scale_sectors:
-                        max_val = matrix_df.values.max()
-                        r_val = (val / max_val) * 90
-                    else:
-                        r_val = val * 90
+                    c1 = sector1.facecolor
+                    ec = link_border_color if use_link_border else None
+                    lw = 0.5 if use_link_border else 0
+                    alpha = 1.0 - link_transparency
                     
-                    # 14.10 Directional Logic
-                    # direction=1 means name1 -> name2
-                    # 0 means none
-                    d_val = 1 if directional else 0
+                    # Link Thickness scale
+                    r_link = val * 85 
                     
-                    # Arrow settings
-                    # Only draw arrow if directional
-                    arrow_length = 5 if directional else 0
-                    
-                    # Use color of source sector
-                    color = sector1.facecolor
-                    
-                    # Draw Link
                     sector1.link_to(
-                        sector2,
-                        r1=r_val, r2=r_val,
-                        color=color,
-                        ec="white", lw=0.5,
-                        alpha=0.7,
-                        direction=d_val,
-                        # R uses "diffHeight", pycirclize uses direction+arr_length
-                        arr_length=arrow_length, 
-                        arr_width=2 if directional else 0
+                        sector2, 
+                        r1=r_link, 
+                        r2=r_link, 
+                        color=c1, 
+                        ec=ec, 
+                        lw=lw, 
+                        alpha=alpha
                     )
 
-        # --- PLOT ---
+        # --- 4. Render ---
         fig = circos.plotfig()
+        fig.set_facecolor("white")
         
-        # Layout
-        col_left, col_right = st.columns([2, 1])
-        
-        with col_left:
-            st.subheader(f"Step {step} Chord Diagram")
-            st.pyplot(fig, use_container_width=True)
-        
-        with col_right:
-            st.subheader(f"Step {step} Details")
-            
-            # R Info equivalent
-            st.metric("Score", f"{row['score']:.4f}")
-            st.metric("Coverage", f"{row['coverage']:.4f}")
-            
-            st.markdown("**Matrix Settings:**")
-            st.code(f"Scale: {scale_sectors}\nDirectional: {directional}\nBig Gap: {big_gap}")
-            
-            with st.expander("View Matrix Data"):
-                st.dataframe(matrix_df.style.background_gradient(cmap=cmap_name))
-        
+        st.subheader(f"Step {step} (Score: {row['score']:.2f})")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.pyplot(fig)
+        with col2:
+            st.write(f"**Coverage:** {row['coverage']:.2%}")
+            st.write(f"**Hopping Str:** {row['hopping_strength']:.3f}")
+            st.metric("Max Interaction", f"{max_val:.2f}")
+
         st.divider()
