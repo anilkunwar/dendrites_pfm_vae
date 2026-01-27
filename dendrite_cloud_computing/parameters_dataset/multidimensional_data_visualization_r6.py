@@ -365,7 +365,6 @@ class SmartCacheSystem:
     _cache_misses = {}
     
     @classmethod
-    @st.cache_resource(ttl=3600, max_entries=100)
     def get_or_create(cls, key: str, creator_func: Callable, *args, **kwargs) -> Any:
         """Get cached item or create if not exists"""
         cache_key = cls._generate_key(key, args, kwargs)
@@ -390,6 +389,11 @@ class SmartCacheSystem:
     @classmethod
     def _generate_key(cls, base_key: str, args: tuple, kwargs: dict) -> str:
         """Generate unique cache key"""
+        # Skip self parameter for instance methods
+        if args and hasattr(args[0], '__class__'):
+            # First arg is self, skip it for hashing
+            args = args[1:]
+        
         key_parts = [base_key, str(args), str(sorted(kwargs.items()))]
         return hashlib.md5('|'.join(key_parts).encode()).hexdigest()
     
@@ -1156,8 +1160,7 @@ class UltraEnhancedChordDiagram:
         self.node_degrees = {sector: 0.0 for sector in sectors}
         self.node_betweenness = {sector: 0.0 for sector in sectors}
     
-    @SmartCacheSystem.get_or_create
-    def compute_sector_angles(self, cache_key: str = "sector_angles") -> Dict[str, Dict[str, float]]:
+    def compute_sector_angles(self) -> Dict[str, Dict[str, float]]:
         """
         Calculate precise angular positions for all sectors with caching.
         
@@ -1166,6 +1169,32 @@ class UltraEnhancedChordDiagram:
         dict
             Mapping from sector name to {start, end, mid} angles in degrees
         """
+        # Create cache key from hashable parameters
+        cache_params = {
+            'sectors': tuple(self.sectors),
+            'gap_after': tuple(sorted(self.gap_after.items())),
+            'start_degree': self.start_degree,
+            'big_gap': self.big_gap,
+            'small_gap': self.small_gap
+        }
+        
+        cache_key = f"sector_angles_{hash(str(cache_params))}"
+        
+        # Use custom caching instead of Streamlit's decorator
+        if self.use_cache:
+            cached_result = SmartCacheSystem.get_or_create(
+                cache_key,
+                self._compute_sector_angles_impl
+            )
+            self.sector_angles = cached_result
+            return cached_result
+        else:
+            result = self._compute_sector_angles_impl()
+            self.sector_angles = result
+            return result
+    
+    def _compute_sector_angles_impl(self) -> Dict[str, Dict[str, float]]:
+        """Actual implementation of sector angle computation"""
         total_gap = sum(self.gap_after.get(sector, self.small_gap) for sector in self.sectors)
         available_degrees = 360.0 - total_gap
         
@@ -1193,7 +1222,6 @@ class UltraEnhancedChordDiagram:
             }
             current_angle += width + self.gap_after.get(sector, self.small_gap)
         
-        self.sector_angles = angles
         return angles
     
     def draw_enhanced_track(self, sector: str, angles: Dict[str, float], 
@@ -1275,7 +1303,14 @@ class UltraEnhancedChordDiagram:
                                  zorder=0.6)
         self.ax.add_patch(border_poly)
         
-        return {'inner': r_inner, 'outer': r_outer, 'mid_angle': np.radians(angles['mid'])}
+        track_data = {'inner': r_inner, 'outer': r_outer, 'mid_angle': np.radians(angles['mid'])}
+        
+        # Store track data
+        if sector not in self.tracks:
+            self.tracks[sector] = {}
+        self.tracks[sector][track_index] = track_data
+        
+        return track_data
     
     def _create_gradient_patch(self, vertices: np.ndarray, base_color: str) -> PatchCollection:
         """Create gradient-filled patch"""
@@ -1372,7 +1407,7 @@ class UltraEnhancedChordDiagram:
             Link metadata
         """
         # Use cache for expensive computations
-        cache_key = f"link_{source}_{target}_{value}"
+        cache_key = f"link_{source}_{target}_{value}_{source_track}_{target_track}"
         
         if self.use_cache and cache_key in SmartCacheSystem._cache_store:
             self.cache_hits += 1
@@ -1383,6 +1418,11 @@ class UltraEnhancedChordDiagram:
         self.cache_misses += 1
         
         # Get angular positions
+        if source not in self.sector_angles:
+            self.compute_sector_angles()
+        if target not in self.sector_angles:
+            self.compute_sector_angles()
+            
         source_angle = self.sector_angles[source]['mid']
         target_angle = self.sector_angles[target]['mid']
         
@@ -1424,6 +1464,12 @@ class UltraEnhancedChordDiagram:
         # Update node metrics
         self.node_degrees[source] = self.node_degrees.get(source, 0.0) + value
         self.node_degrees[target] = self.node_degrees.get(target, 0.0) + value
+        
+        # Update statistics
+        self.stats['total_links'] = len(self.links)
+        self.stats['total_value'] = self.stats.get('total_value', 0.0) + value
+        self.stats['max_link_value'] = max(self.stats.get('max_link_value', 0.0), value)
+        self.stats['avg_link_value'] = self.stats['total_value'] / self.stats['total_links']
         
         return link_data
     
@@ -1733,6 +1779,37 @@ class UltraEnhancedChordDiagram:
             return mcolors.to_hex(rgb_adjusted)
         except:
             return color
+    
+    def add_track(self, sector: str, track_index: int = 0, color: str = None) -> Dict[str, float]:
+        """
+        Add a track to a sector with proper styling.
+        
+        Parameters
+        ----------
+        sector : str
+            Sector identifier
+        track_index : int
+            Track position
+        color : str, optional
+            Track color
+        
+        Returns
+        -------
+        dict
+            Track geometry data
+        """
+        if sector not in self.sector_angles:
+            self.compute_sector_angles()
+        
+        angles = self.sector_angles[sector]
+        
+        if color is None:
+            color = self.sector_colors.get(sector, self.grid_color)
+        
+        return self.draw_enhanced_track(
+            sector, angles, color, track_index, 
+            gradient=True, pattern=None
+        )
     
     def add_interactive_elements(self):
         """Add interactive elements to the diagram"""
