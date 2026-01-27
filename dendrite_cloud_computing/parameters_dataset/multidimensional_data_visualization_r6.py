@@ -9,6 +9,7 @@ from matplotlib.collections import PatchCollection, LineCollection
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import matplotlib.colors as mcolors
 import matplotlib.transforms as transforms
+import matplotlib.patheffects as patheffects # Required sub-module import
 import colorsys
 from scipy import stats
 import io
