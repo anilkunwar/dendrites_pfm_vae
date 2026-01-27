@@ -1,23 +1,17 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')  # Critical for Streamlit compatibility
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch, Circle, Wedge
-from matplotlib.collections import PatchCollection
-import matplotlib.colors as mcolors
-from matplotlib.patches import FancyBboxPatch
-import io
+import matplotlib
+from io import StringIO
 import warnings
-from scipy import stats
-import traceback
-
 warnings.filterwarnings('ignore')
 
-# ==================== HARD-CODED EXAMPLE DATA ====================
+# Set matplotlib to use non-interactive backend
+matplotlib.use('Agg')
+
+# Hardcoded example data (same as before)
 EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
@@ -51,164 +45,413 @@ EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
 
-# ==================== FEATURE CONFIGURATION ====================
+# Generate extensive colormap list
+ALL_COLORMAPS = sorted(set([
+    'viridis', 'plasma', 'inferno', 'magma', 'cividis',
+    'coolwarm', 'RdBu', 'RdGy', 'PiYG', 'PRGn', 
+    'RdYlBu', 'RdYlGn', 'Spectral', 'seismic', 'bwr',
+    'jet', 'turbo', 'rainbow', 'gist_rainbow',
+    'hot', 'cool', 'spring', 'summer', 'autumn', 'winter',
+    'bone', 'copper', 'pink', 'gray'
+]))
+
+STAT_COLORMAPS = ['RdBu', 'coolwarm', 'seismic', 'bwr', 'RdGy', 'PiYG']
+
 FEATURE_COLS = ['t','POT_LEFT','fo','Al','Bl','Cl','As','Bs','Cs','cleq','cseq','L1o','L2o','ko','Noise']
-NODE_NAMES = FEATURE_COLS
 
-STAT_COLORMAPS = ['RdBu', 'RdGy', 'coolwarm', 'bwr', 'seismic', 'PiYG', 'PRGn',
-                  'RdYlBu', 'RdYlGn', 'Spectral', 'BrBG', 'PuOr']
-
-# ==================== FIXED CHORD DIAGRAM FUNCTION ====================
-def create_correlation_chord_diagram(df_selected, colormap_name='RdBu',
-                                     metric='correlation', label_size=12,
-                                     node_size=100, edge_width_scale=3,
-                                     edge_threshold=0.3, show_node_values=True,
-                                     show_edge_values=False, normalize_nodes=True,
-                                     figsize=(14, 14), title_prefix=""):
-    """Fixed chord diagram with valid Bezier path construction"""
-    # ... [Full implementation with corrected Path commands] ...
-    # CRITICAL FIX: Proper quadratic Bezier path with valid vertex count
-    verts = [
-        (theta1, radius1),
-        (control_theta, control_radius),  # Control point
-        (theta2, radius2),                # End point
-    ]
-    codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
-    path = Path(verts, codes)
+def create_simple_correlation_chord(df, cmap_name='RdBu', metric='correlation', 
+                                    threshold=0.3, figsize=(10, 10)):
+    """
+    Simplified chord diagram that works reliably in Streamlit
+    """
+    # Calculate correlation/covariance matrix
+    if metric == 'correlation':
+        matrix = df[FEATURE_COLS].corr().fillna(0).values
+        title = f"Correlation Matrix (n={len(df)})"
+        vmin, vmax = -1, 1
+    else:
+        matrix = df[FEATURE_COLS].cov().fillna(0).values
+        title = f"Covariance Matrix (n={len(df)})"
+        max_val = np.max(np.abs(matrix))
+        vmin, vmax = -max_val, max_val
     
-    # Create symmetric "ribbon" by offsetting path
-    offset = width / 20
-    verts2 = [
-        (theta1, radius1 + offset),
-        (control_theta, control_radius + offset),
-        (theta2, radius2 + offset),
-    ]
-    path2 = Path(verts2, codes)
+    n = len(FEATURE_COLS)
     
-    # Combine paths into closed ribbon
-    combined_verts = verts + verts2[::-1] + [verts[0]]
-    combined_codes = codes + [Path.LINETO]*3 + [Path.CLOSEPOLY]
-    ribbon_path = Path(combined_verts, combined_codes)
+    # Create figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize, 
+                                  gridspec_kw={'width_ratios': [2, 1]})
     
-    patch = PathPatch(ribbon_path, facecolor=color, edgecolor='none', alpha=0.7)
-    ax_main.add_patch(patch)
-    # ... [rest of function remains with additional robustness checks] ...
+    # 1. Polar plot for chord diagram (simplified)
+    ax1 = plt.subplot(121, projection='polar')
+    ax1.set_theta_zero_location("N")
+    ax1.set_theta_direction(-1)
+    
+    # Calculate angles
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    
+    # Plot nodes (simplified - just markers)
+    node_sizes = df[FEATURE_COLS].mean().values
+    node_sizes = 50 + 200 * (node_sizes - node_sizes.min()) / (node_sizes.max() - node_sizes.min())
+    
+    for i, (angle, feature) in enumerate(zip(angles, FEATURE_COLS)):
+        # Plot node
+        ax1.scatter([angle], [1], s=node_sizes[i], 
+                   c=plt.cm.tab20(i), alpha=0.8, edgecolors='white', linewidth=2)
+        
+        # Add label
+        ha = 'right' if np.pi/2 <= angle <= 3*np.pi/2 else 'left'
+        rotation = np.degrees(angle)
+        if ha == 'right':
+            rotation += 180
+        ax1.text(angle, 1.15, feature, ha=ha, va='center',
+                rotation=rotation, rotation_mode='anchor',
+                fontsize=10, fontweight='bold')
+    
+    # Plot chords for strong correlations only (to reduce complexity)
+    cmap = plt.get_cmap(cmap_name)
+    
+    # Get top correlations
+    connections = []
+    for i in range(n):
+        for j in range(i+1, n):
+            val = matrix[i, j]
+            if abs(val) > threshold:
+                connections.append((i, j, val))
+    
+    # Sort by absolute value
+    connections.sort(key=lambda x: abs(x[2]), reverse=True)
+    
+    # Only plot top N connections to avoid clutter
+    max_connections = min(20, len(connections))
+    for i, j, val in connections[:max_connections]:
+        # Draw chord as simple line
+        color = cmap((val - vmin) / (vmax - vmin))
+        width = 1 + 4 * abs(val)
+        
+        # Draw bezier-like curve
+        theta1, theta2 = angles[i], angles[j]
+        
+        # Create control point
+        t = np.linspace(0, 1, 50)
+        
+        # Simple quadratic bezier
+        r = 0.8  # Control radius
+        curve_theta = theta1 + t * (theta2 - theta1)
+        curve_r = r * np.sin(np.pi * t)
+        
+        ax1.plot(curve_theta, 1 + curve_r, color=color, linewidth=width, 
+                alpha=0.6, solid_capstyle='round')
+    
+    ax1.set_ylim(0, 1.5)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_title("Chord Diagram", pad=20)
+    
+    # 2. Heatmap for correlation matrix
+    im = ax2.imshow(matrix, cmap=cmap_name, vmin=vmin, vmax=vmax, aspect='auto')
+    
+    # Add feature labels
+    ax2.set_xticks(range(n))
+    ax2.set_yticks(range(n))
+    ax2.set_xticklabels(FEATURE_COLS, rotation=45, ha='right', fontsize=9)
+    ax2.set_yticklabels(FEATURE_COLS, fontsize=9)
+    
+    # Add colorbar
+    plt.colorbar(im, ax=ax2, fraction=0.046, pad=0.04)
+    
+    ax2.set_title("Matrix View", pad=20)
+    
+    plt.suptitle(title, fontsize=14, fontweight='bold', y=0.98)
+    plt.tight_layout()
+    
     return fig
 
-# ==================== FIXED MAIN FUNCTION ====================
+def create_radar_comparison(df, cmap_name='viridis', figsize=(12, 8)):
+    """
+    Alternative visualization: Radar chart for feature comparison
+    """
+    # Calculate statistics
+    means = df[FEATURE_COLS].mean().values
+    stds = df[FEATURE_COLS].std().values
+    
+    n_features = len(FEATURE_COLS)
+    
+    # Create figure
+    fig, axes = plt.subplots(2, 2, figsize=figsize, 
+                           subplot_kw=dict(polar=True))
+    axes = axes.flatten()
+    
+    # 1. Mean values radar
+    ax = axes[0]
+    angles = np.linspace(0, 2 * np.pi, n_features, endpoint=False).tolist()
+    values = means.tolist()
+    
+    # Complete the loop
+    angles += angles[:1]
+    values += values[:1]
+    
+    ax.plot(angles, values, 'o-', linewidth=2)
+    ax.fill(angles, values, alpha=0.25)
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(FEATURE_COLS, fontsize=8)
+    ax.set_title("Feature Means", pad=20)
+    ax.grid(True)
+    
+    # 2. Standard deviations radar
+    ax = axes[1]
+    values = stds.tolist()
+    values += values[:1]
+    
+    ax.plot(angles, values, 'o-', linewidth=2, color='orange')
+    ax.fill(angles, values, alpha=0.25, color='orange')
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(FEATURE_COLS, fontsize=8)
+    ax.set_title("Feature Standard Deviations", pad=20)
+    ax.grid(True)
+    
+    # 3. Correlation heatmap (simplified)
+    ax = axes[2]
+    corr_matrix = df[FEATURE_COLS].corr().values
+    im = ax.imshow(corr_matrix, cmap='RdBu', vmin=-1, vmax=1)
+    
+    ax.set_xticks(range(n_features))
+    ax.set_yticks(range(n_features))
+    ax.set_xticklabels(FEATURE_COLS, rotation=45, ha='right', fontsize=8)
+    ax.set_yticklabels(FEATURE_COLS, fontsize=8)
+    
+    plt.colorbar(im, ax=ax)
+    ax.set_title("Correlation Matrix", pad=20)
+    
+    # 4. Feature importance bar chart
+    ax = axes[3]
+    # Use coefficient of variation as importance metric
+    importance = stds / (means + 1e-10)  # CV
+    sorted_idx = np.argsort(importance)[::-1]
+    
+    colors = plt.cm.viridis(np.linspace(0, 1, n_features))
+    ax.bar(range(n_features), importance[sorted_idx], color=colors)
+    ax.set_xticks(range(n_features))
+    ax.set_xticklabels([FEATURE_COLS[i] for i in sorted_idx], rotation=45, ha='right', fontsize=8)
+    ax.set_ylabel("Coefficient of Variation")
+    ax.set_title("Feature Variation Importance", pad=20)
+    ax.grid(True, alpha=0.3)
+    
+    plt.suptitle(f"Feature Analysis (n={len(df)})", fontsize=14, fontweight='bold', y=0.98)
+    plt.tight_layout()
+    
+    return fig
+
 def main():
     st.set_page_config(
-        page_title="Advanced Correlation Chord Diagrams",
+        page_title="Feature Correlation Visualizer",
         page_icon="📊",
         layout="wide",
         initial_sidebar_state="expanded"
     )
     
-    st.title("📊 Advanced Correlation & Covariance Chord Diagrams")
+    st.title("📊 Feature Correlation & Covariance Visualizer")
     st.markdown("""
-    Visualize statistical relationships between features using comprehensive chord diagrams.
-    Features are placed on the circumference, with connections showing correlation/covariance strength.
+    Visualize statistical relationships between features using simplified, stable visualizations.
+    Features are analyzed for correlation and covariance across selected data rows.
     """)
     
-    # Sidebar configuration (simplified for brevity - full version includes all original controls)
+    # Sidebar
     with st.sidebar:
-        st.header("⚙️ Data Configuration")
-        uploaded_file = st.file_uploader("Upload CSV File", type="csv")
-        data_source = st.radio("Data Source", ["Upload File", "Use Example Data"], index=1)
+        st.header("⚙️ Configuration")
         
-        if data_source == "Upload File" and uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                st.success(f"✅ Loaded {len(df)} rows")
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-                st.stop()
+        # Data source
+        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+        
+        if uploaded_file:
+            df = pd.read_csv(uploaded_file)
+            st.success(f"Loaded {len(df)} rows")
         else:
-            df = pd.read_csv(io.StringIO(EXAMPLE_CSV))
-            st.info("ℹ️ Using built-in example dataset (31 rows)")
+            df = pd.read_csv(StringIO(EXAMPLE_CSV))
+            st.info("Using example dataset")
         
         # Validate columns
-        missing_cols = [col for col in FEATURE_COLS if col not in df.columns]
-        if missing_cols:
-            st.error(f"❌ Missing columns: {', '.join(missing_cols)}")
+        missing = [c for c in FEATURE_COLS if c not in df.columns]
+        if missing:
+            st.error(f"Missing: {', '.join(missing)}")
             st.stop()
         
-        viz_type = st.selectbox("Visualization Type", 
-            ["Correlation Chord Diagram", "Multi-Layer Analysis", 
-             "Radial Heatmap", "Comparative Analysis"])
+        # Row selection
+        st.header("📈 Data Selection")
+        use_all = st.checkbox("Use all rows", value=True)
         
-        # Row selection logic (simplified)
-        use_all = st.checkbox("Use All Rows", value=True)
-        selected_rows = df.index.tolist() if use_all else st.multiselect(
-            "Select Rows", df.index.tolist(), default=df.index[:10].tolist()
+        if not use_all:
+            row_range = st.slider("Select row range", 0, len(df)-1, (0, min(50, len(df)-1)))
+            selected_rows = list(range(row_range[0], row_range[1]+1))
+            df = df.iloc[selected_rows]
+        
+        # Visualization type
+        st.header("🎨 Visualization")
+        viz_type = st.selectbox(
+            "Visualization Type",
+            ["Correlation Chord", "Radar Analysis", "Matrix Heatmap"]
         )
-        if not selected_rows:
-            st.warning("⚠️ Select at least one row")
-            st.stop()
-    
-    # Main visualization area
-    df_selected = df.loc[selected_rows]
-    
-    with st.spinner(".Rendering visualization..."):
-        try:
-            fig = None
-            figs_list = []  # For comparative analysis
-            
-            if viz_type == "Correlation Chord Diagram":
-                fig = create_correlation_chord_diagram(df_selected, ...)
-            
-            elif viz_type == "Comparative Analysis":
-                # Split into groups safely
-                n_groups = min(3, max(1, len(selected_rows) // 10))
-                groups = np.array_split(selected_rows, n_groups)
-                
-                for i, group in enumerate(groups):
-                    if len(group) == 0: continue
-                    df_group = df.loc[group]
-                    group_fig = create_correlation_chord_diagram(
-                        df_selected=df_group,
-                        title_prefix=f"Group {i+1} ({len(group)} rows) - ",
-                        figsize=(figsize[0]/n_groups, figsize[1])
-                    )
-                    figs_list.append((group_fig, f"group_{i+1}"))
-                
-                # Display in columns
-                cols = st.columns(len(figs_list))
-                for idx, (col, (fig_item, name)) in enumerate(zip(cols, figs_list)):
-                    with col:
-                        st.pyplot(fig_item, use_container_width=True)
-                        # Group-specific download
-                        buf = io.BytesIO()
-                        fig_item.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-                        buf.seek(0)
-                        st.download_button(
-                            f"💾 Download {name}",
-                            buf,
-                            f"{name}_diagram.png",
-                            "image/png"
-                        )
-                        plt.close(fig_item)
-            
-            # Only show single-figure controls if we have one figure
-            if fig is not None:
-                st.pyplot(fig, use_container_width=True)
-                
-                # Export controls
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-                buf.seek(0)
-                st.download_button(
-                    "💾 Download Diagram (PNG)",
-                    buf,
-                    "chord_diagram.png",
-                    "image/png"
-                )
-                plt.close(fig)
         
+        if viz_type == "Correlation Chord":
+            metric = st.radio("Metric", ["correlation", "covariance"])
+            threshold = st.slider("Connection threshold", 0.0, 1.0, 0.3)
+            cmap_name = st.selectbox("Colormap", STAT_COLORMAPS, index=0)
+        else:
+            cmap_name = st.selectbox("Colormap", ALL_COLORMAPS, index=0)
+        
+        # Display options
+        st.header("📊 Display")
+        fig_width = st.slider("Figure width", 8, 20, 12)
+        fig_height = st.slider("Figure height", 6, 16, 8)
+        
+        # Statistics
+        st.header("📈 Statistics")
+        show_stats = st.checkbox("Show detailed statistics", value=True)
+    
+    # Main content
+    st.header(f"📊 {viz_type} Visualization")
+    
+    # Create visualization
+    with st.spinner("Creating visualization..."):
+        try:
+            if viz_type == "Correlation Chord":
+                fig = create_simple_correlation_chord(
+                    df, 
+                    cmap_name=cmap_name,
+                    metric=metric,
+                    threshold=threshold,
+                    figsize=(fig_width, fig_height)
+                )
+            elif viz_type == "Radar Analysis":
+                fig = create_radar_comparison(
+                    df,
+                    cmap_name=cmap_name,
+                    figsize=(fig_width, fig_height)
+                )
+            else:  # Matrix Heatmap
+                corr_matrix = df[FEATURE_COLS].corr()
+                fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+                im = ax.imshow(corr_matrix, cmap=cmap_name, vmin=-1, vmax=1)
+                
+                # Add labels
+                ax.set_xticks(range(len(FEATURE_COLS)))
+                ax.set_yticks(range(len(FEATURE_COLS)))
+                ax.set_xticklabels(FEATURE_COLS, rotation=45, ha='right')
+                ax.set_yticklabels(FEATURE_COLS)
+                
+                # Add colorbar
+                plt.colorbar(im, ax=ax)
+                ax.set_title(f"Correlation Matrix (n={len(df)})", pad=20)
+                plt.tight_layout()
+            
+            # Display figure
+            st.pyplot(fig)
+            plt.close(fig)
+            
         except Exception as e:
-            st.error(f"❌ Visualization error: {str(e)}")
-            with st.expander("Show traceback"):
-                st.code(traceback.format_exc())
+            st.error(f"Error creating visualization: {str(e)}")
+            st.info("Try reducing the number of rows or using simpler visualizations.")
+    
+    # Statistics section
+    if show_stats:
+        st.header("📈 Statistical Summary")
+        
+        # Calculate basic statistics
+        stats_df = df[FEATURE_COLS].agg(['mean', 'std', 'min', 'max', 'median']).T
+        stats_df['cv'] = stats_df['std'] / stats_df['mean']  # Coefficient of variation
+        
+        # Display in tabs
+        tab1, tab2, tab3 = st.tabs(["📊 Basic Stats", "🔗 Correlations", "📈 Distributions"])
+        
+        with tab1:
+            st.dataframe(stats_df.style.format("{:.4f}"), use_container_width=True)
+            
+            # Top features by mean and variation
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Top 5 Features by Mean")
+                top_mean = stats_df.nlargest(5, 'mean')[['mean']]
+                st.dataframe(top_mean.style.format("{:.4f}"))
+            
+            with col2:
+                st.subheader("Top 5 Features by Variation (CV)")
+                top_cv = stats_df.nlargest(5, 'cv')[['cv']]
+                st.dataframe(top_cv.style.format("{:.4f}"))
+        
+        with tab2:
+            # Correlation matrix
+            corr_matrix = df[FEATURE_COLS].corr()
+            
+            # Style the correlation matrix
+            def color_corr(val):
+                color = 'red' if val < -0.7 else ('orange' if val < -0.3 else 
+                        ('lightgreen' if val < 0.3 else ('green' if val < 0.7 else 'darkgreen')))
+                return f'background-color: {color}; color: white; font-weight: bold;'
+            
+            st.dataframe(corr_matrix.style.format("{:.3f}").applymap(color_corr), 
+                        use_container_width=True)
+            
+            # Strongest correlations
+            st.subheader("Strongest Correlations")
+            corr_pairs = []
+            for i in range(len(FEATURE_COLS)):
+                for j in range(i + 1, len(FEATURE_COLS)):
+                    value = corr_matrix.iloc[i, j]
+                    if abs(value) > 0.5:
+                        corr_pairs.append((FEATURE_COLS[i], FEATURE_COLS[j], value))
+            
+            if corr_pairs:
+                corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+                cols = st.columns(3)
+                for idx, (f1, f2, val) in enumerate(corr_pairs[:6]):
+                    with cols[idx % 3]:
+                        color = "🟢" if val > 0 else "🔴"
+                        st.metric(f"{f1} – {f2}", f"{val:.3f}")
+            else:
+                st.info("No strong correlations found (|r| > 0.5)")
+        
+        with tab3:
+            # Feature distributions
+            feature_to_plot = st.selectbox("Select feature for distribution", FEATURE_COLS)
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                fig_dist, ax = plt.subplots(figsize=(8, 4))
+                ax.hist(df[feature_to_plot], bins=20, alpha=0.7, edgecolor='black')
+                ax.set_xlabel(feature_to_plot)
+                ax.set_ylabel("Frequency")
+                ax.set_title(f"Distribution of {feature_to_plot}")
+                ax.grid(True, alpha=0.3)
+                st.pyplot(fig_dist)
+                plt.close(fig_dist)
+            
+            with col2:
+                st.subheader(f"Stats for {feature_to_plot}")
+                stats = {
+                    'Mean': df[feature_to_plot].mean(),
+                    'Std': df[feature_to_plot].std(),
+                    'Min': df[feature_to_plot].min(),
+                    'Max': df[feature_to_plot].max(),
+                    'Median': df[feature_to_plot].median(),
+                    'Skewness': df[feature_to_plot].skew()
+                }
+                
+                for key, value in stats.items():
+                    st.metric(key, f"{value:.4f}")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    **How to use:**
+    1. **Correlation Chord**: Shows relationships between features as connecting chords
+    2. **Radar Analysis**: Compares feature statistics across multiple views
+    3. **Matrix Heatmap**: Traditional correlation matrix visualization
+    
+    **Tips:**
+    - Reduce connection threshold to show fewer, stronger relationships
+    - Use 'correlation' for standardized relationships (-1 to 1)
+    - Use 'covariance' for absolute scale relationships
+    - Download data as CSV for further analysis
+    """)
 
 if __name__ == "__main__":
     main()
