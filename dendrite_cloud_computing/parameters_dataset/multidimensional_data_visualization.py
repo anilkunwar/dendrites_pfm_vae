@@ -1,191 +1,27 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import json
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import tempfile
+import matplotlib.cm as cm
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
+from matplotlib.collections import PatchCollection
+import io
+import warnings
+warnings.filterwarnings('ignore')
 
-# --- Configuration ---
-# The specific 15 features
-FEATURE_COLUMNS = [
-    't', 'POT_LEFT', 'fo', 'Al', 'Bl', 'Cl', 'As', 'Bs', 'Cs', 
-    'cleq', 'cseq', 'L1o', 'L2o', 'ko', 'Noise'
-]
-
-# --- D3.js Template ---
-# We use a raw HTML/JS string to generate the chart. This avoids the buggy 'chord' library.
-D3_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        .group-text {{
-            font-family: sans-serif;
-            font-weight: bold;
-            pointer-events: none;
-            text-shadow: 0px 0px 2px #fff;
-        }}
-        .chord-path {{
-            transition: opacity 0.3s;
-        }}
-        .chord-path:hover {{
-            opacity: 0.8;
-        }}
-        .tooltip {{
-            position: absolute;
-            text-align: center;
-            padding: 8px;
-            font: 12px sans-serif;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            border-radius: 4px;
-            pointer-events: none;
-            opacity: 0;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-            z-index: 10;
-        }}
-        #container-{div_id} {{
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            overflow: hidden;
-        }}
-    </style>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-</head>
-<body>
-    <div id="container-{div_id}"></div>
-    <div id="tooltip-{div_id}" class="tooltip"></div>
-
-    <script>
-        (function() {{
-            // Data passed from Python
-            const rawData = {data_json};
-            const labelSize = {label_size};
-            const divId = "{div_id}";
-
-            const matrix = rawData.matrix;
-            const labels = rawData.labels;
-            const colors = rawData.colors;
-
-            // Dimensions
-            const width = 450;
-            const height = 450;
-            const outerRadius = Math.min(width, height) / 2 - 40;
-            const innerRadius = outerRadius - 20;
-
-            // Create SVG
-            const svg = d3.select("#container-" + divId)
-                .append("svg")
-                .attr("viewBox", [-width / 2, -height / 2, width, height])
-                .attr("width", "100%")
-                .attr("height", "100%")
-                .style("max-width", "100%")
-                .style("height", "auto");
-
-            // Chord generator
-            const chord = d3.chord()
-                .padAngle(0.05)
-                .sortSubgroups(d3.descending);
-
-            const chords = chord(matrix);
-
-            // Arc generator (for the outer ring)
-            const arc = d3.arc()
-                .innerRadius(innerRadius)
-                .outerRadius(outerRadius);
-
-            // Ribbon generator (for the inner connections)
-            const ribbon = d3.ribbon()
-                .radius(innerRadius);
-
-            // Draw Groups (Outer Arcs)
-            const group = svg.append("g")
-                .selectAll("g")
-                .data(chords.groups)
-                .join("g");
-
-            group.append("path")
-                .attr("fill", d => colors[d.index])
-                .attr("stroke", "#fff")
-                .attr("stroke-width", 1)
-                .attr("d", arc)
-                .style("cursor", "pointer")
-                .on("mouseover", function(event, d) {{
-                    showTooltip(event, labels[d.index], matrix[d.index][d.index], colors[d.index]);
-                    d3.select(this).attr("opacity", 0.8);
-                }})
-                .on("mouseout", function() {{
-                    hideTooltip();
-                    d3.select(this).attr("opacity", 1);
-                }});
-
-            // Draw Ribbons (Inner Connections)
-            // Note: Since we use a diagonal matrix, these connect the arc to itself, 
-            // creating a solid donut look which is standard for single-variable visualization in Chord diagrams.
-            svg.append("g")
-                .selectAll("path")
-                .data(chords)
-                .join("path")
-                .attr("d", ribbon)
-                .attr("fill", d => colors[d.target.index])
-                .attr("fill-opacity", 0.4)
-                .attr("stroke", d => d3.rgb(colors[d.target.index]).darker())
-                .style("mix-blend-mode", "multiply")
-                .on("mouseover", function(event, d) {{
-                     showTooltip(event, labels[d.source.index], matrix[d.source.index][d.source.index], colors[d.source.index]);
-                }})
-                .on("mouseout", hideTooltip);
-
-            // Add Labels
-            group.append("text")
-                .each(d => {{ d.angle = (d.startAngle + d.endAngle) / 2; }})
-                .attr("dy", ".35em")
-                .attr("class", "group-text")
-                .attr("font-size", labelSize + "px")
-                .attr("transform", d => `
-                    rotate(${{(d.angle * 180 / Math.PI - 90)}})
-                    translate(${{outerRadius + 10}})
-                    ${{d.angle > Math.PI ? "rotate(180)" : ""}}
-                `)
-                .attr("text-anchor", d => d.angle > Math.PI ? "end" : "start")
-                .text(d => labels[d.index]);
-
-            // Tooltip Functions
-            const tooltip = d3.select("#tooltip-" + divId);
-
-            function showTooltip(event, name, value, color) {{
-                tooltip.style("opacity", 1)
-                       .html(`<strong>${{name}}</strong><br/>Value: ${{value.toFixed(4)}}`)
-                       .style("left", (event.pageX + 15) + "px")
-                       .style("top", (event.pageY - 28) + "px")
-                       .style("border-left", "5px solid " + color);
-            }}
-
-            function hideTooltip() {{
-                tooltip.style("opacity", 0);
-            }}
-        }})();
-    </script>
-</body>
-</html>
-"""
-
-def get_sample_data():
-    """Creates a DataFrame from the sample CSV data provided in the prompt."""
-    csv_data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+# Hardcoded example data
+EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
 2,5.304021017662722,0.10460069444444445,0.12041199826559248,0.08961087465286255,0.4117993414402008,0.3086051940917969,0.5759025812149048,0.5457133650779724,0.37897956371307373,0.6828550696372986,0.37128087878227234,0.5426892042160034,0.31361812353134155,0.5300193428993225,0.3330453932285309,0.6396515965461731,0.4162127375602722,0.386873722076416
 3,5.169830808799158,0.11197916666666667,0.1278753600952829,0.11320602893829346,0.5374900102615356,0.3893888592720032,0.6208136677742004,0.5366111993789673,0.4114663004875183,0.7501887679100037,0.4020015299320221,0.45790043473243713,0.343185693025589,0.7146779298782349,0.3623429834842682,0.6474707126617432,0.4218909740447998,0.414340615272522
-4,5.169830808799158,0.11371527777777778,0.13424226808222062,0.1594301164150238,0.5966717004776001,0.4405992031097412,0.59370118379529,0.6432862877855764,0.48903852701187134,0.8087910413742065,0.4361550211906433,0.5463976263999939,0.351766973733902,0.7200356721878052,0.39372894167900085,0.699080228805542,0.46395444869995117,0.33751198649406433
+4,5.169830808799158,0.11371527777777778,0.13424226808222062,0.1594301164150238,0.5966717004776001,0.4405992031097412,0.593701183795929,0.6432862877845764,0.48903852701187134,0.8087910413742065,0.4361550211906433,0.5463976263999939,0.351766973733902,0.7200356721878052,0.39372894167900085,0.699080228805542,0.46395444869995117,0.33751198649406433
 5,5.1838690114837185,0.12890625,0.13979400086720378,0.27053752541542053,0.5414740443229675,0.3837757110595703,0.5459027290344238,0.7114285826683044,0.5601555109024048,0.8636823296546936,0.4749370515346527,0.5336172580718994,0.49408119916915894,0.6982162594795227,0.4363292157649994,0.6871276497840881,0.5171192288398743,0.34152668714523315
 6,5.100333034308876,0.1440972222222222,0.14471580313422192,0.3258400559425354,0.6228137016296387,0.49862906336784363,0.6784278154373169,0.8143172264099121,0.5625902414321899,0.896495521068573,0.6146658062934875,0.5892767310142517,0.4974607229232788,0.8461188077926636,0.5145464539527893,0.8220916986465454,0.6068583726882935,0.40622031688690186
 7,7.32416026628129,0.1840277777777778,0.14913616938342728,0.3501424491405487,0.3400475084781647,0.5205002427101135,0.697181224822998,0.9804031848907471,0.6573023200035095,0.8734657168388367,0.8090043663978577,0.7597450017929077,0.57285475730896,0.7757821083068848,0.645453929901123,0.8650208711624146,0.5720763802528381,0.4552328288555145
 8,10.386888918380697,0.22178819444444445,0.15314789170422552,0.377905011177063,0.3762165307998657,0.5274438858032227,0.6071285009384155,0.9385737180709839,0.6077378988265991,0.8730340600013733,0.9395252466201782,0.7045806646347046,0.5667017102241516,0.7497444152832031,0.8033575415611267,0.7816545963287354,0.5264078378677368,0.5300353765487671
-9,8.254108578194927,0.3077256944444444,0.1568201724066995,0.3872142434120178,0.47770050168037415,0.4989684224128723,0.7149577140808105,1.0060926675796509,0.6737095713615417,0.7603132724761963,0.6836521625518799,0.6091089844703674,0.4301818609237671,0.8038907051086426,0.7902536988258362,0.9215232133865356,0.589865624906326,0.6257796287536621
+9,8.254108578194927,0.3077256944444444,0.1568201724066995,0.3872142434120178,0.47770050168037415,0.4989684224128723,0.7149577140808105,1.0060926675796509,0.6737095713615417,0.7603132724761963,0.6836521625518799,0.6091089844703674,0.4301818609237671,0.8038907051086426,0.7902536988258362,0.9215232133865356,0.5898656249046326,0.6257796287536621
 10,5.622075167395693,0.3493923611111111,0.16020599913279623,0.3937322199344635,0.33547544479370117,0.44358500838279724,0.7463698983192444,0.8410062193870544,0.6607444286346436,0.6670836806297302,0.6114344596862793,0.6689836382865906,0.4694424569606781,0.7656615376472473,0.7240639328956604,0.8651359677314758,0.7883168458938599,0.6361547112464905
 11,7.321904299308076,0.3650173611111111,0.16334684555795864,0.45904433727264404,0.27944284677505493,0.38179677724838257,0.8159457445144653,1.0150943994522095,0.7721518874168396,0.7039114236831665,0.7788766026496887,0.7146820425987244,0.49762389063835144,0.7908686399459839,0.8121711611747742,0.8742984533309937,0.7975523471832275,0.6416141390800476
 12,8.543683990691765,0.3723958333333333,0.1662757831681574,0.5105248689651489,0.34250542521476746,0.43922367691993713,0.7341154217720032,1.1102296113967896,0.7483778595924377,0.7128080725669861,0.7358441352844238,0.7393836975097656,0.46837639808654785,0.8202276825904846,0.877817690372467,0.9840682744979858,0.7861328125,0.6163419485092163
@@ -204,143 +40,395 @@ def get_sample_data():
 25,9.733399429950971,0.5572916666666666,0.19294189257142927,0.9699379205703735,0.5459413528442383,0.9786086082458496,0.9722445607185364,1.618293046951294,1.0138611793518066,1.2777221202850342,0.769503653049469,1.2075700759887695,0.9359092116355896,0.8779188990592957,0.8745647072792053,0.5999792814254761,0.8872678279876709,1.0222569704055786
 26,9.9260127892421,0.5690104166666666,0.19444826721501687,1.0167112350463867,0.7404793500900269,1.2331862449645996,0.9591841697692871,1.8226509094238281,1.1032135486602783,1.5929903984069824,1.0649257898330688,1.510267734527588,0.9941714406013489,1.090094804763794,0.8625853061676025,0.5799097418785095,0.9083585143089294,0.8630198836326599
 27,10.678004251308256,0.5798611111111112,0.19590413923210936,1.1897140741348267,0.8140103220939636,1.1114305257797241,0.8603397011756897,1.7859822511672974,1.1018062829971313,1.5066109895706177,0.9222522377967834,1.4768295288085938,0.9960513710975647,0.8831607103347778,0.8123284578323364,0.8251258730888367,0.7022106647491455,0.8924230933189392
-28,11.020299291797908,0.5798611111111112,0.19731278535996988,1.1938612461090088,0.8728200793266296,1.2563399076461792,0.9425970911979675,1.665657877922058,1.1347849369049072,1.6763732433319092,0.9476985335350037,1.450101613998413,0.9543245434761047,0.7781178951263428,0.7439810633659363,0.7765737175941467,0.900428116321637,0.8755770325660706
+28,11.020299291797908,0.5798611111111112,0.19731278535996988,1.1938612461090088,0.8728200793266296,1.2563399076461792,0.9425970911979675,1.665657877922058,1.1347849369049072,1.6763732433319092,0.9476985335350037,1.450101613998413,0.9543245434761047,0.7781178951263428,0.7439810633659363,0.7765737175941467,0.9004281163215637,0.8755770325660706
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
-    
-    from io import StringIO
-    return pd.read_csv(StringIO(csv_data))
 
-def get_colorbar_image(cmap_name):
-    """Generates a Matplotlib colorbar and returns it as an image for Streamlit."""
-    fig = plt.figure(figsize=(6, 0.8))
-    ax = fig.add_axes([0.05, 0.3, 0.9, 0.5]) 
-    cmap = plt.get_cmap(cmap_name)
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    cb = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax, orientation='horizontal')
-    cb.set_label('Feature Magnitude', fontsize=10)
-    cb.ax.tick_params(labelsize=8)
-    
-    buf = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    plt.savefig(buf, format="png", bbox_inches='tight', pad_inches=0)
-    plt.close(fig)
-    buf.close()
-    return buf.name
+# Generate extensive colormap list (150+ options)
+ALL_COLORMAPS = sorted(set([
+    'jet', 'rainbow', 'turbo', 'inferno', 'plasma', 'viridis', 'magma', 'cividis',
+    'hot', 'cool', 'hot_r', 'cool_r', 'spring', 'summer', 'autumn', 'winter',
+    'bone', 'copper', 'pink', 'gray', 'spectral', 'gist_rainbow', 'rainbow_r',
+    'nipy_spectral', 'gist_ncar', 'gist_stern', 'flag', 'prism', 'ocean', 'gist_earth',
+    'terrain', 'gist_stern_r', 'gnuplot', 'gnuplot2', 'CMRmap', 'cubehelix',
+    'brg', 'hsv', 'gist_rainbow_r', 'seismic', 'coolwarm', 'bwr', 'RdBu', 'RdGy',
+    'PiYG', 'PRGn', 'RdYlBu', 'RdYlGn', 'Spectral', 'twilight', 'twilight_shifted',
+    'hsv_r', 'Pastel1', 'Pastel2', 'Paired', 'Accent', 'Dark2', 'Set1', 'Set2', 'Set3',
+    'tab10', 'tab20', 'tab20b', 'tab20c', 'flag_r', 'prism_r', 'ocean_r', 'gist_earth_r',
+    'terrain_r', 'gist_stern_r', 'gnuplot_r', 'gnuplot2_r', 'CMRmap_r', 'cubehelix_r',
+    'brg_r', 'pink_r', 'binary', 'binary_r', 'gist_yarg', 'gist_yarg_r', 'afmhot',
+    'afmhot_r', 'bone_r', 'copper_r', 'Greys', 'Purples', 'Blues', 'Greens', 'Oranges',
+    'Reds', 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu', 'GnBu', 'PuBu',
+    'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn', 'Greys_r', 'Purples_r', 'Blues_r', 'Greens_r',
+    'Oranges_r', 'Reds_r', 'YlOrBr_r', 'YlOrRd_r', 'OrRd_r', 'PuRd_r', 'RdPu_r',
+    'BuPu_r', 'GnBu_r', 'PuBu_r', 'YlGnBu_r', 'PuBuGn_r', 'BuGn_r', 'YlGn_r',
+    'PiYG_r', 'PRGn_r', 'RdYlBu_r', 'RdYlGn_r', 'Spectral_r', 'coolwarm_r', 'bwr_r',
+    'seismic_r', 'twilight_r', 'twilight_shifted_r', 'Set1_r', 'Set2_r', 'Set3_r',
+    'Dark2_r', 'Accent_r', 'Paired_r', 'Pastel1_r', 'Pastel2_r', 'tab10_r', 'tab20_r',
+    'tab20b_r', 'tab20c_r', 'Vega10', 'Vega20', 'Vega10_r', 'Vega20_r', 'Vega20b',
+    'Vega20c', 'Vega20b_r', 'Vega20c_r', 'magma_r', 'inferno_r', 'plasma_r', 'viridis_r',
+    'cividis_r', 'turbo_r', 'nipy_spectral_r', 'gist_ncar_r'
+]))
 
-def render_d3_chord(row_values, labels, cmap_name, label_size):
+FEATURE_COLS = ['t','POT_LEFT','fo','Al','Bl','Cl','As','Bs','Cs','cleq','cseq','L1o','L2o','ko','Noise']
+NODE_NAMES = FEATURE_COLS  # Use feature names as node labels
+
+def create_chord_diagram(row_data, colormap_name='viridis', label_size=10, node_size=15, 
+                         edge_alpha=0.6, figsize=(10, 10), show_values=False):
     """
-    Renders a D3.js Chord diagram directly into Streamlit without 'chord' library dependency.
+    Create a chord diagram for a single row of data
+    
+    Parameters:
+    -----------
+    row_data : pd.Series or dict
+        Data for the 15 features
+    colormap_name : str
+        Name of matplotlib colormap to use
+    label_size : int
+        Font size for labels
+    node_size : int
+        Size of node markers
+    edge_alpha : float
+        Transparency of edges (0-1)
+    figsize : tuple
+        Figure size (width, height)
+    show_values : bool
+        Whether to show numerical values on nodes
+    
+    Returns:
+    --------
+    matplotlib.figure.Figure
+        The chord diagram figure
     """
-    # 1. Process Colors
-    min_val, max_val = np.min(row_values), np.max(row_values)
-    if max_val == min_val:
-        normalized = np.ones_like(row_values) * 0.5
+    # Get values for the 15 features
+    values = np.array([row_data[col] for col in FEATURE_COLS])
+    
+    # Normalize values for visualization
+    total = values.sum()
+    if total == 0:
+        proportions = np.ones_like(values) / len(values)
     else:
-        normalized = (row_values - min_val) / (max_val - min_val)
+        proportions = values / total
     
-    cmap = plt.get_cmap(cmap_name)
-    rgba_colors = cmap(normalized)
-    hex_colors = [mcolors.to_hex(c) for c in rgba_colors]
-
-    # 2. Process Matrix (Diagonal)
-    matrix = np.diag(row_values).tolist()
-
-    # 3. Prepare Data JSON
-    data_dict = {
-        "matrix": matrix,
-        "labels": labels,
-        "colors": hex_colors
-    }
-    data_json = json.dumps(data_dict)
-
-    # 4. Inject into Template
-    # Generate a random ID to ensure multiple charts don't conflict
-    div_id = str(np.random.randint(100000, 999999))
-    html_str = D3_TEMPLATE.format(
-        data_json=data_json,
-        label_size=label_size,
-        div_id=div_id
+    # Calculate angles for node positions
+    angles = np.linspace(0, 2 * np.pi, len(FEATURE_COLS), endpoint=False)
+    angles = np.roll(angles, -1)  # Rotate for better layout
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection="polar"))
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.axis('off')
+    
+    # Get colormap
+    cmap = cm.get_cmap(colormap_name, len(FEATURE_COLS))
+    
+    # Draw nodes (as arcs)
+    width = 2 * np.pi / len(FEATURE_COLS) * 0.7  # Width of each node arc
+    bottom = 1.5  # Radius position for nodes
+    
+    bars = ax.bar(
+        angles, 
+        [node_size] * len(FEATURE_COLS), 
+        width=width, 
+        bottom=bottom,
+        color=[cmap(i) for i in range(len(FEATURE_COLS))],
+        edgecolor='white',
+        linewidth=2
     )
-
-    st.components.v1.html(html_str, height=500, scrolling=False)
-
-# --- Main App ---
-st.set_page_config(layout="wide", page_title="CSV Chord Diagram Viewer")
-
-st.title("Interactive Chord Diagram Generator")
-st.markdown("Visualize the 15 features (`t`, `POT_LEFT`, etc.) for each CSV row.")
-
-# Sidebar Controls
-st.sidebar.header("Configuration")
-
-# 1. File Upload
-uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-else:
-    df = get_sample_data()
-    st.sidebar.info("Using sample data (click to expand)")
-
-# 2. Select Columns
-if all(col in df.columns for col in FEATURE_COLUMNS):
-    feature_data = df[FEATURE_COLUMNS]
-    labels = FEATURE_COLUMNS
-else:
-    st.warning("Specific feature columns not found. Using columns 5 to 19.")
-    feature_data = df.iloc[:, 4:19]
-    labels = feature_data.columns.tolist()
-
-# 3. Controls
-available_colormaps = sorted(plt.colormaps())
-cmap_name = st.sidebar.selectbox("Select Colormap", available_colormaps, index=available_colormaps.index('turbo'))
-label_size = st.sidebar.slider("Label Size (px)", 8, 24, 11)
-
-# 4. View Mode
-view_mode = st.sidebar.radio("View Mode", ["Single Row", "Multiple Rows (Grid)"])
-
-# --- Visualization Area ---
-
-# Show Color Scale Bar
-st.subheader("Color Scale")
-cbar_img = get_colorbar_image(cmap_name)
-st.image(cbar_img)
-os.unlink(cbar_img)
-
-if view_mode == "Single Row":
-    row_idx = st.sidebar.slider("Select Row Index", 0, len(df)-1, 0)
     
-    st.subheader(f"Row {row_idx} Visualization")
+    # Add labels
+    for idx, (angle, label) in enumerate(zip(angles, NODE_NAMES)):
+        # Adjust label position
+        rotation = np.degrees(angle)
+        if 90 <= rotation <= 270:
+            rotation += 180
+            align = "right"
+        else:
+            align = "left"
+        
+        # Add feature name label
+        ax.text(
+            angle, 
+            bottom + node_size + 0.8, 
+            label, 
+            ha=align, 
+            va='center',
+            fontsize=label_size,
+            fontweight='bold',
+            rotation=rotation,
+            rotation_mode='anchor'
+        )
+        
+        # Add value label if requested
+        if show_values:
+            val_text = f"{values[idx]:.2f}"
+            ax.text(
+                angle,
+                bottom + node_size + 0.3,
+                val_text,
+                ha='center',
+                va='center',
+                fontsize=label_size - 2,
+                color='darkslategray'
+            )
     
-    # Generate Chord using our D3 wrapper
-    row_values = feature_data.iloc[row_idx].values
-    render_d3_chord(row_values, labels, cmap_name, label_size)
+    # Draw chords (connections between all nodes)
+    # We'll create a flow matrix where flow from i to j is proportional to the product of their values
+    # This creates a meaningful visualization of relationships
+    max_val = values.max() if values.max() > 0 else 1
+    scale_factor = 0.8 / max_val  # Scale chord thickness
     
-    # Optional: Show raw data in an expander
-    with st.expander("View Raw Values"):
-        st.json(feature_data.iloc[row_idx].to_dict())
+    # Create patches for chords
+    patches = []
+    colors = []
+    
+    for i in range(len(FEATURE_COLS)):
+        for j in range(i + 1, len(FEATURE_COLS)):
+            # Skip very small values to reduce clutter
+            if values[i] < 0.01 * total or values[j] < 0.01 * total:
+                continue
+                
+            # Calculate chord thickness proportional to the product of values
+            thickness = (values[i] * values[j]) * scale_factor
+            
+            # Create bezier curve control points
+            theta1, theta2 = angles[i], angles[j]
+            radius = bottom + node_size / 2
+            
+            # Control point for bezier curve
+            control_radius = radius * 0.6
+            control_theta = (theta1 + theta2) / 2
+            
+            # Create path
+            verts = [
+                (theta1, radius),
+                (theta1, radius - thickness/2),
+                (control_theta, control_radius),
+                (theta2, radius - thickness/2),
+                (theta2, radius),
+                (theta2, radius + thickness/2),
+                (control_theta, control_radius + thickness/2),
+                (theta1, radius + thickness/2),
+                (0, 0),  # Close path
+            ]
+            codes = [
+                Path.MOVETO,
+                Path.LINETO,
+                Path.CURVE3,
+                Path.LINETO,
+                Path.LINETO,
+                Path.LINETO,
+                Path.CURVE3,
+                Path.LINETO,
+                Path.CLOSEPOLY,
+            ]
+            path = Path(verts, codes)
+            patches.append(PathPatch(path, facecolor=cmap(i), alpha=edge_alpha, lw=0))
+    
+    # Add patches to collection
+    collection = PatchCollection(patches, match_original=True)
+    ax.add_collection(collection)
+    
+    # Add title with row information if available
+    if hasattr(row_data, 'name'):
+        ax.set_title(f"Row {row_data.name} Chord Diagram", fontsize=label_size + 4, pad=40)
+    
+    # Add colorbar
+    sm = cm.ScalarMappable(cmap=cmap)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.15, aspect=40)
+    cbar.set_label('Feature Index', fontsize=label_size)
+    cbar.set_ticks(np.linspace(0, 1, len(FEATURE_COLS)))
+    cbar.set_ticklabels(range(len(FEATURE_COLS)))
+    cbar.ax.tick_params(labelsize=label_size - 2)
+    
+    plt.tight_layout()
+    return fig
 
-elif view_mode == "Multiple Rows (Grid)":
-    max_disp = 6
-    start_row = st.sidebar.number_input("Start Row", 0, len(df)-1, 0)
-    end_row = st.sidebar.number_input("End Row", 0, len(df)-1, min(start_row + max_disp - 1, len(df)-1))
+def main():
+    st.set_page_config(
+        page_title="Chord Diagram Explorer",
+        page_icon="🎯",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    rows_to_show = list(range(start_row, end_row + 1))
+    st.title("🎯 CSV Chord Diagram Explorer")
+    st.markdown("""
+    Visualize relationships between the 15 features in each row of your CSV file using interactive chord diagrams.
+    Customize colors, labels, and layout to explore your data effectively.
+    """)
     
-    st.subheader(f"Displaying Rows {start_row} to {end_row}")
-    cols = st.columns(min(len(rows_to_show), 3))
+    # Sidebar for configuration
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        
+        # File upload
+        uploaded_file = st.file_uploader(
+            "Upload CSV File", 
+            type="csv",
+            help="Upload a CSV file containing the 15 required features"
+        )
+        
+        # Data source selection
+        data_source = st.radio(
+            "Data Source",
+            ["Upload File", "Use Example Data"],
+            index=1 if uploaded_file is None else 0
+        )
+        
+        # Load data
+        if data_source == "Upload File" and uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                st.success(f"Loaded {len(df)} rows from uploaded file")
+            except Exception as e:
+                st.error(f"Error reading CSV file: {e}")
+                st.stop()
+        else:
+            df = pd.read_csv(io.StringIO(EXAMPLE_CSV))
+            st.info("Using built-in example dataset (31 rows)")
+        
+        # Validate columns
+        missing_cols = [col for col in FEATURE_COLS if col not in df.columns]
+        if missing_cols:
+            st.error(f"Missing required columns: {', '.join(missing_cols)}")
+            st.stop()
+        
+        # Row selection
+        st.header("📊 Row Selection")
+        all_rows = df.index.tolist()
+        selected_rows = st.multiselect(
+            "Select Rows to Visualize",
+            options=all_rows,
+            default=all_rows[:3] if len(all_rows) >= 3 else all_rows,
+            help="Select one or more rows to generate chord diagrams"
+        )
+        
+        if not selected_rows:
+            st.warning("Please select at least one row to visualize")
+            st.stop()
+        
+        # Visualization settings
+        st.header("🎨 Visualization Settings")
+        
+        # Colormap selection with search
+        st.subheader("Color Scheme")
+        colormap_query = st.text_input("Search colormaps...", "")
+        if colormap_query:
+            filtered_cmaps = [cmap for cmap in ALL_COLORMAPS if colormap_query.lower() in cmap.lower()]
+        else:
+            filtered_cmaps = ALL_COLORMAPS
+        
+        selected_cmap = st.selectbox(
+            "Select Colormap",
+            options=filtered_cmaps,
+            index=filtered_cmaps.index('viridis') if 'viridis' in filtered_cmaps else 0
+        )
+        
+        # Show colormap preview
+        if selected_cmap:
+            try:
+                cmap_preview = plt.get_cmap(selected_cmap)
+                colors = [cmap_preview(i) for i in np.linspace(0, 1, 15)]
+                st.write("**Preview:**")
+                st.markdown(
+                    '<div style="display: flex; height: 20px; border-radius: 2px; overflow: hidden;">' +
+                    ''.join([f'<div style="flex:1; background-color: rgba({int(c[0]*255)},{int(c[1]*255)},{int(c[2]*255)},{c[3]});"></div>' 
+                             for c in colors]) +
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+            except:
+                st.warning(f"Could not preview colormap '{selected_cmap}'")
+        
+        # Layout settings
+        st.subheader("Layout")
+        col1, col2 = st.columns(2)
+        with col1:
+            label_size = st.slider("Label Font Size", 6, 24, 10)
+            node_size = st.slider("Node Size", 5, 50, 15)
+        with col2:
+            edge_alpha = st.slider("Edge Transparency", 0.1, 1.0, 0.6)
+            show_values = st.checkbox("Show Node Values", value=False)
+        
+        # Figure settings
+        st.subheader("Figure")
+        fig_width = st.slider("Figure Width", 8, 20, 12)
+        fig_height = st.slider("Figure Height", 8, 20, 12)
+        
+        # Performance note
+        st.info(f"💡 Generating {len(selected_rows)} diagram(s). For large selections, this may take a moment.")
     
-    for i, row_idx in enumerate(rows_to_show):
-        col = cols[i % 3]
-        with col:
-            st.markdown(f"**Row {row_idx}**")
-            row_values = feature_data.iloc[row_idx].values
-            render_d3_chord(row_values, labels, cmap_name, label_size)
+    # Main content area
+    st.header("📈 Chord Diagrams")
+    
+    # Create tabs for each selected row
+    if len(selected_rows) > 1:
+        tabs = st.tabs([f"Row {i}" for i in selected_rows])
+    else:
+        tabs = [st.container()]
+    
+    # Generate diagrams
+    for idx, row_idx in enumerate(selected_rows):
+        with tabs[idx] if len(selected_rows) > 1 else tabs[0]:
+            if len(selected_rows) > 1:
+                st.subheader(f"Row {row_idx} Details")
+            
+            # Show row data
+            row_data = df.loc[row_idx, FEATURE_COLS]
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                st.write("**Feature Values:**")
+                row_df = row_data.to_frame().rename(columns={row_idx: "Value"})
+                row_df["Value"] = row_df["Value"].apply(lambda x: f"{x:.4f}")
+                st.dataframe(row_df, use_container_width=True)
+            
+            with col2:
+                # Create and display chord diagram
+                with st.spinner(f"Generating chord diagram for row {row_idx}..."):
+                    try:
+                        fig = create_chord_diagram(
+                            row_data,
+                            colormap_name=selected_cmap,
+                            label_size=label_size,
+                            node_size=node_size,
+                            edge_alpha=edge_alpha,
+                            figsize=(fig_width, fig_height),
+                            show_values=show_values
+                        )
+                        
+                        # Display figure
+                        st.pyplot(fig, use_container_width=True)
+                        
+                        # Download button
+                        buf = io.BytesIO()
+                        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+                        buf.seek(0)
+                        st.download_button(
+                            label=f"📥 Download Row {row_idx} Diagram",
+                            data=buf,
+                            file_name=f"chord_diagram_row_{row_idx}.png",
+                            mime="image/png",
+                            key=f"download_{row_idx}"
+                        )
+                        plt.close(fig)
+                    except Exception as e:
+                        st.error(f"Error generating diagram for row {row_idx}: {str(e)}")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    **About this visualization:**  
+    Each chord diagram represents relationships between the 15 features in a single row of your data.  
+    - **Nodes** (outer arcs): Represent individual features, sized by their value in the row  
+    - **Chords** (inner connections): Show relationships between features, with thickness proportional to the product of their values  
+    - **Colors**: Each feature has a unique color from the selected colormap  
+                
+    **Features visualized**: t, POT_LEFT, fo, Al, Bl, Cl, As, Bs, Cs, cleq, cseq, L1o, L2o, ko, Noise
+    """)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### How to use")
-st.sidebar.markdown("""
-1. Upload your CSV or use sample data.
-2. Choose a colormap (e.g., `jet`, `inferno`, `turbo`).
-3. Adjust the label size for better readability.
-4. Switch between Single and Grid view to compare rows.
-""")
+if __name__ == "__main__":
+    main()
