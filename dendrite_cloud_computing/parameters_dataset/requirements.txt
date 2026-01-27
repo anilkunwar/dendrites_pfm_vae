@@ -11,5 +11,6 @@ umap-learn
 scikit-learn
 pynndescent
 hdbscan
+psutil
 
 
