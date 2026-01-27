@@ -20,7 +20,10 @@
 # Postprocessing the Results 
 - Chord Diagrams
   
-[![physicalparameters](https://img.shields.io/badge/multidimarray1-streamlit-red)](https://multidimensional-data-visualization1.streamlit.app/) (visualization of 15 features )
+[![physicalparameters](https://img.shields.io/badge/chorddiagram1-streamlit-red)](https://multidimensional-data-visualization1.streamlit.app/) (visualization of 15 features )
+
+[![physicalparameters](https://img.shields.io/badge/chorddiagram2-streamlit-red)](https://multidimensional-data-visualization2.streamlit.app/) (visualization of 15 features )
+
 
   
 - Radar charts
