@@ -28,6 +28,10 @@
 
 [![physicalparameters](https://img.shields.io/badge/chorddiagram4-streamlit-red)](https://multidimensional-data-visualization4.streamlit.app/) (visualization of 15 features )
 
+[![physicalparameters](https://img.shields.io/badge/chorddiagram5-streamlit-red)](https://multidimensional-data-visualization5.streamlit.app/) (visualization of 15 features )
+
+[![physicalparameters](https://img.shields.io/badge/chorddiagram6-streamlit-red)](https://multidimensional-data-visualization6.streamlit.app/) (visualization of 15 features )
+
 
   
 - Radar charts
