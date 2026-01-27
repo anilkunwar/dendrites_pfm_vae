@@ -1738,11 +1738,11 @@ def create_vivid_streamlit_app():
             try:
                 # ✅ SAFE FILE PATH CONSTRUCTION USING OS.PATH.JOIN
                 current_dir = os.path.dirname(os.path.abspath(__file__))
-                file_path = os.path.join(current_dir, "dendrites_attributes.csv")
+                file_path = os.path.join(current_dir, "dendrites-attributes.csv")
                 
                 # Fallback to working directory if needed
                 if not os.path.exists(file_path):
-                    file_path = os.path.join(os.getcwd(), "dendrites_attributes.csv")
+                    file_path = os.path.join(os.getcwd(), "dendrites-attributes.csv")
                 
                 # Load and process CSV
                 raw_data = pd.read_csv(file_path)
