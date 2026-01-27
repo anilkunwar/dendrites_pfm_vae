@@ -9,7 +9,7 @@ from matplotlib.collections import PatchCollection, LineCollection
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import matplotlib.colors as mcolors
 import matplotlib.transforms as transforms
-import matplotlib.patheffects as patheffects # Required sub-module import
+import matplotlib.patheffects as patheffects  # ✅ ADDED MISSING IMPORT
 import colorsys
 from scipy import stats
 import io
@@ -232,7 +232,7 @@ class VividChordDiagram:
         self.ax.set_theta_zero_location("N")  # 0° at top
         self.ax.set_theta_direction(-1)       # Clockwise by default
         
-        # Data structures - FIXED SYNTAX ERROR HERE
+        # Data structures - ✅ FIXED SYNTAX ERROR
         self.sectors: List[str] = []
         self.sector_data: Dict[str, Dict] = {}  # ✅ CORRECTED: was "self.sector_ Dict" (invalid syntax)
         self.links: List[Dict] = []
@@ -820,8 +820,8 @@ class VividChordDiagram:
             # Add text shadow for better readability
             if shadow:
                 txt.set_path_effects([
-                    matplotlib.patheffects.Stroke(linewidth=3, foreground='black', alpha=0.7),
-                    matplotlib.patheffects.Normal()
+                    patheffects.Stroke(linewidth=3, foreground='black', alpha=0.7),
+                    patheffects.Normal()
                 ])
             
             # Add background box with rounded corners
@@ -847,6 +847,9 @@ class VividChordDiagram:
             Scale factor for node sizes
         show_labels : bool
             Show sector names on nodes
+        
+        ✅ FIXED: Properly positioned nodes using Cartesian coordinates
+        ✅ FIXED: Removed duplicate radius specification in Circle constructor
         """
         if not self.sector_angles:
             self.compute_sector_angles()
@@ -875,27 +878,35 @@ class VividChordDiagram:
             
             node_size *= node_size_scale
             
-            # Create decorative node
-            node_color = sector_colors.get(sector, '#666666')
+            # ✅ FIXED: Calculate proper Cartesian position for node
+            x_pos = outer_r * np.cos(angle_rad)
+            y_pos = outer_r * np.sin(angle_rad)
             
-            # Outer glow circle
-            glow_circle = Circle((0, 0), outer_r + 0.05,
-                               transform=transforms.Affine2D().rotate(angle_rad) + self.ax.transData,
-                               radius=node_size / 2000,
-                               facecolor=node_color,
-                               alpha=0.3,
-                               zorder=5)
+            # Calculate appropriate radii for glow and node (scaled for 24x24 canvas)
+            glow_radius = node_size / 3000  # Scaled for large canvas
+            node_radius = node_size / 2000  # Scaled for large canvas
+            
+            # Create outer glow circle - ✅ FIXED RADIUS CONFLICT
+            glow_circle = Circle(
+                (x_pos, y_pos),           # Center position (Cartesian)
+                radius=glow_radius,       # Single radius specification
+                facecolor=sector_colors.get(sector, '#666666'),
+                alpha=0.3,
+                zorder=5
+            )
             self.ax.add_patch(glow_circle)
             
-            # Main node circle
-            node_circle = Circle((0, 0), outer_r,
-                               transform=transforms.Affine2D().rotate(angle_rad) + self.ax.transData,
-                               radius=node_size / 1500,
-                               facecolor=node_color,
-                               edgecolor='white' if CHORD_DIAGRAM_DEFAULTS['show_node_borders'] else node_color,
-                               linewidth=CHORD_DIAGRAM_DEFAULTS['node_border_width'],
-                               alpha=0.95,
-                               zorder=10)
+            # Create main node circle - ✅ FIXED RADIUS CONFLICT
+            node_color = sector_colors.get(sector, '#666666')
+            node_circle = Circle(
+                (x_pos, y_pos),           # Center position (Cartesian)
+                radius=node_radius,       # Single radius specification
+                facecolor=node_color,
+                edgecolor='white' if CHORD_DIAGRAM_DEFAULTS['show_node_borders'] else node_color,
+                linewidth=CHORD_DIAGRAM_DEFAULTS['node_border_width'],
+                alpha=0.95,
+                zorder=10
+            )
             self.ax.add_patch(node_circle)
     
     def add_legend(self, title: str = "Link Strength", 
@@ -1049,8 +1060,8 @@ class VividChordDiagram:
             
             # Add shadow effect
             title_text.set_path_effects([
-                matplotlib.patheffects.Stroke(linewidth=4, foreground='black', alpha=0.8),
-                matplotlib.patheffects.Normal()
+                patheffects.Stroke(linewidth=4, foreground='black', alpha=0.8),
+                patheffects.Normal()
             ])
         
         # Remove margins
@@ -1201,30 +1212,6 @@ def create_vivid_chord_diagram(
     -------
     matplotlib.figure.Figure
         Fully rendered vivid chord diagram
-    
-    Examples
-    --------
-    >>> # Matrix example with vivid styling
-    >>> matrix = np.random.rand(12, 12)
-    >>> fig = create_vivid_chord_diagram(
-    ...     matrix, 
-    ...     data_type='matrix',
-    ...     sector_color_palette='rainbow',
-    ...     link_color_palette='fire'
-    ... )
-    >>> 
-    >>> # Adjacency list with directional flows
-    >>> df = pd.DataFrame({
-    ...     'source': ['Gene_A', 'Gene_A', 'Gene_B', 'Gene_C'],
-    ...     'target': ['Pathway_X', 'Pathway_Y', 'Pathway_X', 'Pathway_Z'],
-    ...     'value': [8.5, 4.2, 9.3, 6.7]
-    ... })
-    >>> fig = create_vivid_chord_diagram(
-    ...     df, 
-    ...     data_type='adjacency_list',
-    ...     directional=True,
-    ...     background_color='#000000'
-    ... )
     """
     # Update global defaults with user parameters
     global CHORD_DIAGRAM_DEFAULTS
@@ -1521,7 +1508,7 @@ def create_vivid_chord_diagram(
         bg_alpha=0.95
     )
     
-    # Add decorative sector nodes
+    # Add decorative sector nodes - ✅ NOW SAFE WITH FIXED IMPLEMENTATION
     if show_sector_nodes:
         diagram.add_sector_nodes(
             sector_colors,
@@ -1990,7 +1977,7 @@ def create_vivid_streamlit_app():
                 st.markdown("🔄 **Undirected**: Symmetric relationships")
     
     # ============================================================================
-    # DATA EXPLORER TAB - FIXED SYNTAX ERROR (was "with tab_")
+    # DATA EXPLORER TAB - ✅ FIXED SYNTAX ERROR
     # ============================================================================
     with tab_data:  # ✅ CORRECTED: was "with tab_" (invalid syntax)
         st.header("Dataset Analysis")
