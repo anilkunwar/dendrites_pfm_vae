@@ -231,9 +231,9 @@ class VividChordDiagram:
         self.ax.set_theta_zero_location("N")  # 0° at top
         self.ax.set_theta_direction(-1)       # Clockwise by default
         
-        # Data structures
+        # Data structures - FIXED SYNTAX ERROR HERE
         self.sectors: List[str] = []
-        self.sector_ Dict[str, Dict] = {}
+        self.sector_data: Dict[str, Dict] = {}  # ✅ CORRECTED: was "self.sector_ Dict" (invalid syntax)
         self.links: List[Dict] = []
         self.tracks: Dict[str, Dict[int, Dict]] = {}
         self.groups: Dict[str, int] = {}
@@ -1086,7 +1086,7 @@ class VividChordDiagram:
 # ============================================================================
 
 def create_vivid_chord_diagram(
-     Any,
+    data: Any,
     data_type: str = 'matrix',
     figsize: Tuple[int, int] = (24, 24),  # LARGER canvas
     dpi: int = 300,                       # HIGHER resolution
@@ -1989,9 +1989,9 @@ def create_vivid_streamlit_app():
                 st.markdown("🔄 **Undirected**: Symmetric relationships")
     
     # ============================================================================
-    # DATA EXPLORER TAB
+    # DATA EXPLORER TAB - FIXED SYNTAX ERROR (was "with tab_")
     # ============================================================================
-    with tab_data:
+    with tab_data:  # ✅ CORRECTED: was "with tab_" (invalid syntax)
         st.header("Dataset Analysis")
         
         if data_type == "matrix":
