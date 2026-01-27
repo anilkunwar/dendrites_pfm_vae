@@ -1,14 +1,17 @@
 import streamlit as st
 import pandas as pd
+import io
 import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
-from io import StringIO
+from pycirclize import Circos
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib.colors import LinearSegmentedColormap
 
-# Load your data (paste your CSV content here or upload file)
-@st.cache_data
-def load_data():
-    csv_data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+# --- PAGE CONFIGURATION ---
+st.set_page_config(layout="wide", page_title="Advanced Circos (R Style)")
+
+# --- DATASET ---
+default_data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
 2,5.304021017662722,0.10460069444444445,0.12041199826559248,0.08961087465286255,0.4117993414402008,0.3086051940917969,0.5759025812149048,0.5457133650779724,0.37897956371307373,0.6828550696372986,0.37128087878227234,0.5426892042160034,0.31361812353134155,0.5300193428993225,0.3330453932285309,0.6396515965461731,0.4162127375602722,0.386873722076416
@@ -40,230 +43,186 @@ def load_data():
 28,11.020299291797908,0.5798611111111112,0.19731278535996988,1.1938612461090088,0.8728200793266296,1.2563399076461792,0.9425970911979675,1.665657877922058,1.1347849369049072,1.6763732433319092,0.9476985335350037,1.450101613998413,0.9543245434761047,0.7781178951263428,0.7439810633659363,0.7765737175941467,0.9004281163215637,0.8755770325660706
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
-    
-    return pd.read_csv(StringIO(csv_data))
 
-def create_circular_barplot(df, step_value):
-    """Circular bar chart showing parameter values at a specific step"""
-    step_data = df[df['step'] == step_value].iloc[0]
-    
-    # Select parameters to visualize (excluding metadata columns)
-    param_cols = ['fo', 'Al', 'Bl', 'Cl', 'As', 'Bs', 'Cs', 'cleq', 'cseq', 'L1o', 'L2o', 'ko', 'Noise']
-    values = [step_data[col] for col in param_cols]
-    
-    # Create angles for circular layout
-    angles = np.linspace(0, 2 * np.pi, len(param_cols), endpoint=False)
-    angles = np.concatenate((angles, [angles[0]]))  # Close the loop
-    values = np.concatenate((values, [values[0]]))
-    
-    fig = go.Figure()
-    
-    # Main circular bars
-    fig.add_trace(go.Scatterpolar(
-        r=values[:-1],
-        theta=param_cols,
-        fill='toself',
-        name=f'Step {step_value}',
-        line=dict(color='royalblue', width=3),
-        marker=dict(size=8, color='royalblue')
-    ))
-    
-    # Highlight current step value with markers
-    fig.add_trace(go.Scatterpolar(
-        r=values[:-1],
-        theta=param_cols,
-        mode='markers',
-        marker=dict(size=12, color='red', symbol='star'),
-        name='Current Values'
-    ))
-    
-    fig.update_layout(
-        title=f'Circular Parameter Profile - Step {step_value} (Score: {step_data["score"]:.2f})',
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, max(values) * 1.2],
-                title='Parameter Value'
-            ),
-            angularaxis=dict(rotation=90)
-        ),
-        showlegend=True,
-        height=600,
-        template='plotly_dark'
-    )
-    
-    return fig
+# --- SIDEBAR & CONFIG ---
 
-def create_chord_diagram(df, step_value):
-    """Chord diagram showing relationships between parameters using Sankey (Plotly's chord alternative)"""
-    step_data = df[df['step'] == step_value].iloc[0]
-    
-    # Define nodes (parameters)
-    nodes = ['fo', 'Al', 'Bl', 'Cl', 'As', 'Bs', 'Cs', 'cleq', 'cseq', 'L1o', 'L2o', 'ko']
-    
-    # Create relationship matrix (simplified: product of values)
-    n = len(nodes)
-    matrix = np.zeros((n, n))
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                # Simulate relationship strength (customize based on your domain knowledge)
-                matrix[i, j] = step_data[nodes[i]] * step_data[nodes[j]] * 0.3
-    
-    # Prepare Sankey data
-    sources = []
-    targets = []
-    values = []
-    link_colors = []
-    
-    color_palette = px.colors.qualitative.Plotly
-    
-    for i in range(n):
-        for j in range(n):
-            if matrix[i, j] > 0.01:  # Threshold for visibility
-                sources.append(i)
-                targets.append(j + n)  # Offset targets to create two groups
-                values.append(matrix[i, j])
-                link_colors.append(f'rgba{color_palette[i % len(color_palette)][3:-1]}, 0.6)')
-    
-    # Create node labels with two groups (source and target)
-    node_labels = nodes + [f"{n}*" for n in nodes]
-    node_colors = color_palette * 2
-    
-    fig = go.Figure(data=[go.Sankey(
-        node=dict(
-            pad=15,
-            thickness=20,
-            line=dict(color="white", width=1),
-            label=node_labels,
-            color=node_colors[:len(node_labels)]
-        ),
-        link=dict(
-            source=sources,
-            target=targets,
-            value=values,
-            color=link_colors
-        )
-    )])
-    
-    fig.update_layout(
-        title=f'Parameter Relationships (Chord Diagram) - Step {step_value}',
-        height=700,
-        template='plotly_dark'
-    )
-    
-    return fig
+st.sidebar.title("Circos Diagram Settings")
 
-def create_parameter_evolution(df):
-    """Circular timeline showing parameter evolution across steps"""
-    # Select key parameters
-    params = ['coverage', 'hopping_strength', 'score', 'fo', 'Al', 'Bl']
-    
-    # Create circular layout with steps as angles
-    n_steps = len(df)
-    angles = np.linspace(0, 360, n_steps, endpoint=False)
-    
-    fig = go.Figure()
-    
-    # Add each parameter as a separate trace
-    for i, param in enumerate(params):
-        color = px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
-        fig.add_trace(go.Scatterpolar(
-            r=df[param].values,
-            theta=angles,
-            mode='lines+markers',
-            name=param,
-            line=dict(color=color, width=2),
-            marker=dict(size=4)
-        ))
-    
-    # Highlight current max score step
-    max_step_idx = df['score'].idxmax()
-    fig.add_trace(go.Scatterpolar(
-        r=[df.loc[max_step_idx, 'score']],
-        theta=[angles[max_step_idx]],
-        mode='markers',
-        marker=dict(size=15, color='gold', symbol='star', line=dict(width=2, color='yellow')),
-        name=f'Max Score (Step {df.loc[max_step_idx, "step"]})'
-    ))
-    
-    fig.update_layout(
-        title='Parameter Evolution Across Steps (Circular Timeline)',
-        polar=dict(
-            radialaxis=dict(visible=True, title='Value'),
-            angularaxis=dict(
-                tickmode='array',
-                tickvals=angles[::max(1, n_steps//10)],
-                ticktext=[f"Step {int(df.iloc[i]['step'])}" for i in range(0, n_steps, max(1, n_steps//10))],
-                rotation=90
-            )
-        ),
-        showlegend=True,
-        height=700,
-        template='plotly_dark'
-    )
-    
-    return fig
+df = pd.read_csv(io.StringIO(default_data))
+metadata_cols = ['step', 'score', 'coverage', 'hopping_strength']
+all_features = [c for c in df.columns if c not in metadata_cols]
 
-def main():
-    st.set_page_config(page_title="Circular Data Visualization", layout="wide")
-    st.title("🔬 Circular Visualization Dashboard")
-    st.markdown("Interactive circular visualizations of parameter evolution over simulation steps")
-    
-    # Load data
-    df = load_data()
-    
-    # Sidebar controls
-    st.sidebar.header("🎛️ Controls")
-    
-    viz_type = st.sidebar.selectbox(
-        "Visualization Type",
-        [
-            "Circular Parameter Profile (Radar Chart)",
-            "Parameter Relationships (Chord Diagram)",
-            "Parameter Evolution (Circular Timeline)"
-        ]
-    )
-    
-    step_value = st.sidebar.slider(
-        "Select Step",
-        min_value=int(df['step'].min()),
-        max_value=int(df['step'].max()),
-        value=int(df['step'].max()),  # Default to last step
-        step=1
-    )
-    
-    # Main content
-    col1, col2 = st.columns([3, 1])
-    
-    with col2:
-        st.subheader("📊 Step Metrics")
-        current_data = df[df['step'] == step_value].iloc[0]
-        st.metric("Score", f"{current_data['score']:.2f}")
-        st.metric("Coverage", f"{current_data['coverage']:.3f}")
-        st.metric("Hopping Strength", f"{current_data['hopping_strength']:.3f}")
-        st.metric("Time (t)", f"{current_data['t']:.3f}")
+st.sidebar.subheader("1. Data Selection")
+mode = st.sidebar.radio("Visualization Mode", ["Single Step", "Compare Steps (Delta)"])
+
+if mode == "Single Step":
+    step_select = st.sidebar.selectbox("Select Step", df['step'].tolist())
+    # Outer product for single step
+    data_source = df[df['step'] == step_select]
+    chart_title = f"Interaction Matrix: Step {step_select}"
+else:
+    st.sidebar.markdown("Compare two steps to see positive/negative changes.")
+    step_a = st.sidebar.selectbox("Baseline Step", df['step'].tolist(), index=0)
+    step_b = st.sidebar.selectbox("Compare Step", df['step'].tolist(), index=30)
+    # Difference matrix (B - A)
+    data_source = None # Handled in logic
+    chart_title = f"Delta Matrix: Step {step_b} minus Step {step_a}"
+
+st.sidebar.subheader("2. Features")
+selected_features = st.sidebar.multiselect("Select Features", all_features, default=all_features[:8])
+
+st.sidebar.subheader("3. Layout (R Section 2 & 14)")
+gap_size = st.sidebar.slider("Sector Gap (Degrees)", 0, 20, 2)
+start_deg = st.sidebar.slider("Start Degree", 0, 360, 90, help="Rotates the entire diagram")
+
+st.sidebar.subheader("4. Links (R Section 14.5, 14.10)")
+directional = st.sidebar.checkbox("Directional Links (Arrows)", value=False, help="Section 14.10")
+link_sort = st.sidebar.checkbox("Sort Links by Width", value=True, help="Section 14.6")
+show_scale = st.sidebar.checkbox("Scale Links (Relative)", value=False, help="Section 14.11")
+transparency = st.sidebar.slider("Transparency (0-1)", 0.0, 1.0, 0.5)
+link_threshold = st.sidebar.slider("Min Link Value (Filter)", 0.0, 1.0, 0.05, help="Section 14.5 (link.visible)")
+
+st.sidebar.subheader("5. Colors (R Section 14.3)")
+color_mode = st.sidebar.selectbox("Link Coloring", ["Source Sector Color", "By Value (Heatmap)"])
+colormap_name = st.sidebar.selectbox("Colormap", sorted(plt.colormaps()), index=sorted(plt.colormaps()).index('jet'))
+
+# --- LOGIC ---
+
+if len(selected_features) < 2:
+    st.warning("Please select at least 2 features.")
+else:
+    # --- MATRIX PREPARATION ---
+    if mode == "Single Step":
+        row = data_source.iloc[0]
+        vals = row[selected_features].values.astype(float)
+        matrix = np.outer(vals, vals)
+        np.fill_diagonal(matrix, 0)
+    else:
+        row_a = df[df['step'] == step_a].iloc[0]
+        row_b = df[df['step'] == step_b].iloc[0]
+        vals_a = row_a[selected_features].values.astype(float)
+        vals_b = row_b[selected_features].values.astype(float)
+        mat_a = np.outer(vals_a, vals_a)
+        mat_b = np.outer(vals_b, vals_b)
+        matrix = mat_b - mat_a # Delta
         
-        with st.expander("PropertyParams"):
-            st.write(current_data.drop(['step']).to_dict())
+        # In Delta mode, we want to color positive/negative differently
+        # We will handle colors specifically in the loop
     
-    with col1:
-        if viz_type == "Circular Parameter Profile (Radar Chart)":
-            fig = create_circular_barplot(df, step_value)
-            st.plotly_chart(fig, use_container_width=True)
-            
-        elif viz_type == "Parameter Relationships (Chord Diagram)":
-            st.info("💡 Chord diagram shows simulated relationships between parameters (strength = product of values)")
-            fig = create_chord_diagram(df, step_value)
-            st.plotly_chart(fig, use_container_width=True)
-            
-        elif viz_type == "Parameter Evolution (Circular Timeline)":
-            fig = create_parameter_evolution(df)
-            st.plotly_chart(fig, use_container_width=True)
+    matrix_df = pd.DataFrame(matrix, index=selected_features, columns=selected_features)
     
-    # Data table
-    with st.expander("📋 Full Dataset"):
-        st.dataframe(df.style.background_gradient(subset=['score', 'coverage'], cmap='viridis'), use_container_width=True)
+    # Apply Scaling (Section 14.11)
+    if show_scale:
+        # Scale by row sum (fraction of source sector output)
+        row_sums = matrix_df.sum(axis=1).replace(0, np.nan)
+        matrix_df = matrix_df.div(row_sums, axis=0)
+        max_val = 1.0
+    else:
+        max_val = matrix_df.abs().max().max()
 
-if __name__ == "__main__":
-    main()
+    # --- CIRCOS INITIALIZATION ---
+    
+    # Calculate uniform gap logic to avoid the TypeError in previous versions
+    # We pass a single integer for space
+    circos = Circos.initialize_from_matrix(
+        matrix_df,
+        space=gap_size,
+        start=start_deg
+    )
+    
+    circos.fig.set_facecolor("white")
+    
+    # --- DRAW SECTORS ---
+    cmap = mpl.colormaps[colormap_name]
+    
+    for idx, sector in enumerate(circos.sectors):
+        # Map index to color
+        sector_color = cmap(idx / len(selected_features))
+        sector.facecolor = sector_color
+        sector.text(sector.name, size=12, orientation="vertical", color="black")
+
+    # --- DRAW LINKS (MANUAL LOOP FOR FLEXIBILITY) ---
+    # This allows us to implement R logic like 'link.visible', 'link.sort', 'directional'
+    
+    # 1. Prepare Link List
+    links = []
+    for i, n1 in enumerate(selected_features):
+        for j, n2 in enumerate(selected_features):
+            if i >= j: continue # Avoid duplicates/self for standard chord
+            
+            val = matrix_df.loc[n1, n2]
+            
+            # Check Threshold (Section 14.5 link.visible)
+            if abs(val) < link_threshold:
+                continue
+
+            links.append((n1, n2, val))
+
+    # 2. Sort Links (Section 14.6)
+    if link_sort:
+        links.sort(key=lambda x: abs(x[2]), reverse=True)
+
+    # 3. Draw Loop
+    for n1, n2, val in links:
+        s1 = circos.get_sector(n1)
+        s2 = circos.get_sector(n2)
+        
+        # Link Thickness
+        if max_val > 0:
+            r_thickness = (abs(val) / max_val) * 90
+        else:
+            r_thickness = 0
+
+        # Color Logic (Section 14.3)
+        if mode == "Compare Steps (Delta)":
+            # Positive = Green/Blue, Negative = Red/Orange
+            link_color = "#00FF00" if val >= 0 else "#FF0000"
+        elif color_mode == "Source Sector Color":
+            link_color = s1.facecolor
+        else:
+            # Heatmap based on normalized value (0-1)
+            norm_val = abs(val) / max_val
+            link_color = cmap(norm_val)
+
+        # Direction Logic (Section 14.10)
+        # direction=1: n1 -> n2 (arrow at n2)
+        # direction=0: none
+        direction = 1 if directional else 0
+        
+        s1.link_to(
+            s2,
+            r1=r_thickness,
+            r2=r_thickness,
+            color=link_color,
+            ec="white",
+            lw=0.5,
+            alpha=1.0 - transparency,
+            direction=direction,
+            arrow_length=5 if directional else 0,
+            arrow_width=3 if directional else 0
+        )
+
+    # --- PLOT & LEGEND ---
+    fig = circos.plotfig()
+    
+    # Add Colorbar if Value mode
+    if color_mode == "By Value (Heatmap)" and mode != "Compare Steps (Delta)":
+        norm = mpl.colors.Normalize(vmin=0, vmax=max_val)
+        sm = plt.cm.ScalarMappable(cmap=colormap_name, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=circos.ax, orientation='horizontal', fraction=0.05, pad=0.1)
+        cbar.set_label('Interaction Strength')
+    elif mode == "Compare Steps (Delta)":
+        # Custom legend for Delta mode
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], color="#00FF00", lw=4, label='Increase'),
+            Line2D([0], [0], color="#FF0000", lw=4, label='Decrease'),
+        ]
+        circos.ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.1, 1.1))
+
+    st.pyplot(fig)
+    
+    # Display Metrics
+    with st.expander("Matrix Data"):
+        st.dataframe(matrix_df.style.background_gradient(cmap=colormap_name))
