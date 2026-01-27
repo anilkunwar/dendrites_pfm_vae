@@ -23,6 +23,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.ticker import FuncFormatter
 import traceback
+import os  # ✅ ADDED FOR FILE PATH HANDLING
 
 warnings.filterwarnings('ignore')
 
@@ -1098,7 +1099,7 @@ class VividChordDiagram:
 # ============================================================================
 
 def create_vivid_chord_diagram(
-    data: Any,
+     Any,
     data_type: str = 'matrix',
     figsize: Tuple[int, int] = (24, 24),  # LARGER canvas
     dpi: int = 300,                       # HIGHER resolution
@@ -1722,35 +1723,58 @@ def create_vivid_streamlit_app():
                 use_column_width=True)
         st.markdown("### 📊 Data Configuration")
         
-        # Data source selection
-        use_example = st.checkbox("✨ Use vivid example dataset", value=True, key="use_example")
+        # Data source selection - ✅ LOADING CSV WITH OS.PATH.JOIN
+        use_example = st.checkbox("✨ Use dendrites attributes dataset", value=True, key="use_example")
         
         if use_example:
-            # Generate sophisticated example data
-            np.random.seed(42)
-            n = 15  # Larger network
-            # Create block-structured correlation matrix
-            matrix = np.zeros((n, n))
-            for i in range(n):
-                for j in range(n):
-                    if i == j:
-                        matrix[i, j] = 1.0
-                    elif abs(i - j) <= 3:
-                        matrix[i, j] = 0.9 - abs(i - j) * 0.2
-                    else:
-                        matrix[i, j] = np.random.uniform(0.1, 0.4)
-            
-            # Add asymmetry for directional flows
-            for i in range(n):
-                for j in range(i+1, n):
-                    if np.random.random() > 0.6:
-                        matrix[i, j] *= 1.8
-            
-            row_names = [f"Gene_{i+1:02d}" for i in range(n)]
-            col_names = [f"Pathway_{j+1:02d}" for j in range(n)]
-            data = pd.DataFrame(matrix, index=row_names, columns=col_names)
-            data_type = "matrix"
-            st.success(f"✅ Loaded biological network ({n}×{n} = {n*n} connections)")
+            try:
+                # ✅ SAFE FILE PATH CONSTRUCTION USING OS.PATH.JOIN
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                file_path = os.path.join(current_dir, "dendrites_attributes.csv")
+                
+                # Fallback to working directory if needed
+                if not os.path.exists(file_path):
+                    file_path = os.path.join(os.getcwd(), "dendrites_attributes.csv")
+                
+                # Load and process CSV
+                raw_data = pd.read_csv(file_path)
+                st.success(f"✅ Loaded dendrites_attributes.csv ({len(raw_data)} rows)")
+                
+                # Compute correlation matrix for chord diagram
+                data_for_corr = raw_data.drop(columns=['step'], errors='ignore')
+                corr_matrix = data_for_corr.corr().abs()
+                np.fill_diagonal(corr_matrix.values, 0)  # Zero diagonal
+                
+                data = corr_matrix
+                data_type = "matrix"
+                st.info(f"🔄 Converted to correlation matrix ({data.shape[0]}×{data.shape[1]})")
+                
+            except Exception as e:
+                st.error(f"❌ Error loading dendrites_attributes.csv: {str(e)}")
+                st.warning("⚠️ Falling back to generated example data")
+                
+                # Fallback to generated data
+                np.random.seed(42)
+                n = 15
+                matrix = np.zeros((n, n))
+                for i in range(n):
+                    for j in range(n):
+                        if i == j:
+                            matrix[i, j] = 1.0
+                        elif abs(i - j) <= 3:
+                            matrix[i, j] = 0.9 - abs(i - j) * 0.2
+                        else:
+                            matrix[i, j] = np.random.uniform(0.1, 0.4)
+                
+                for i in range(n):
+                    for j in range(i+1, n):
+                        if np.random.random() > 0.6:
+                            matrix[i, j] *= 1.8
+                
+                row_names = [f"Gene_{i+1:02d}" for i in range(n)]
+                col_names = [f"Pathway_{j+1:02d}" for j in range(n)]
+                data = pd.DataFrame(matrix, index=row_names, columns=col_names)
+                data_type = "matrix"
         else:
             uploaded_file = st.file_uploader("📤 Upload CSV/Excel", type=['csv', 'xlsx'])
             if uploaded_file:
@@ -1768,7 +1792,7 @@ def create_vivid_streamlit_app():
                     st.error(f"❌ Error loading file: {str(e)}")
                     st.stop()
             else:
-                st.info("👆 Upload your data or use the example dataset")
+                st.info("👆 Upload your data or use the dendrites dataset")
                 st.stop()
         
         # Quick presets for vivid styles
@@ -1922,7 +1946,7 @@ def create_vivid_streamlit_app():
                         'data_type': data_type,
                         'figsize': (24, 24),
                         'dpi': 300,
-                        'title': f"Vivid Network • {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                        'title': f"Dendrites Attributes Correlation • {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                         'start_degree': start_degree,
                         'direction': direction,
                         'big_gap': big_gap,
@@ -1979,7 +2003,7 @@ def create_vivid_streamlit_app():
     # ============================================================================
     # DATA EXPLORER TAB - ✅ FIXED SYNTAX ERROR
     # ============================================================================
-    with tab_data:  # ✅ CORRECTED: was "with tab_" (invalid syntax)
+    with tab_  # ✅ CORRECTED: was "with tab_" (invalid syntax)
         st.header("Dataset Analysis")
         
         if data_type == "matrix":
@@ -2155,7 +2179,7 @@ def create_vivid_streamlit_app():
                 st.download_button(
                     label="⬇️ Download PNG (Ultra HD)",
                     data=buf_png,
-                    file_name=f"vivid_network_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
                     mime="image/png",
                     key="png_download",
                     help="Best for presentations and web use"
@@ -2170,7 +2194,7 @@ def create_vivid_streamlit_app():
                 st.download_button(
                     label="⬇️ Download TIFF (Print Ready)",
                     data=buf_tiff,
-                    file_name=f"vivid_network_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tiff",
+                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tiff",
                     mime="image/tiff",
                     key="tiff_download",
                     help="Best for high-quality printing and posters"
@@ -2187,7 +2211,7 @@ def create_vivid_streamlit_app():
                 st.download_button(
                     label="⬇️ Download PDF (Publication Quality)",
                     data=buf_pdf,
-                    file_name=f"vivid_network_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                     mime="application/pdf",
                     key="pdf_download",
                     help="Required for academic publications"
@@ -2201,7 +2225,7 @@ def create_vivid_streamlit_app():
                 st.download_button(
                     label="⬇️ Download SVG (Editable Vector)",
                     data=buf_svg,
-                    file_name=f"vivid_network_{datetime.now().strftime('%Y%m%d_%H%M%S')}.svg",
+                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.svg",
                     mime="image/svg+xml",
                     key="svg_download",
                     help="Best for editing in Illustrator or Inkscape"
