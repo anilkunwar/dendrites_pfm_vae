@@ -10,5 +10,6 @@ networkx
 umap-learn
 scikit-learn
 pynndescent
+hdbscan
 
 
