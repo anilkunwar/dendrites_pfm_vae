@@ -6,19 +6,18 @@ from pycirclize import Circos
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import warnings
-import sys
 
-# Critical fix: Suppress warnings and verify pycirclize availability
+# Suppress non-critical warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+
+# Verify pycirclize availability
 try:
     import pycirclize
     PYCIRCLIZE_AVAILABLE = True
 except ImportError:
     PYCIRCLIZE_AVAILABLE = False
-    st.error("❌ pycirclize library not installed. Please install it with: `pip install pycirclize`")
-    st.stop()
 
-# CSV data (unchanged)
+# CSV data
 data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
@@ -61,7 +60,21 @@ st.set_page_config(page_title="Chord Diagram Explorer", layout="wide")
 st.title("🔬 Enhanced Chord Diagram Explorer")
 st.markdown("Visualize feature interactions across simulation steps using circular chord diagrams")
 
-# Sidebar controls (NO MatrixParser dependency)
+# Handle missing pycirclize
+if not PYCIRCLIZE_AVAILABLE:
+    st.error("""
+    ❌ **pycirclize library not installed**
+    
+    To use this app, install pycirclize:
+    ```bash
+    pip install pycirclize
+    ```
+    
+    This package is required for chord diagram visualization.
+    """)
+    st.stop()
+
+# Sidebar controls
 with st.sidebar:
     st.header("🎨 Visualization Controls")
     
@@ -70,10 +83,10 @@ with st.sidebar:
         colormaps = sorted([c for c in plt.colormaps() if not c.endswith('_r')])
         default_cmap = 'viridis' if 'viridis' in colormaps else colormaps[0]
     except:
-        colormaps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
+        colormaps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'jet', 'rainbow']
         default_cmap = 'viridis'
     
-    selected_cmap = st.selectbox("Colormap", colormaps, index=colormaps.index(default_cmap) if default_cmap in colormaps else 0)
+    selected_cmap = st.selectbox("Colormap", colormaps, index=colormaps.index(default_cmap))
     label_size = st.slider("Label Font Size", 6, 16, 9)
     transparency = st.slider("Link Transparency", 0.0, 1.0, 0.6, 0.1)
     big_gap = st.slider("Big Gap (degrees)", 0, 45, 15, 1, 
@@ -84,7 +97,7 @@ with st.sidebar:
     
     st.header("⚙️ Processing Options")
     scale = st.checkbox("Scale Sectors by Total Flow", False,
-                       help="Normalize rows to show proportional flows")
+                       help="Normalize rows to show proportional flows (row-wise)")
     
     st.header("🔍 Data Selection")
     all_steps = sorted(df['step'].unique().tolist())
@@ -96,17 +109,13 @@ with st.sidebar:
         selected_steps = selected_steps[:3]
 
 # Main content
-if not PYCIRCLIZE_AVAILABLE:
-    st.error("pycirclize is not available in this environment. Please install it to use this app.")
-    st.stop()
-
 if not selected_steps:
     st.warning("⚠️ Please select at least one step to visualize")
     st.stop()
 
-# Feature grouping colors
-group1_color = "#4e79a7"  # First 6 features (t to Cl)
-group2_color = "#f28e2b"  # Remaining 9 features
+# Feature grouping colors (first 6 vs remaining 9)
+group1_color = "#4e79a7"  # Blue for physical params (t to Cl)
+group2_color = "#f28e2b"  # Orange for system states (As to Noise)
 sector_colors = [group1_color] * 6 + [group2_color] * 9
 
 # Render diagrams
@@ -122,37 +131,38 @@ for i, step_val in enumerate(selected_steps):
         row = df[df['step'] == step_val].iloc[0]
         values = row[features].values.astype(float)
         
-        # Create interaction matrix
+        # Create interaction matrix (outer product)
         matrix = np.outer(values, values)
         np.fill_diagonal(matrix, 0)  # Remove self-loops
         
         # Apply scaling if requested
         if scale and matrix.sum() > 0:
             row_sums = matrix.sum(axis=1, keepdims=True)
-            row_sums[row_sums == 0] = 1
+            row_sums[row_sums == 0] = 1  # Avoid division by zero
             matrix = matrix / row_sums
         
-        # Create DataFrame
+        # Create DataFrame for pycirclize
         matrix_df = pd.DataFrame(matrix, index=features, columns=features)
         
-        # Configure gaps: ONE gap value AFTER each sector (length = num sectors)
+        # Configure gaps: list length = number of sectors (15)
+        # Gaps are placed AFTER each sector (last gap wraps around to first sector)
         gaps = [small_gap] * len(features)
         if big_gap > 0:
             gaps[5] = big_gap   # After 6th feature (Cl - end of group 1)
-            gaps[-1] = big_gap  # After last feature (before first feature)
+            gaps[-1] = big_gap  # After last feature (wraps to first sector)
         
-        # Initialize Circos (NO unsupported parameters)
+        # Initialize Circos diagram
         circos = Circos.initialize_from_matrix(
             matrix_df,
             space=gaps,
             cmap=selected_cmap
         )
         
-        # Add sector labels
+        # Add sector labels with proper positioning
         for sector in circos.sectors:
             sector.text(
                 sector.name,
-                r=103,
+                r=103,  # Position outside the circle
                 size=label_size,
                 color="black",
                 ha="center",
@@ -160,13 +170,10 @@ for i, step_val in enumerate(selected_steps):
                 orientation="vertical"
             )
         
-        # Add colored background tracks for groups
+        # Add colored background tracks for visual grouping
         for sector, color in zip(circos.sectors, sector_colors):
-            sector.add_track(
-                (96, 99),
-                color=color,
-                alpha=0.25
-            )
+            track = sector.add_track((96, 99))  # Create track between radii 96-99
+            track.axis(fc=color, ec="none", alpha=0.25)  # Set facecolor properly
         
         # Draw links with styling
         circos.draw_links(
@@ -180,9 +187,9 @@ for i, step_val in enumerate(selected_steps):
         # Create figure
         fig = circos.plotfig(figsize=(10, 10))
         
-        # Add colorbar if valid range
+        # Add colorbar if there's meaningful variation
         min_val, max_val = matrix.min(), matrix.max()
-        if max_val > min_val and max_val > 1e-10:
+        if max_val > min_val and (max_val - min_val) > 1e-8:
             norm = mpl.colors.Normalize(vmin=min_val, vmax=max_val)
             sm = plt.cm.ScalarMappable(cmap=selected_cmap, norm=norm)
             sm.set_array([])
@@ -191,54 +198,58 @@ for i, step_val in enumerate(selected_steps):
             cbar.set_label('Interaction Strength', fontsize=11)
             cbar.ax.tick_params(labelsize=9)
         
-        # Add title with metadata
+        # Add informative title with simulation metadata
         fig.suptitle(
             f"Step {int(step_val)} | Score: {row['score']:.3f} | "
             f"Coverage: {row['coverage']:.3f} | Hopping: {row['hopping_strength']:.3f}",
             fontsize=13, y=0.96, fontweight='bold'
         )
         
-        # Display
+        # Display in Streamlit
         st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        plt.close(fig)  # Prevent memory leaks
         
-        # Show statistics
+        # Show interaction statistics in expandable section
         with st.expander(f"📈 Interaction Statistics for Step {step_val}"):
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Max Interaction", f"{max_val:.4f}")
             with col2:
-                st.metric("Mean Interaction", f"{matrix[matrix>0].mean():.4f}" if matrix.max()>0 else "0.0000")
+                nonzero_vals = matrix[matrix > 1e-8]
+                mean_val = nonzero_vals.mean() if len(nonzero_vals) > 0 else 0.0
+                st.metric("Mean (non-zero)", f"{mean_val:.4f}")
             with col3:
-                st.metric("Non-zero Links", f"{np.count_nonzero(matrix)}/{matrix.size}")
+                st.metric("Non-zero Links", f"{np.count_nonzero(matrix > 1e-8)}/{matrix.size}")
             
-            # Top interactions
+            # Top interactions table
+            st.subheader("Top 5 Strongest Interactions")
             interactions = []
             for r in range(len(features)):
-                for c in range(r+1, len(features)):
-                    if matrix[r, c] > 1e-6:
-                        interactions.append((features[r], features[c], matrix[r, c]))
+                for c in range(r + 1, len(features)):
+                    val = matrix[r, c]
+                    if val > 1e-6:
+                        interactions.append((features[r], features[c], val))
             interactions.sort(key=lambda x: x[2], reverse=True)
             
-            st.subheader("Top 5 Strongest Interactions")
             for idx, (f1, f2, val) in enumerate(interactions[:5], 1):
-                st.write(f"{idx}. **{f1}** ↔ **{f2}**: {val:.4f}")
+                st.write(f"{idx}. **{f1}** ↔ **{f2}**: `{val:.4f}`")
     
     except Exception as e:
         st.error(f"Error rendering Step {step_val}: {str(e)}")
         if st.checkbox("Show technical details", key=f"debug_{step_val}"):
-            st.code(f"Error type: {type(e).__name__}\n{str(e)}", language="python")
+            st.code(f"{type(e).__name__}: {str(e)}", language="python")
         continue
 
+# Cleanup UI elements
 progress.empty()
 status.empty()
 st.success(f"✅ Successfully rendered {len(selected_steps)} chord diagrams")
 
-# Footer
+# Footer with usage notes
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.9em;'>
-    Built with Streamlit + pycirclize | Physical simulation parameter visualization<br>
-    <small>Note: Link sorting controls removed for compatibility with pycirclize ≥1.3.0</small>
+    Built with Streamlit + pycirclize ≥1.3.0 | Physical simulation parameter visualization<br>
+    <small>Note: Link sorting/directional arrows not supported in current pycirclize API</small>
 </div>
 """, unsafe_allow_html=True)
