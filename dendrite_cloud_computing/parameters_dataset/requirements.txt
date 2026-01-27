@@ -7,5 +7,6 @@ pyCirclize
 scipy
 seaborn
 networkx 
+scikit-learn
 
 
