@@ -901,7 +901,7 @@ def plot_dual_histogram_lines(
     sns.set_theme(style=style, palette="muted")
 
     # 创建图表
-    fig, ax1 = plt.subplots(figsize=figsize)
+    fig, ax1 = plt.subplots(figsize=figsize, dpi=300)
 
     # === 绘制条形图（直方图风格）===
     width = (x_shared[1] - x_shared[0]) * 0.8 if len(x_shared) > 1 else 0.8

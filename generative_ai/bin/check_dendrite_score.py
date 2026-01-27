@@ -1,54 +1,63 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-One-row interface images + metric trend plots (clean, publication-style)
-"""
-
 from __future__ import annotations
-from typing import Union, Sequence, List, Tuple, Optional
+from typing import Union, Sequence, List, Tuple
 
 import os
 import glob
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib.patheffects as pe
 
 from src.evaluate_metrics import generate_analysis_figure
 
 
 # ============================================================
-# 1. Metric computation (renamed, no placeholder)
+# Reproducibility & style
 # ============================================================
-def compute_interface_metrics(img: np.ndarray) -> Tuple[float, float]:
-    """
-    Parameters
-    ----------
-    img : np.ndarray
-        2D image array
+SEED = 160
+random.seed(SEED)
+np.random.seed(SEED)
 
-    Returns
-    -------
-    fractal_dimension : float
-    dendrite_intensity_score : float
-    """
-    _, metrics, score = generate_analysis_figure(np.clip(img, 0, 1))
+sns.set_theme(
+    context="paper",
+    style="white",
+    font_scale=1.05,
+)
+
+
+# ============================================================
+# Utilities
+# ============================================================
+def normalize_to_01(img: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    img = img.astype(float)
+    mn, mx = img.min(), img.max()
+    if mx - mn < eps:
+        return np.zeros_like(img)
+    return (img - mn) / (mx - mn)
+
+
+def minmax_01(x: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    mn, mx = float(np.min(x)), float(np.max(x))
+    if mx - mn < eps:
+        return np.zeros_like(x)
+    return (x - mn) / (mx - mn) + 1
+
+
+def compute_interface_metrics(img_01: np.ndarray) -> Tuple[float, float]:
+    _, metrics, score = generate_analysis_figure(np.clip(img_01, 0, 1))
     return float(metrics["fractal_dimension"]), float(score["empirical_score"])
 
 
-# ============================================================
-# 2. Load images
-# ============================================================
 def load_images_from_glob(
     data_dir_or_pattern: Union[str, Sequence[str]],
     *,
     k: int = 9,
     recursive: bool = True,
-    seed: Optional[int] = None,
 ) -> List[np.ndarray]:
-
-    if seed is not None:
-        random.seed(seed)
 
     if isinstance(data_dir_or_pattern, (list, tuple)):
         candidates = list(data_dir_or_pattern)
@@ -71,115 +80,126 @@ def load_images_from_glob(
     for p in chosen:
         arr = np.load(p)
         images.append(arr[..., 0])
-
     return images
 
 
 # ============================================================
-# 3. Visualization
+# Plot
 # ============================================================
-def plot_row_images_with_metric_trends(
+def plot_images_with_seaborn_bars(
     images: List[np.ndarray],
-    metric_fn,
     *,
-    dpi: int = 150,
+    cmap: str = "coolwarm",
+    dpi: int = 160,
 ):
-    """
-    Top: 1 row of images (no labels, no titles)
-    Bottom: two metric trends (solid dots + dashed line, no titles)
-    """
-
-    # ---- compute metrics ----
-    metrics = [metric_fn(img) for img in images]
-    fractal_dims = np.array([m[0] for m in metrics])
-    dendrite_scores = np.array([m[1] for m in metrics])
-
     n = len(images)
-    x = np.arange(1, n + 1)
+    ids = np.arange(1, n + 1)
 
-    fig_w = max(10, 1.35 * n)
-    fig_h = 6.0
+    # normalize images + compute metrics
+    images_01 = [normalize_to_01(im) for im in images]
+    metrics = [compute_interface_metrics(im) for im in images_01]
+    fractal_raw = np.array([m[0] for m in metrics])
+    dendrite_raw = np.array([m[1] for m in metrics])
 
-    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+    # 🔽 归一化后的柱高
+    fractal_norm = minmax_01(fractal_raw)
+    dendrite_norm = minmax_01(dendrite_raw)
+
+    fig_w = max(10, 1.25 * n)
+    fig = plt.figure(figsize=(fig_w, 6.2), dpi=dpi)
     gs = fig.add_gridspec(
-        nrows=3,
-        ncols=1,
-        height_ratios=[2.2, 1.8, 1.8],
-        hspace=0.15,
+        3, 1,
+        height_ratios=[1.45, 2.2, 1.45],
+        hspace=0.08,
     )
 
-    # =======================
-    # Image row
-    # =======================
-    ax_img = fig.add_subplot(gs[0, 0])
-    ax_img.set_axis_off()
+    # -------------------------------
+    # Top: Fractal dimension (normalized bars)
+    # -------------------------------
+    ax_top = fig.add_subplot(gs[0, 0])
+    sns.barplot(
+        x=ids,
+        y=fractal_norm,
+        ax=ax_top,
+        color=sns.color_palette("deep")[0],
+    )
+
+    for i, (v_raw, v_norm) in enumerate(zip(fractal_raw, fractal_norm)):
+        ax_top.text(
+            i, v_norm,
+            f"{v_raw:.3f}",
+            ha="center", va="bottom", fontsize=9,
+        )
+
+    ax_top.set_ylabel("Fractal dimension")
+    ax_top.set_xlabel("Figure ID")
+    ax_top.set_yticks([])
+    ax_top.spines[["left", "right", "top"]].set_visible(False)
+
+    # -------------------------------
+    # Middle: morphology images
+    # -------------------------------
+    ax_mid = fig.add_subplot(gs[1, 0])
+    ax_mid.set_axis_off()
 
     gap = 0.01
     cell_w = (1.0 - gap * (n - 1)) / n
 
-    for i, img in enumerate(images):
+    for i, im in enumerate(images_01):
         x0 = i * (cell_w + gap)
-        iax = ax_img.inset_axes([x0, 0, cell_w, 1.0])
-        iax.imshow(img)
+        iax = ax_mid.inset_axes([x0, 0, cell_w, 1])
+        iax.imshow(im, cmap=cmap, vmin=0, vmax=1)
         iax.set_xticks([])
         iax.set_yticks([])
         for s in iax.spines.values():
             s.set_visible(False)
 
-    # =======================
-    # Fractal dimension trend
-    # =======================
-    ax1 = fig.add_subplot(gs[1, 0])
-    ax1.plot(
-        x,
-        fractal_dims,
-        linestyle="--",
-        marker="o",
-        markersize=5,
-        linewidth=1.5,
-    )
-    ax1.set_ylabel("Fractal dimension")
-    ax1.set_xlim(0.5, n + 0.5)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels([])
-    ax1.grid(True, alpha=0.15)
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["right"].set_visible(False)
+        txt = iax.text(
+            0.97, 0.95, f"{i+1}",
+            transform=iax.transAxes,
+            ha="right", va="top",
+            fontsize=16,
+            color="white",
+            fontfamily="cursive",
+        )
+        txt.set_path_effects([
+            pe.Stroke(linewidth=2.5, foreground="black"),
+            pe.Normal(),
+        ])
 
-    # =======================
-    # Dendrite intensity trend
-    # =======================
-    ax2 = fig.add_subplot(gs[2, 0], sharex=ax1)
-    ax2.plot(
-        x,
-        dendrite_scores,
-        linestyle="--",
-        marker="o",
-        markersize=5,
-        linewidth=1.5,
+    # -------------------------------
+    # Bottom: Dendrite intensity (normalized bars)
+    # -------------------------------
+    ax_bot = fig.add_subplot(gs[2, 0], sharex=ax_top)
+    sns.barplot(
+        x=ids,
+        y=dendrite_norm,
+        ax=ax_bot,
+        color=sns.color_palette("deep")[1],
     )
-    ax2.set_ylabel("Dendrite intensity score")
-    ax2.set_xlabel("Figure ID")
-    ax2.set_xlim(0.5, n + 0.5)
-    ax2.set_xticks(x)
-    ax2.grid(True, alpha=0.15)
-    ax2.spines["top"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
 
-    fig.subplots_adjust(left=0.06, right=0.995, top=0.98, bottom=0.08)
+    for i, (v_raw, v_norm) in enumerate(zip(dendrite_raw, dendrite_norm)):
+        ax_bot.text(
+            i, v_norm,
+            f"{v_raw:.3f}",
+            ha="center", va="bottom", fontsize=9,
+        )
+
+    ax_bot.set_ylabel("Dendrite intensity")
+    ax_bot.set_xlabel("Figure ID")
+    ax_bot.set_yticks([])
+    ax_bot.spines[["left", "right", "top"]].set_visible(False)
+
+    fig.subplots_adjust(left=0.05, right=0.995, top=0.97, bottom=0.10)
     plt.show()
 
 
 # ============================================================
-# 4. Entry point
+# Entry
 # ============================================================
 def main():
-    images = load_images_from_glob("data", k=9, seed=0)
-
-    plot_row_images_with_metric_trends(
-        images=images,
-        metric_fn=compute_interface_metrics,
-    )
+    images = load_images_from_glob("../data", k=9)
+    plot_images_with_seaborn_bars(images)
 
 
 if __name__ == "__main__":

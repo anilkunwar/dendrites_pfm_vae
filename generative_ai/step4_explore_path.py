@@ -179,7 +179,7 @@ def plot_latent_exploration(
                             save_path=os.path.join(run_dir, "coverage_over_steps.png"))
 
 # ====== CONFIG ======
-MODEL_ROOT = "results/good"
+MODEL_ROOT = "results/final_model"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search")
 
@@ -191,7 +191,7 @@ STEPS = 100
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def save_step(out_dir, step, img, z, params, coverage, score):
+def save_step(out_dir, step, img, z, params, coverage, score, hopping_strength):
     plt.figure(figsize=(6, 5))
     plt.imshow(img, cmap="coolwarm")
     # plt.colorbar(fraction=0.046)
@@ -201,15 +201,32 @@ def save_step(out_dir, step, img, z, params, coverage, score):
     plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
     plt.close()
 
-    with open(os.path.join(out_dir, f"params_recording.txt"), "a") as f:
-        f.write(
-            f"step={step}, "
-            f"score={score:.6f}, "
-            f"t={params[0]:.6f}, "
-            f"coverage={coverage:.6f}, "
-            f"z_norm={np.linalg.norm(z):.6f}, "
-            f"params={params.tolist()}\n"
-        )
+    # ---- CSV recording ----
+    csv_path = os.path.join(out_dir, "params_recording.csv")
+    header = [
+        "step", "score", "coverage", "hopping_strength",
+        "t", "POT_LEFT", "fo", "Al", "Bl", "Cl", "As", "Bs", "Cs",
+        "cleq", "cseq", "L1o", "L2o", "ko", "Noise"
+    ]
+
+    params = np.asarray(params).reshape(-1)
+    if params.size != 15:
+        raise ValueError(f"Expected params length=15 (t..Noise), got {params.size}: {params}")
+
+    row = [
+        int(step),
+        float(score),
+        float(coverage),
+        float(hopping_strength),
+        *[float(x) for x in params.tolist()],
+    ]
+
+    write_header = (not os.path.exists(csv_path)) or (os.path.getsize(csv_path) == 0)
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(header)
+        writer.writerow(row)
 
     print(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
 
@@ -240,7 +257,7 @@ def explore_once(model, RW_SIGMA, NUM_CAND):
     s = scores["empirical_score"]
     c = metrics["dendrite_coverage"]
     t = y_pred_s[0]
-    save_step(run_dir, 0, recon, z, y_pred_s, c, s)
+    save_step(run_dir, 0, recon, z, y_pred_s, c, s, hopping_strength=RW_SIGMA)
 
     z_path = [z.copy()]
     cand_clouds = []
@@ -310,7 +327,7 @@ def explore_once(model, RW_SIGMA, NUM_CAND):
         t = best_params[0]
         y_pred_s = best_params
 
-        save_step(run_dir, step, best_img, best_z, best_params, best_coverage, best_score)
+        save_step(run_dir, step, best_img, best_z, best_params, best_coverage, best_score, hopping_strength=RW_SIGMA)
 
         z_path.append(z.copy())
         score_path.append(float(s))
@@ -337,29 +354,29 @@ def main():
     model = torch.load(CKPT_PATH, map_location=device, weights_only=False)
     model.eval()
 
-    with open("results.csv", "w", newline="") as f:
-        writer = csv.writer(f)
-
-        writer.writerow([
-            "sigma", "cand_num", "run_id",
-            "ss_len", "ss_mean", "ss_var", "ss_min", "ss_max",
-            "cs_len", "cs_mean", "cs_var", "cs_min", "cs_max"
-        ])
-
-        for sigma in [0.01, 0.1, 0.25, 0.5]:
-            for cand_num in [16, 32, 64, 128]:
-                for run_id in range(10):
-                    ss, cs = explore_once(model, sigma, cand_num)
-
-                    ss = np.array(ss)
-                    cs = np.array(cs)
-
-                    writer.writerow([
-                        sigma, cand_num, run_id,
-                        len(ss), ss.mean(), ss.var(), ss.min(), ss.max(),
-                        len(cs), cs.mean(), cs.var(), cs.min(), cs.max()
-                    ])
-
+    # with open("results.csv", "w", newline="") as f:
+    #     writer = csv.writer(f)
+    #
+    #     writer.writerow([
+    #         "sigma", "cand_num", "run_id",
+    #         "ss_len", "ss_mean", "ss_var", "ss_min", "ss_max",
+    #         "cs_len", "cs_mean", "cs_var", "cs_min", "cs_max"
+    #     ])
+    #
+    #     for sigma in [0.01, 0.1, 0.25, 0.5]:
+    #         for cand_num in [16, 32, 64, 128]:
+    #             for run_id in range(10):
+    #                 ss, cs = explore_once(model, sigma, cand_num)
+    #
+    #                 ss = np.array(ss)
+    #                 cs = np.array(cs)
+    #
+    #                 writer.writerow([
+    #                     sigma, cand_num, run_id,
+    #                     len(ss), ss.mean(), ss.var(), ss.min(), ss.max(),
+    #                     len(cs), cs.mean(), cs.var(), cs.min(), cs.max()
+    #                 ])
+    explore_once(model, 0.2, 32)
 
 if __name__ == "__main__":
     main()
