@@ -5,5 +5,5 @@ chord
 plotly
 pycirclize
 scipy
-circos
+Circos
 
