@@ -14,6 +14,91 @@ from skimage import measure, morphology
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
 
+def rescale_data_1d(data, box_size, method='linear'):
+    n = len(data)
+    new_length = int(np.ceil(n / box_size))
+
+    x_old = np.linspace(0, 1, n)
+    x_new = np.linspace(0, 1, new_length)
+
+    if method == 'linear':
+        scaled = np.interp(x_new, x_old, data)
+    elif method == 'nearest':
+        indices = np.round(x_new * (n - 1)).astype(int)
+        scaled = data[indices]
+    else:
+        raise ValueError("method must be 'linear' or 'nearest'")
+
+    return scaled
+
+def count_2d_boxes(data, box_size):
+    h, w = data.shape
+    count = 0
+
+    for i in range(0, h, box_size):
+        for j in range(0, w, box_size):
+            block = data[i:i+box_size, j:j+box_size]
+            if np.any(block):
+                count += 1
+
+    return count
+
+def count_3d_boxes(data, box_size):
+    d, h, w = data.shape
+    count = 0
+
+    for z in range(0, d, box_size):
+        for i in range(0, h, box_size):
+            for j in range(0, w, box_size):
+                block = data[z:z+box_size, i:i+box_size, j:j+box_size]
+                if np.any(block):
+                    count += 1
+
+    return count
+
+def box_counting(data, box_sizes, method='linear'):
+    """
+    Parameters
+    ----------
+    data : ndarray
+        输入数据（1D 向量 / 2D 矩阵 / 3D 数组）
+    box_sizes : array-like
+        盒子尺寸列表
+    method : str
+        'linear' 或 'nearest'
+
+    Returns
+    -------
+    D : float
+        分形维数
+    """
+
+    box_sizes = np.asarray(box_sizes)
+    num_scales = len(box_sizes)
+    counts = np.zeros(num_scales)
+
+    for i, box_size in enumerate(box_sizes):
+        if data.ndim == 1:
+            # 1D：重采样并统计覆盖区间
+            scaled_data = rescale_data_1d(data, box_size, method)
+            counts[i] = np.sum(scaled_data > 0)
+
+        elif data.ndim == 2:
+            # 2D：网格覆盖统计
+            counts[i] = count_2d_boxes(data, box_size)
+
+        elif data.ndim == 3:
+            # 3D：三维网格覆盖统计
+            counts[i] = count_3d_boxes(data, box_size)
+
+        else:
+            raise ValueError("Unsupported data dimension")
+
+    # log-log 拟合，斜率即分形维数
+    p = np.polyfit(np.log(1/box_sizes), np.log(counts), 1)
+    D = p[0]
+
+    return D
 
 class ComprehensiveDendriteAnalyzer:
 
@@ -388,29 +473,6 @@ class ComprehensiveDendriteAnalyzer:
             "betti_1": num_holes,
         }
 
-    def fractal_dimension_boxcount(self, max_box_size=None, min_box_size=2) -> float:
-        binary = self.binary
-        if max_box_size is None:
-            max_box_size = min(binary.shape) // 4
-
-        sizes, counts = [], []
-        for box_size in range(max_box_size, min_box_size - 1, -2):
-            count = 0
-            for i in range(0, binary.shape[0], box_size):
-                for j in range(0, binary.shape[1], box_size):
-                    box = binary[i:i + box_size, j:j + box_size]
-                    if np.any(box):
-                        count += 1
-            if count > 0:
-                sizes.append(box_size)
-                counts.append(count)
-
-        if len(sizes) < 2:
-            return 0.0
-
-        coeffs = np.polyfit(np.log(sizes), np.log(counts), 1)
-        return float(-coeffs[0])
-
     # ----------------------------
     # Metrics bundle + scoring
     # ----------------------------
@@ -459,7 +521,7 @@ class ComprehensiveDendriteAnalyzer:
         metrics["betti_0"] = float(topo["betti_0"])
         metrics["betti_1"] = float(topo["betti_1"])
 
-        metrics["fractal_dimension"] = self.fractal_dimension_boxcount()
+        metrics["fractal_dimension"] = box_counting(self.binary, [1, 2, 4, 8, 16, 32])
 
         return metrics
 

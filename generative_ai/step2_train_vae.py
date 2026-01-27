@@ -480,8 +480,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_root", type=str, default="results")
 
     parser.add_argument("--init_model_path", type=str,
-                        # default=None,
-                        default="results/good/ckpt/best.pt",
+                        default=None,
+                        # default="results/good/ckpt/best.pt",
                         help="Optional path to a saved .pt model to initialize (torch.load). If not set, build a fresh VAE_MDN.")
 
     args = parser.parse_args()

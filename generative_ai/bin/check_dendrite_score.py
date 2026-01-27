@@ -2,149 +2,183 @@
 # -*- coding: utf-8 -*-
 
 """
-3x3 图像网格 + 每张图两个分数的可视化示例
-- 每个子图：显示图片 + 半透明信息框（score_a / score_b）
-- 额外：在每张图左下角画一个小条形“微型可视化”对比两分数（可选但很直观）
-- 全局：标题 + 统一色条（按 score_a 映射边框颜色，强化对比）
+One-row interface images + metric trend plots (clean, publication-style)
 """
 
 from __future__ import annotations
-
 from typing import Union, Sequence, List, Tuple, Optional
+
 import os
 import glob
 import random
 import numpy as np
-
 import matplotlib.pyplot as plt
-plt.rcParams["image.cmap"] = "coolwarm"
 
-from src.evaluate_metrics import generate_analysis_figure, get_severity_level
-
-
-# ---------- 1) 占位符函数：传入图片，返回两个浮点分数 ----------
-def placeholder_score_fn(img: np.ndarray) -> Tuple[str, str]:
-
-    _, metrics, s = generate_analysis_figure(np.clip(img, 0, 1))
-
-    return f"{metrics['fractal_dimension']:.2f}", f"{s['empirical_score']:.2f}({get_severity_level(s['empirical_score'])})"
+from src.evaluate_metrics import generate_analysis_figure
 
 
+# ============================================================
+# 1. Metric computation (renamed, no placeholder)
+# ============================================================
+def compute_interface_metrics(img: np.ndarray) -> Tuple[float, float]:
+    """
+    Parameters
+    ----------
+    img : np.ndarray
+        2D image array
+
+    Returns
+    -------
+    fractal_dimension : float
+    dendrite_intensity_score : float
+    """
+    _, metrics, score = generate_analysis_figure(np.clip(img, 0, 1))
+    return float(metrics["fractal_dimension"]), float(score["empirical_score"])
+
+
+# ============================================================
+# 2. Load images
+# ============================================================
 def load_images_from_glob(
     data_dir_or_pattern: Union[str, Sequence[str]],
     *,
     k: int = 9,
     recursive: bool = True,
     seed: Optional[int] = None,
-) -> List[Tuple[str, np.ndarray]]:
-    """
-    Randomly load k images from npy files resolved by directory / glob / list.
+) -> List[np.ndarray]:
 
-    Parameters
-    ----------
-    data_dir_or_pattern : str | Sequence[str]
-        - directory → search for **/*.npy
-        - glob pattern → glob directly
-        - list / tuple → treated as file paths
-    k : int
-        Number of images to load
-    recursive : bool
-        Whether to use recursive glob (**)
-    seed : int | None
-        Random seed
-
-    Returns
-    -------
-    list of (path, image_array)
-        image_array is uint8 RGB, ready for matplotlib.imshow
-    """
     if seed is not None:
         random.seed(seed)
 
-    # -------- resolve candidate paths --------
     if isinstance(data_dir_or_pattern, (list, tuple)):
         candidates = list(data_dir_or_pattern)
     else:
         s = str(data_dir_or_pattern)
         if os.path.isdir(s):
-            pattern = os.path.join(s, "**", "**", "*.npy") if recursive else os.path.join(s, "*.npy")
+            pattern = os.path.join(s, "**", "*.npy") if recursive else os.path.join(s, "*.npy")
             candidates = glob.glob(pattern, recursive=recursive)
         else:
             candidates = glob.glob(s, recursive=recursive)
 
     candidates = [p for p in candidates if os.path.isfile(p)]
     if not candidates:
-        raise FileNotFoundError(f"No .npy files found from: {data_dir_or_pattern}")
+        raise FileNotFoundError("No .npy files found")
 
-    # -------- sample --------
-    k = min(int(k), len(candidates))
-    chosen = random.sample(candidates, k=k)
+    k = min(k, len(candidates))
+    chosen = random.sample(candidates, k)
 
-    images: List[Tuple[str, np.ndarray]] = []
-
+    images = []
     for p in chosen:
         arr = np.load(p)
-
-        images.append((p, arr[..., 0]))
+        images.append(arr[..., 0])
 
     return images
 
-# ---------- 3) 绘图主函数 ----------
-def plot_grid_with_scores(
+
+# ============================================================
+# 3. Visualization
+# ============================================================
+def plot_row_images_with_metric_trends(
     images: List[np.ndarray],
-    score_fn,
-    title: str = "Comparison of two metrics per Image",
-    score_names: Tuple[str, str] = ("Fractal Dimension", "Dendrite Intensity Score"),
+    metric_fn,
+    *,
+    dpi: int = 150,
 ):
-    assert len(images) == 9, "需要正好 9 张图片来画 3×3。"
+    """
+    Top: 1 row of images (no labels, no titles)
+    Bottom: two metric trends (solid dots + dashed line, no titles)
+    """
 
-    # 计算分数
-    scores = [score_fn(img) for img in images]
+    # ---- compute metrics ----
+    metrics = [metric_fn(img) for img in images]
+    fractal_dims = np.array([m[0] for m in metrics])
+    dendrite_scores = np.array([m[1] for m in metrics])
 
-    # 布局：更紧凑但不挤
-    fig, axes = plt.subplots(3, 3, figsize=(12, 12))
-    fig.suptitle(title, fontsize=16, fontweight="bold", y=0.98)
+    n = len(images)
+    x = np.arange(1, n + 1)
 
-    for i, ax in enumerate(axes.flat):
-        img = images[i]
-        a, b = scores[i]
+    fig_w = max(10, 1.35 * n)
+    fig_h = 6.0
 
-        ax.imshow(img)
-        ax.set_aspect("auto")
-        ax.set_xticks([])
-        ax.set_yticks([])
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+    gs = fig.add_gridspec(
+        nrows=3,
+        ncols=1,
+        height_ratios=[2.2, 1.8, 1.8],
+        hspace=0.15,
+    )
 
-        # 半透明信息框（右上角）
-        text = f"{score_names[0]}: {a}\n{score_names[1]}: {b}"
-        ax.text(
-            0.98,
-            0.02,
-            text,
-            transform=ax.transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=10,
-            color="white",
-            bbox=dict(boxstyle="round,pad=0.35", fc="black", ec="none", alpha=0.55),
-        )
+    # =======================
+    # Image row
+    # =======================
+    ax_img = fig.add_subplot(gs[0, 0])
+    ax_img.set_axis_off()
 
-        # 每个子图的小标题：#idx
-        ax.set_title(f"#{i+1}", fontsize=11, pad=6)
+    gap = 0.01
+    cell_w = (1.0 - gap * (n - 1)) / n
 
-    plt.tight_layout()
-    plt.subplots_adjust(wspace=0.1, hspace=0.1)
+    for i, img in enumerate(images):
+        x0 = i * (cell_w + gap)
+        iax = ax_img.inset_axes([x0, 0, cell_w, 1.0])
+        iax.imshow(img)
+        iax.set_xticks([])
+        iax.set_yticks([])
+        for s in iax.spines.values():
+            s.set_visible(False)
+
+    # =======================
+    # Fractal dimension trend
+    # =======================
+    ax1 = fig.add_subplot(gs[1, 0])
+    ax1.plot(
+        x,
+        fractal_dims,
+        linestyle="--",
+        marker="o",
+        markersize=5,
+        linewidth=1.5,
+    )
+    ax1.set_ylabel("Fractal dimension")
+    ax1.set_xlim(0.5, n + 0.5)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels([])
+    ax1.grid(True, alpha=0.15)
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+
+    # =======================
+    # Dendrite intensity trend
+    # =======================
+    ax2 = fig.add_subplot(gs[2, 0], sharex=ax1)
+    ax2.plot(
+        x,
+        dendrite_scores,
+        linestyle="--",
+        marker="o",
+        markersize=5,
+        linewidth=1.5,
+    )
+    ax2.set_ylabel("Dendrite intensity score")
+    ax2.set_xlabel("Figure ID")
+    ax2.set_xlim(0.5, n + 0.5)
+    ax2.set_xticks(x)
+    ax2.grid(True, alpha=0.15)
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+
+    fig.subplots_adjust(left=0.06, right=0.995, top=0.98, bottom=0.08)
     plt.show()
 
 
-# ---------- 4) 入口 ----------
+# ============================================================
+# 4. Entry point
+# ============================================================
 def main():
-    items = load_images_from_glob("data")
+    images = load_images_from_glob("data", k=9, seed=0)
 
-    paths, images = zip(*items)
-
-    plot_grid_with_scores(
-        images=list(images),
-        score_fn=placeholder_score_fn,
+    plot_row_images_with_metric_trends(
+        images=images,
+        metric_fn=compute_interface_metrics,
     )
 
 
