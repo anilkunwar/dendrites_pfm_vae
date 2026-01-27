@@ -179,7 +179,7 @@ def plot_latent_exploration(
                             save_path=os.path.join(run_dir, "coverage_over_steps.png"))
 
 # ====== CONFIG ======
-MODEL_ROOT = "results/final_model/"
+MODEL_ROOT = "results/good"
 CKPT_PATH  = os.path.join(MODEL_ROOT, "ckpt", "best.pt")
 OUT_DIR    = os.path.join(MODEL_ROOT, "heuristic_search")
 
@@ -200,6 +200,17 @@ def save_step(out_dir, step, img, z, params, coverage, score):
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, f"step_{step:03d}.png"), dpi=200)
     plt.close()
+
+    with open(os.path.join(out_dir, f"params_recording.txt"), "a") as f:
+        f.write(
+            f"step={step}, "
+            f"score={score:.6f}, "
+            f"t={params[0]:.6f}, "
+            f"coverage={coverage:.6f}, "
+            f"z_norm={np.linalg.norm(z):.6f}, "
+            f"params={params.tolist()}\n"
+        )
+
     print(f"step={step} score={score:.3f} t={params[0]:.3f}, Coverage={coverage:.3f}, ||z||={np.linalg.norm(z):.2f}")
 
 def explore_once(model, RW_SIGMA, NUM_CAND):
@@ -337,7 +348,7 @@ def main():
 
         for sigma in [0.01, 0.1, 0.25, 0.5]:
             for cand_num in [16, 32, 64, 128]:
-                for run_id in range(5):
+                for run_id in range(10):
                     ss, cs = explore_once(model, sigma, cand_num)
 
                     ss = np.array(ss)

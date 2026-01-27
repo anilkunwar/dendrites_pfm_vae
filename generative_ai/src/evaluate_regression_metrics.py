@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from scipy import stats
 import matplotlib.pyplot as plt
 
 from src.visualizer import plot_line_evolution, plot_scatter_evolution, plot_histogram
@@ -45,16 +46,44 @@ def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray, eps: float = 1e-1
     }
     return {"overall": overall, "per_dim": per_dim}
 
-def plot_regression_summary(y_true: np.ndarray, y_pred: np.ndarray, prefix: str, save_dir: str=None, param_names=None):
+def plot_qq(residuals: np.ndarray, title: str = "Q–Q plot of residuals", save_path: str = None):
+    """Normal Q–Q plot for residuals."""
+    residuals = np.asarray(residuals).reshape(-1)
+    residuals = residuals[np.isfinite(residuals)]  # 防止 NaN/inf
+
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_subplot(111)
+    stats.probplot(residuals, dist="norm", plot=ax)
+    ax.set_title("")
+    ax.set_xlabel("Theoretical quantiles")
+    ax.set_ylabel("Sample quantiles")
+
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_regression_summary(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    prefix: str,
+    save_dir: str = None,
+    param_names=None
+):
     """
     Produces:
       1) MAE bar chart per parameter
       2) R2 bar chart per parameter
       3) Overall scatter (flattened)
       4) Residual histogram (flattened)
+      5) Residual Q–Q plot (flattened)
     """
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
+
     N, P = y_true.shape
     if param_names is None or len(param_names) != P:
         param_names = [f"p{i}" for i in range(P)]
@@ -71,10 +100,21 @@ def plot_regression_summary(y_true: np.ndarray, y_pred: np.ndarray, prefix: str,
     plot_line_evolution(x, r2, ylabel="R²", title="Control parameter regression: R² per parameter")
 
     # 3) Overall scatter (flatten)
-    plot_scatter_evolution(y_true.reshape(-1), y_pred.reshape(-1), xlabel="True", ylabel="Pred", title="Overall true vs pred (all params flattened)")
+    plot_scatter_evolution(
+        y_true.reshape(-1),
+        y_pred.reshape(-1),
+        xlabel="True",
+        ylabel="Pred",
+        title="Overall true vs pred (all params flattened)"
+    )
 
     # 4) Residual histogram
-    plot_histogram((y_pred - y_true).reshape(-1), xlabel="Residual (pred - true)", ylabel="Count", title="Residual distribution (all params flattened)")
+    residuals = (y_pred - y_true).reshape(-1)
+    plot_histogram(residuals, xlabel="Residual", ylabel="Count")
+
+    # 5) Residual Q–Q plot
+    qq_save = None if save_dir is None else os.path.join(save_dir, f"{prefix}_residuals_qq.png")
+    plot_qq(residuals, save_path=qq_save)
 
     return m
 
@@ -90,43 +130,10 @@ def plot_confidence_summary(conf_param: np.ndarray, conf_global: np.ndarray, pre
         param_names = [f"p{i}" for i in range(P)]
 
     # per-param mean confidence bar
-    mean_c = conf_param.mean(axis=0)
-    plt.figure(figsize=(max(10, P * 0.5), 4))
-    x = np.arange(P)
-    plt.bar(x, mean_c)
-    plt.xticks(x, param_names, rotation=60, ha="right")
-    plt.ylim(0.0, 1.0)
-    plt.ylabel("Mean confidence")
-    plt.title("Mean confidence per parameter")
-    plt.tight_layout()
-    if save_dir is not None:
-        plt.savefig(os.path.join(save_dir, f"{prefix}_conf_param_mean.png"), dpi=300)
-    else:
-        plt.show()
-    plt.close()
+    plot_histogram(conf_param.mean(axis=0), ylabel="Mean confidence", title="Mean confidence per parameter")
 
     # global confidence hist
-    plt.figure(figsize=(6, 4))
-    plt.hist(conf_global, bins=60)
-    plt.xlabel("Global confidence")
-    plt.ylabel("Count")
-    plt.title("Global confidence distribution")
-    plt.tight_layout()
-    if save_dir is not None:
-        plt.savefig(os.path.join(save_dir, f"{prefix}_conf_global_hist.png"), dpi=300)
-    else:
-        plt.show()
-    plt.close()
+    plot_histogram(conf_global, xlabel="Global confidence", ylabel="Count")
 
     # flattened param confidence hist
-    plt.figure(figsize=(6, 4))
-    plt.hist(conf_param.reshape(-1), bins=60)
-    plt.xlabel("Param confidence (flattened)")
-    plt.ylabel("Count")
-    plt.title("Param confidence distribution (all params flattened)")
-    plt.tight_layout()
-    if save_dir is not None:
-        plt.savefig(os.path.join(save_dir, f"{prefix}_conf_param_hist.png"), dpi=300)
-    else:
-        plt.show()
-    plt.close()
+    plot_histogram(conf_param.reshape(-1), xlabel="Param confidence", ylabel="Count")

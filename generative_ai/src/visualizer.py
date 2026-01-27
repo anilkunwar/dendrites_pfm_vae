@@ -526,7 +526,8 @@ def plot_histogram(
                 alpha=alpha,
                 edgecolor=edgecolor,
                 linewidth=linewidth,
-                kde_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
+                kde_kws={'cut': 0},
+                line_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
                 ax=ax,
                 cumulative=cumulative
             )
@@ -571,7 +572,8 @@ def plot_histogram(
                 alpha=alpha,
                 edgecolor=edgecolor,
                 linewidth=linewidth,
-                kde_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
+                kde_kws={'cut': 0},
+                line_kws={'color': kde_color, 'linewidth': 2.5, 'alpha': 0.8},
                 ax=ax,
                 cumulative=cumulative
             )
@@ -604,21 +606,21 @@ def plot_histogram(
             ax.axvspan(mean_val - std_val, mean_val + std_val,
                        alpha=0.15, color='#9B59B6', label=f'±1 SD: {std_val:.3f}', zorder=1)
 
-    # 添加统计信息文本框
-    if show_mean or show_median or show_std:
-        stats_text = []
-        stats_text.append(f'n = {len(data)}')
-        if show_mean:
-            stats_text.append(f'μ = {mean_val:.3f}')
-        if show_median:
-            stats_text.append(f'Median = {median_val:.3f}')
-        if show_std:
-            stats_text.append(f'σ = {std_val:.3f}')
-
-        textstr = '\n'.join(stats_text)
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-        ax.text(0.75, 0.95, textstr, transform=ax.transAxes,
-                fontsize=10, verticalalignment='top', bbox=props)
+    # # 添加统计信息文本框
+    # if show_mean or show_median or show_std:
+    #     stats_text = []
+    #     stats_text.append(f'n = {len(data)}')
+    #     if show_mean:
+    #         stats_text.append(f'μ = {mean_val:.3f}')
+    #     if show_median:
+    #         stats_text.append(f'Median = {median_val:.3f}')
+    #     if show_std:
+    #         stats_text.append(f'σ = {std_val:.3f}')
+    #
+    #     textstr = '\n'.join(stats_text)
+    #     props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+    #     ax.text(0.75, 0.95, textstr, transform=ax.transAxes,
+    #             fontsize=10, verticalalignment='top', bbox=props)
 
     # 设置标签和标题
     if xlabel:
@@ -857,6 +859,7 @@ def plot_dual_histogram_lines(
         xlabel: Optional[str] = None,
         ylabel_hist: Optional[str] = None,
         ylabel_line: Optional[str] = None,
+        bin_labels: Optional[list[str]] = None,
         title: Optional[str] = None,
         save_path: Optional[str] = None,
         figsize: tuple = (10, 6),
@@ -866,6 +869,7 @@ def plot_dual_histogram_lines(
         hist_alpha: float = 0.6,
         line_alpha: float = 0.9,
         show_markers: bool = True,
+        show_legend: bool = False,
         marker_size: int = 6,
         line_width: float = 2.5,
         style: str = 'darkgrid',
@@ -911,9 +915,17 @@ def plot_dual_histogram_lines(
         label=hist_label if hist_label else 'Histogram'
     )
 
+    # === X轴 bin 名称 ===
+    if bin_labels is not None:
+        assert len(bin_labels) == len(x_shared), "bin_labels should has the same dim with x_shared"
+        ax1.set_xticks(x_shared)
+        ax1.set_xticklabels(bin_labels, rotation=90, ha='right', fontsize=10)
+
     # 设置左Y轴
-    ax1.set_xlabel(xlabel if xlabel else 'Bins', fontsize=12, fontweight='semibold')
-    ax1.set_ylabel(ylabel_hist if ylabel_hist else 'Count',
+    if xlabel is not None:
+        ax1.set_xlabel(xlabel, fontsize=12, fontweight='semibold')
+    if ylabel_hist is not None:
+        ax1.set_ylabel(ylabel_hist if ylabel_hist else 'Count',
                    fontsize=12, fontweight='semibold', color=hist_color)
     ax1.tick_params(axis='y', labelcolor=hist_color, labelsize=10)
 
@@ -935,7 +947,8 @@ def plot_dual_histogram_lines(
     )
 
     # 设置右Y轴
-    ax2.set_ylabel(ylabel_line if ylabel_line else 'Metric Value',
+    if ylabel_line is not None:
+        ax2.set_ylabel(ylabel_line if ylabel_line else 'Metric Value',
                    fontsize=12, fontweight='semibold', color=line_color)
     ax2.tick_params(axis='y', labelcolor=line_color, labelsize=10)
 
@@ -953,9 +966,10 @@ def plot_dual_histogram_lines(
         ax1.set_title(title, fontsize=15, fontweight='bold', pad=20)
 
     # === 组合图例 ===
-    h1, l1 = ax1.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2,
+    if show_legend:
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2,
                loc='upper center',
                bbox_to_anchor=(0.5, -0.08),
                ncol=2,
