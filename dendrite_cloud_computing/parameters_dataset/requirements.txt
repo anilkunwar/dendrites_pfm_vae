@@ -1,0 +1,10 @@
+streamlit
+pandas
+matplotlib
+chord
+plotly
+pyCirclize
+scipy
+seaborn
+
+
