@@ -235,7 +235,7 @@ class VividChordDiagram:
         
         # Data structures - ✅ FIXED SYNTAX ERROR
         self.sectors: List[str] = []
-        self.sector_data: Dict[str, Dict] = {}  # ✅ CORRECTED: was "self.sector_ Dict" (invalid syntax)
+        self.sector_ Dict[str, Dict] = {}  # ✅ CORRECTED: was "self.sector_ Dict" (invalid syntax)
         self.links: List[Dict] = []
         self.tracks: Dict[str, Dict[int, Dict]] = {}
         self.groups: Dict[str, int] = {}
@@ -2001,9 +2001,9 @@ def create_vivid_streamlit_app():
                 st.markdown("🔄 **Undirected**: Symmetric relationships")
     
     # ============================================================================
-    # DATA EXPLORER TAB - ✅ FIXED SYNTAX ERROR
+    # DATA EXPLORER TAB - ✅ FIXED SYNTAX ERROR (CORRECTED TAB NAME)
     # ============================================================================
-    with tab_  # ✅ CORRECTED: was "with tab_" (invalid syntax)
+    with tab_data:  # ✅ CORRECTED: was "with tab_" (invalid syntax) → NOW "with tab_data:"
         st.header("Dataset Analysis")
         
         if data_type == "matrix":
