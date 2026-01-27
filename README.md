@@ -1,4 +1,4 @@
-# Understanding and controlling the battery dendrites through phase field method and generative AI
+# Understanding the battery dendrites through phase field simulations-informed generative AI
 
 
 # Phase Field Method 
