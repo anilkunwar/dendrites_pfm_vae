@@ -1,0 +1,410 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch, Circle
+import io
+import warnings
+warnings.filterwarnings('ignore')
+
+# --- Data (Same as before) ---
+EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
+1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
+2,5.304021017662722,0.10460069444444445,0.12041199826559248,0.08961087465286255,0.4117993414402008,0.3086051940917969,0.5759025812149048,0.5457133650779724,0.37897956371307373,0.6828550696372986,0.37128087878227234,0.5426892042160034,0.31361812353134155,0.5300193428993225,0.3330453932285309,0.6396515965461731,0.4162127375602722,0.386873722076416
+3,5.169830808799158,0.11197916666666667,0.1278753600952829,0.11320602893829346,0.5374900102615356,0.3893888592720032,0.6208136677742004,0.5366111993789673,0.4114663004875183,0.7501887679100037,0.4020015299320221,0.45790043473243713,0.343185693025589,0.7146779298782349,0.3623429834842682,0.6474707126617432,0.4218909740447998,0.414340615272522
+4,5.169830808799158,0.11371527777777778,0.13424226808222062,0.1594301164150238,0.5966717004776001,0.4405992031097412,0.593701183795929,0.6432862877845764,0.48903852701187134,0.8087910413742065,0.4361550211906433,0.5463976263999939,0.351766973733902,0.7200356721878052,0.39372894167900085,0.699080228805542,0.46395444869995117,0.33751198649406433
+5,5.1838690114837185,0.12890625,0.13979400086720378,0.27053752541542053,0.5414740443229675,0.3837757110595703,0.5459027290344238,0.7114285826683044,0.5601555109024048,0.8636823296546936,0.4749370515346527,0.5336172580718994,0.49408119916915894,0.6982162594795227,0.4363292157649994,0.6871276497840881,0.5171192288398743,0.34152668714523315
+6,5.100333034308876,0.1440972222222222,0.14471580313422192,0.3258400559425354,0.6228137016296387,0.49862906336784363,0.6784278154373169,0.8143172264099121,0.5625902414321899,0.896495521068573,0.6146658062934875,0.5892767310142517,0.4974607229232788,0.8461188077926636,0.5145464539527893,0.8220916986465454,0.6068583726882935,0.40622031688690186
+7,7.32416026628129,0.1840277777777778,0.14913616938342728,0.3501424491405487,0.3400475084781647,0.5205002427101135,0.697181224822998,0.9804031848907471,0.6573023200035095,0.8734657168388367,0.8090043663978577,0.7597450017929077,0.57285475730896,0.7757821083068848,0.645453929901123,0.8650208711624146,0.5720763802528381,0.4552328288555145
+8,10.386888918380697,0.22178819444444445,0.15314789170422552,0.377905011177063,0.3762165307998657,0.5274438858032227,0.6071285009384155,0.9385737180709839,0.6077378988265991,0.8730340600013733,0.9395252466201782,0.7045806646347046,0.5667017102241516,0.7497444152832031,0.8033575415611267,0.7816545963287354,0.5264078378677368,0.5300353765487671
+9,8.254108578194927,0.3077256944444444,0.1568201724066995,0.3872142434120178,0.47770050168037415,0.4989684224128723,0.7149577140808105,1.0060926675796509,0.6737095713615417,0.7603132724761963,0.6836521625518799,0.6091089844703674,0.4301818609237671,0.8038907051086426,0.7902536988258362,0.9215232133865356,0.5898656249046326,0.6257796287536621
+10,5.622075167395693,0.3493923611111111,0.16020599913279623,0.3937322199344635,0.33547544479370117,0.44358500838279724,0.7463698983192444,0.8410062193870544,0.6607444286346436,0.6670836806297302,0.6114344596862793,0.6689836382865906,0.4694424569606781,0.7656615376472473,0.7240639328956604,0.8651359677314758,0.7883168458938599,0.6361547112464905
+11,7.321904299308076,0.3650173611111111,0.16334684555795864,0.45904433727264404,0.27944284677505493,0.38179677724838257,0.8159457445144653,1.0150943994522095,0.7721518874168396,0.7039114236831665,0.7788766026496887,0.7146820425987244,0.49762389063835144,0.7908686399459839,0.8121711611747742,0.8742984533309937,0.7975523471832275,0.6416141390800476
+12,8.543683990691765,0.3723958333333333,0.1662757831681574,0.5105248689651489,0.34250542521476746,0.43922367691993713,0.7341154217720032,1.1102296113967896,0.7483778595924377,0.7128080725669861,0.7358441352844238,0.7393836975097656,0.46837639808654785,0.8202276825904846,0.877817690372467,0.9840682744979858,0.7861328125,0.6163419485092163
+13,7.620555709528761,0.3732638888888889,0.16901960800285137,0.5417518019676208,0.43418756127357483,0.40142834186553955,0.7275840044021606,1.0893441438674927,0.7854703664779663,0.7538084983825684,0.6650506258010864,0.796431303024292,0.4985898435115814,0.8372722864151001,0.744591236114502,1.123425841331482,0.785809338092804,0.680273711681366
+14,6.3356596618964565,0.3745659722222222,0.17160033436347993,0.5423417687416077,0.26539722084999084,0.5920475721359253,0.6683412790298462,1.082399845123291,0.6814282536506653,0.8131998181343079,0.6773099303245544,0.7042008638381958,0.5497509837150574,0.6867591738700867,0.8954933881759644,0.8905871510505676,0.7955514192581177,0.6689854264259338
+15,7.436352609042917,0.40625,0.17403626894942437,0.568615198135376,0.24044141173362732,0.6975681781768799,0.6411821246147156,1.1813530921936035,0.7024039626121521,0.8560113310813904,0.709820568561554,0.76691734790802,0.6928378343582153,0.4951046407222748,0.9582697153091431,0.9249935150146484,0.7339156866073608,0.7971505522727966
+16,10.277262759911848,0.4618055555555556,0.17634279935629374,0.5763835906982422,0.46326711773872375,0.8927175998687744,0.6113301515579224,1.1488991975784302,0.8268088698387146,0.8452023863792419,0.6038599610328674,0.7312695980072021,0.7745003700256348,0.523252010345459,0.9515889286994934,0.7617896795272827,0.7811905741691589,0.7240396738052368
+17,10.171294809365978,0.46484375,0.17853298350107671,0.6809343695640564,0.5394753217697144,0.7823241353034973,0.5580039620399475,1.2827746868133545,0.8729355335235596,0.9322726130485535,0.4856688380241394,0.942378580570221,0.7398176789283752,0.6016049981117249,0.8035934567451477,0.7253121137619019,0.6769372820854187,0.6313362121582031
+18,10.629263728382883,0.48046875,0.1806179973983887,0.6865774393081665,0.5340346097946167,0.8711283802986145,0.6346777677536011,1.232739806175232,0.9320783019065857,0.9418307542800903,0.49510204792022705,1.0256969928741455,0.7569521069526672,0.6322088837623596,0.8393365144729614,0.7755464911460876,0.706352949142456,0.6519243717193604
+19,10.49475562025519,0.4822048611111111,0.18260748027008264,0.7152098417282104,0.4992449879646301,0.9342008233070374,0.8139623403549194,1.3508509397506714,1.0962871313095093,0.9878286719322205,0.6010639071464539,0.9243364930152893,0.9159383177757263,0.6504509449005127,0.913641095161438,0.8966460227966309,0.9222412705421448,0.878772497177124
+20,10.22933457672259,0.4887152777777778,0.1845098040014257,0.7465022206306458,0.5899507403373718,0.9446436762809753,0.8453498482704163,1.564751148223877,1.0583618879318237,1.1709020137786865,0.7551482319831848,0.9316735863685608,1.0114786624908447,0.7386069893836975,0.8721351027488708,0.712131679058075,0.9934794902801514,0.8559936881065369
+21,10.40191081814774,0.5212673611111112,0.1863322860120456,0.778833270072937,0.46530479192733765,0.9134830236434937,0.8916224837303162,1.5924957990646362,1.0132859945297241,1.3060201406478882,0.7646929621696472,1.0435600280761719,0.8411058783531189,0.7712708711624146,0.9179795384407043,0.8546093702316284,0.9429539442062378,0.8560317158699036
+22,11.174144433501233,0.5386284722222222,0.18808135922807911,0.8746334314346313,0.48324069380760193,0.9938526749610901,0.769467830657959,1.6170459985733032,1.01220703125,1.2132935523986816,0.752862811088562,1.16727614402771,0.9052226543426514,0.6134433150291443,0.9348587393760681,0.8925090432167053,0.8277872204780579,0.9739061594009399
+23,10.844935844038055,0.5503472222222222,0.18976270912904414,0.9238934516906738,0.5506340861320496,0.9444273114204407,0.8249781131744385,1.7516707181930542,0.8675052523612976,1.4430488348007202,0.8421710729598999,1.072837471961975,1.066247820854187,0.9110193252563477,0.8453015089035034,0.6934573650360107,0.8824711441993713,0.9735444188117981
+24,9.859185254537385,0.5525173611111112,0.19138138523837167,0.9569121599197388,0.6011497378349304,1.018949031829834,0.8612451553344727,1.6675461530685425,0.9851047396659851,1.3370230197906494,0.9144415855407715,1.1276476383209229,1.0655651092529297,0.8532272577285767,0.8896656036376953,0.7149348855018616,0.8930221796035767,1.089601993560791
+25,9.733399429950971,0.5572916666666666,0.19294189257142927,0.9699379205703735,0.5459413528442383,0.9786086082458496,0.9722445607185364,1.618293046951294,1.0138611793518066,1.2777221202850342,0.769503653049469,1.2075700759887695,0.9359092116355896,0.8779188990592957,0.8745647072792053,0.5999792814254761,0.8872678279876709,1.0222569704055786
+26,9.9260127892421,0.5690104166666666,0.19444826721501687,1.0167112350463867,0.7404793500900269,1.2331862449645996,0.9591841697692871,1.8226509094238281,1.1032135486602783,1.5929903984069824,1.0649257898330688,1.510267734527588,0.9941714406013489,1.090094804763794,0.8625853061676025,0.5799097418785095,0.9083585143089294,0.8630198836326599
+27,10.678004251308256,0.5798611111111112,0.19590413923210936,1.1897140741348267,0.8140103220939636,1.1114305257797241,0.8603397011756897,1.7859822511672974,1.1018062829971313,1.5066109895706177,0.9222522377967834,1.4768295288085938,0.9960513710975647,0.8831607103347778,0.8123284578323364,0.8251258730888367,0.7022106647491455,0.8924230933189392
+28,11.020299291797908,0.5798611111111112,0.19731278535996988,1.1938612461090088,0.8728200793266296,1.2563399076461792,0.9425970911979675,1.665657877922058,1.1347849369049072,1.6763732433319092,0.9476985335350037,1.450101613998413,0.9543245434761047,0.7781178951263428,0.7439810633659363,0.7765737175941467,0.9004281163215637,0.8755770325660706
+29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
+30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
+
+ALL_COLORMAPS = sorted(set([
+    'jet', 'rainbow', 'turbo', 'inferno', 'plasma', 'viridis', 'magma', 'cividis',
+    'hot', 'cool', 'spring', 'summer', 'autumn', 'winter',
+    'bone', 'copper', 'pink', 'gray', 'spectral', 'gist_rainbow', 'nipy_spectral',
+    'ocean', 'terrain', 'gnuplot', 'CMRmap', 'cubehelix', 'brg', 'hsv',
+    'seismic', 'coolwarm', 'bwr', 'RdBu', 'RdGy', 'PiYG', 'PRGn', 'RdYlBu', 'Spectral',
+    'Blues', 'Greens', 'Oranges', 'Reds', 'Greys', 'PuOr', 'PuBuGn', 'YlGnBu',
+    'viridis_r', 'plasma_r', 'inferno_r', 'magma_r', 'cividis_r'
+]))
+
+FEATURE_COLS = ['t','POT_LEFT','fo','Al','Bl','Cl','As','Bs','Cs','cleq','cseq','L1o','L2o','ko','Noise']
+NODE_NAMES = FEATURE_COLS
+
+# --- Updated Chord Diagram Function with Dynamic Threshold ---
+def create_aggregated_chord_diagram(df_selected, colormap_name='viridis', 
+                                    aggregation_method='mean', label_size=12, 
+                                    node_size_scale=100, edge_alpha=0.7, 
+                                    show_correlations=True, normalize=True,
+                                    connection_threshold=70, # NEW: Dynamic threshold
+                                    standardize_data=False, # NEW: Standardize toggle
+                                    figsize=(14, 9), title_prefix=""):
+    """
+    Create a chord diagram with enhanced visibility controls.
+    """
+    # Aggregation Logic
+    if aggregation_method == 'mean':
+        aggregated_values = df_selected[FEATURE_COLS].mean().values
+    elif aggregation_method == 'sum':
+        aggregated_values = df_selected[FEATURE_COLS].sum().values
+    elif aggregation_method == 'median':
+        aggregated_values = df_selected[FEATURE_COLS].median().values
+    elif aggregation_method == 'max':
+        aggregated_values = df_selected[FEATURE_COLS].max().values
+    elif aggregation_method == 'min':
+        aggregated_values = df_selected[FEATURE_COLS].min().values
+    else:
+        aggregated_values = df_selected[FEATURE_COLS].mean().values
+    
+    # Standardization Logic (Z-Score)
+    # This ensures small magnitude features are visible
+    if standardize_data:
+        means = df_selected[FEATURE_COLS].mean().values
+        stds = df_selected[FEATURE_COLS].std().values
+        stds[stds == 0] = 1 # avoid division by zero
+        aggregated_values = (aggregated_values - means) / stds
+        # Shift to be positive for visualization
+        aggregated_values = aggregated_values + np.abs(aggregated_values.min()) + 1.0
+
+    # Normalization Logic (Scale to 0-1 sum)
+    if normalize:
+        if aggregated_values.sum() > 0:
+            aggregated_values = aggregated_values / aggregated_values.sum()
+
+    # Correlation Matrix
+    correlation_matrix = df_selected[FEATURE_COLS].corr().fillna(0).values
+    
+    # Polar Setup
+    n_features = len(FEATURE_COLS)
+    angles = np.linspace(0, 2 * np.pi, n_features, endpoint=False)
+    angles = np.roll(angles, -1)
+    
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection="polar"))
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.axis('off')
+    
+    cmap = cm.get_cmap(colormap_name, n_features)
+    
+    # Node sizes
+    if aggregated_values.sum() > 0:
+        node_sizes = (aggregated_values / aggregated_values.max()) * node_size_scale
+    else:
+        node_sizes = np.ones(n_features) * node_size_scale / 2
+    
+    # Draw Nodes
+    width = 2 * np.pi / n_features * 0.8
+    bottom = 1.5
+    
+    bars = ax.bar(angles, node_sizes, width=width, bottom=bottom,
+                 color=[cmap(i) for i in range(n_features)],
+                 edgecolor='white', linewidth=2, alpha=0.9)
+    
+    # Labels
+    for idx, (angle, label, value, size) in enumerate(zip(angles, NODE_NAMES, aggregated_values, node_sizes)):
+        rotation = np.degrees(angle)
+        if 90 <= rotation <= 270:
+            rotation += 180
+            align = "right"
+        else:
+            align = "left"
+        
+        ax.text(angle, bottom + size + 1.2, label, ha=align, va='center',
+                fontsize=label_size, fontweight='bold', rotation=rotation, rotation_mode='anchor')
+        
+        # Show value if not too crowded or on hover (we use text here)
+        if len(FEATURE_COLS) <= 15:
+            val_text = f"{value:.2f}"
+            ax.text(angle, bottom + size + 0.5, val_text, ha=align, va='center',
+                    fontsize=label_size - 2, color='darkslategray', 
+                    rotation=rotation, rotation_mode='anchor')
+
+    # Draw Chords with Dynamic Threshold
+    patches = []
+    
+    if show_correlations:
+        edge_weights = np.abs(correlation_matrix)
+        max_w = edge_weights.max() if edge_weights.max() > 0 else 1
+        edge_weights = edge_weights / max_w
+    else:
+        edge_weights = np.outer(aggregated_values, aggregated_values)
+        max_w = edge_weights.max() if edge_weights.max() > 0 else 1
+        edge_weights = edge_weights / max_w
+    
+    # Use user-defined percentile for threshold
+    threshold = np.percentile(edge_weights, 100 - connection_threshold) # e.g. if connection_threshold=70 (top 30%), percentile=30
+    
+    for i in range(n_features):
+        for j in range(i + 1, n_features):
+            weight = edge_weights[i, j]
+            
+            if weight < threshold:
+                continue
+            
+            thickness = weight * 0.8
+            
+            theta1, theta2 = angles[i], angles[j]
+            radius1 = bottom + node_sizes[i] / 2
+            radius2 = bottom + node_sizes[j] / 2
+            avg_radius = (radius1 + radius2) / 2
+            
+            # Bezier curves
+            control_radius = avg_radius * 0.7
+            control_theta = (theta1 + theta2) / 2
+            
+            color_i = cmap(i)
+            color_j = cmap(j)
+            # Blend colors
+            blended_color = tuple(0.5 * np.array(color_i[:3]) + 0.5 * np.array(color_j[:3])) + (edge_alpha,)
+            
+            verts = [
+                (theta1, radius1),
+                (control_theta, control_radius),
+                (theta2, radius2),
+                (theta2, radius2 + thickness),
+                (control_theta, control_radius + thickness),
+                (theta1, radius1 + thickness),
+                (0, 0),
+            ]
+            codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3, Path.LINETO, Path.CURVE3, Path.CURVE3, Path.CLOSEPOLY]
+            path = Path(verts, codes)
+            patch = PathPatch(path, facecolor=blended_color, lw=0, alpha=edge_alpha)
+            patches.append(patch)
+            # Store correlation value for title/stats if needed
+            # pass 
+
+    for patch in patches:
+        ax.add_patch(patch)
+    
+    # Center decoration
+    center_circle = Circle((0, 0), bottom - 0.2, transform=ax.transData, 
+                          facecolor='white', edgecolor='gray', linewidth=1, zorder=10)
+    ax.add_patch(center_circle)
+    
+    # Dynamic Title
+    if standardize_data:
+        title_append = " (Standardized)"
+    else:
+        title_append = ""
+        
+    ax.set_title(f"{title_prefix}Aggregated Chord Diagram{title_append}\n({aggregation_method} of {len(df_selected)} rows)", 
+                fontsize=label_size + 6, pad=40)
+    
+    plt.tight_layout()
+    return fig
+
+# --- New Function: Time Series Plot ---
+def create_time_series_plot(df_selected, feature_subset=None, figsize=(14, 6)):
+    """
+    Plots selected features over time (Step).
+    """
+    if feature_subset is None:
+        feature_subset = FEATURE_COLS[:5] # Default to first 5 to avoid clutter
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    x = df_selected['step'].values
+    
+    # Plot each feature
+    for feature in feature_subset:
+        if feature in df_selected.columns:
+            ax.plot(x, df_selected[feature].values, label=feature, linewidth=2, alpha=0.8)
+    
+    ax.set_xlabel("Step", fontsize=12)
+    ax.set_ylabel("Value", fontsize=12)
+    ax.set_title("Feature Evolution Over Time", fontsize=14)
+    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+# --- New Function: Correlation Heatmap ---
+def create_correlation_heatmap(df_selected, colormap_name='coolwarm', figsize=(10, 8)):
+    """
+    Creates a precise correlation heatmap.
+    """
+    corr = df_selected[FEATURE_COLS].corr()
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    cmap = cm.get_cmap(colormap_name)
+    
+    im = ax.imshow(corr, cmap=cmap, vmin=-1, vmax=1)
+    
+    # Show all ticks
+    ax.set_xticks(np.arange(len(FEATURE_COLS)))
+    ax.set_yticks(np.arange(len(FEATURE_COLS)))
+    ax.set_xticklabels(FEATURE_COLS)
+    ax.set_yticklabels(FEATURE_COLS)
+    
+    # Rotate labels
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    
+    # Text annotations
+    for i in range(len(FEATURE_COLS)):
+        for j in range(len(FEATURE_COLS)):
+            text = ax.text(j, i, f"{corr.iloc[i, j]:.2f}",
+                           ha="center", va="center", color="black", fontsize=8)
+    
+    ax.set_title("Feature Correlation Matrix", fontsize=14)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    
+    plt.tight_layout()
+    return fig
+
+def main():
+    st.set_page_config(
+        page_title="Advanced Data Explorer",
+        page_icon="🔬",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    st.title("🔬 Advanced Data Explorer")
+    st.markdown("Analyze your dataset using Chord Diagrams, Time Series, and Correlation Matrices.")
+    
+    # --- Sidebar: Data Loading & Filtering ---
+    with st.sidebar:
+        st.header("📂 Data Source")
+        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+        data_source = st.radio("Source", ["Use Example", "Upload File"], index=0)
+        
+        if data_source == "Upload File" and uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
+            st.success("File loaded")
+        else:
+            df = pd.read_csv(io.StringIO(EXAMPLE_CSV))
+            st.info("Using example dataset")
+
+        # --- NEW: Data Filtering ---
+        st.header("🔍 Data Filters")
+        st.markdown("Filter rows to analyze specific behaviors:")
+        
+        # Step Range
+        min_step, max_step = int(df['step'].min()), int(df['step'].max())
+        step_range = st.slider("Step Range", min_step, max_step, (min_step, max_step))
+        
+        # Score Range
+        min_score, max_score = float(df['score'].min()), float(df['score'].max())
+        score_range = st.slider("Score Range", min_score, max_score, (min_score, max_score))
+        
+        # Coverage Range
+        min_cov, max_cov = float(df['coverage'].min()), float(df['coverage'].max())
+        cov_range = st.slider("Coverage Range", min_cov, max_cov, (min_cov, max_cov))
+        
+        # Apply Filters
+        mask = (
+            (df['step'] >= step_range[0]) & (df['step'] <= step_range[1]) &
+            (df['score'] >= score_range[0]) & (df['score'] <= score_range[1]) &
+            (df['coverage'] >= cov_range[0]) & (df['coverage'] <= cov_range[1])
+        )
+        df_filtered = df[mask].copy()
+        
+        st.metric("Filtered Rows", len(df_filtered))
+        if len(df_filtered) == 0:
+            st.warning("No rows match filters. Adjust ranges.")
+            st.stop()
+
+        # --- Visualization Settings ---
+        st.header("🎨 Settings")
+        selected_cmap = st.selectbox("Colormap", ALL_COLORMAPS, index=ALL_COLORMAPS.index('viridis'))
+        
+        # Tabs for main view
+        tab1, tab2, tab3 = st.tabs(["🎯 Chord Diagram", "📈 Time Series", "🔥 Correlation Matrix"])
+
+    # --- Tab 1: Chord Diagram ---
+    with tab1:
+        col_ctrl, col_viz = st.columns([1, 3])
+        
+        with col_ctrl:
+            st.subheader("Controls")
+            agg_method = st.selectbox("Aggregation", ['mean', 'sum', 'median', 'max', 'min'])
+            show_corr = st.checkbox("Show Correlations", value=True)
+            normalize = st.checkbox("Normalize (Sum=1)", value=True)
+            standardize = st.checkbox("Standardize (Z-Score)", value=False, 
+                                     help="Scales features to have equal variance visibility. Useful if some features are always tiny.")
+            
+            # Visibility Control
+            threshold_perc = st.slider("Connection Strength (Show Top %)", 10, 100, 30, 
+                                      help="Only show the strongest X% of connections to reduce clutter.")
+            
+            st.markdown("**Note:** If 'Standardize' is on, colors represent deviation from the mean.")
+            
+        with col_viz:
+            st.subheader(f"Chord Diagram ({len(df_filtered)} rows)")
+            if len(df_filtered) < 2 and show_corr:
+                st.warning("Correlation requires at least 2 rows. Using Mean aggregation logic.")
+                
+            fig = create_aggregated_chord_diagram(
+                df_filtered,
+                colormap_name=selected_cmap,
+                aggregation_method=agg_method,
+                label_size=10,
+                edge_alpha=0.5,
+                show_correlations=show_corr,
+                normalize=normalize,
+                connection_threshold=threshold_perc,
+                standardize_data=standardize,
+                figsize=(12, 12)
+            )
+            st.pyplot(fig)
+            plt.close(fig)
+            
+            # Stats
+            st.write("**Top Correlations (Absolute):**")
+            corr = df_filtered[FEATURE_COLS].corr()
+            corr_unstack = corr.abs().unstack()
+            corr_unstack = corr_unstack[corr_unstack < 1.0].sort_values(ascending=False)
+            st.dataframe(corr_unstack.head(5))
+
+    # --- Tab 2: Time Series ---
+    with tab2:
+        st.subheader("Feature Evolution")
+        st.write("Visualize how features change over the `step` index.")
+        
+        # Feature selection for plot
+        cols_sel = st.multiselect("Select Features to Plot", FEATURE_COLS, default=FEATURE_COLS[:3])
+        
+        if cols_sel:
+            fig_ts = create_time_series_plot(df_filtered, feature_subset=cols_sel)
+            st.pyplot(fig_ts)
+            plt.close(fig_ts)
+        else:
+            st.info("Select features to plot.")
+
+    # --- Tab 3: Correlation Matrix ---
+    with tab3:
+        st.subheader("Correlation Heatmap")
+        st.write("Precise numerical view of feature relationships.")
+        
+        fig_heat = create_correlation_heatmap(df_filtered, colormap_name=selected_cmap)
+        st.pyplot(fig_heat)
+        plt.close(fig_heat)
+
+if __name__ == "__main__":
+    main()
