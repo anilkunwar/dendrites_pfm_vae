@@ -8,5 +8,6 @@ scipy
 seaborn
 networkx 
 scikit-learn
+umap
 
 
