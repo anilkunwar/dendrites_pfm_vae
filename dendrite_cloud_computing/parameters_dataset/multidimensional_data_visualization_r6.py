@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Enhanced Vivid Chord Diagram Visualization with Large Canvas and High Resolution
+Ultra-high resolution circular network visualizations with vivid colors and glow effects
+Optimized for publications, presentations, and large-format displays
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,7 +16,7 @@ from matplotlib.collections import PatchCollection, LineCollection
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import matplotlib.colors as mcolors
 import matplotlib.transforms as transforms
-import matplotlib.patheffects as patheffects  # ✅ ADDED MISSING IMPORT
+import matplotlib.patheffects as patheffects
 import colorsys
 from scipy import stats
 import io
@@ -23,7 +30,8 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.ticker import FuncFormatter
 import traceback
-import os  # ✅ ADDED FOR FILE PATH HANDLING
+import os
+import sys
 
 warnings.filterwarnings('ignore')
 
@@ -233,9 +241,9 @@ class VividChordDiagram:
         self.ax.set_theta_zero_location("N")  # 0° at top
         self.ax.set_theta_direction(-1)       # Clockwise by default
         
-        # Data structures - ✅ FIXED SYNTAX ERROR
+        # Data structures - ✅ FIXED: Removed space from variable name
         self.sectors: List[str] = []
-        self.sector_ Dict[str, Dict] = {}  # ✅ CORRECTED: was "self.sector_ Dict" (invalid syntax)
+        self.sector_dict: Dict[str, Dict] = {}  # ✅ CORRECTED: Removed space
         self.links: List[Dict] = []
         self.tracks: Dict[str, Dict[int, Dict]] = {}
         self.groups: Dict[str, int] = {}
@@ -1099,7 +1107,7 @@ class VividChordDiagram:
 # ============================================================================
 
 def create_vivid_chord_diagram(
-     Any,
+    data: Any,  # ✅ FIXED: Added parameter name
     data_type: str = 'matrix',
     figsize: Tuple[int, int] = (24, 24),  # LARGER canvas
     dpi: int = 300,                       # HIGHER resolution
@@ -1859,7 +1867,7 @@ def create_vivid_streamlit_app():
     ])
     
     # ============================================================================
-    # VISUALIZATION TAB - CORRECTED (FIXED UNDEFINED VARIABLES)
+    # VISUALIZATION TAB
     # ============================================================================
     with tab_viz:
         st.header("Ultra-High Resolution Network Visualization")
@@ -1918,7 +1926,6 @@ def create_vivid_streamlit_app():
                 directional = st.checkbox("Enable directional flows", 
                                          value=st.session_state.get('directional', False))
                 
-                # ✅ FIX: Define DEFAULT values BEFORE conditional block
                 direction_type = ["diffHeight", "arrows"]  # Default value
                 arrow_size = 1.5  # Default value
                 
@@ -1929,7 +1936,6 @@ def create_vivid_streamlit_app():
                         default=["diffHeight", "arrows"]
                     )
                     arrow_size = st.slider("Arrow size", 0.5, 3.0, 1.5, 0.1)
-                # ✅ Variables now ALWAYS defined regardless of directional state
             
             with st.expander("⚡ Performance", expanded=False):
                 reduce_threshold = st.slider("Min link value", 0.0, 0.5, 0.01, 0.01)
@@ -1940,7 +1946,6 @@ def create_vivid_streamlit_app():
             # Generate diagram with error handling
             try:
                 with st.spinner("🎨 Rendering vivid network diagram..."):
-                    # ✅ FIX: Use variables safely (now always defined)
                     params = {
                         'data': data,
                         'data_type': data_type,
@@ -1966,9 +1971,9 @@ def create_vivid_streamlit_app():
                         'reduce_threshold': reduce_threshold,
                         'max_links': max_links,
                         'directional': directional,
-                        'direction_type': direction_type,  # ✅ Now always safe
-                        'arrow_length': 0.12 * arrow_size,  # ✅ Now always safe
-                        'arrow_width': 0.07 * arrow_size,   # ✅ Now always safe
+                        'direction_type': direction_type,
+                        'arrow_length': 0.12 * arrow_size,
+                        'arrow_width': 0.07 * arrow_size,
                         'symmetric': False,
                         'link_gradient': (link_color_palette == 'rainbow'),
                         'show_legend': True,
@@ -2001,9 +2006,9 @@ def create_vivid_streamlit_app():
                 st.markdown("🔄 **Undirected**: Symmetric relationships")
     
     # ============================================================================
-    # DATA EXPLORER TAB - ✅ FIXED SYNTAX ERROR (CORRECTED TAB NAME)
+    # DATA EXPLORER TAB
     # ============================================================================
-    with tab_data:  # ✅ CORRECTED: was "with tab_" (invalid syntax) → NOW "with tab_data:"
+    with tab_data:
         st.header("Dataset Analysis")
         
         if data_type == "matrix":
@@ -2269,7 +2274,11 @@ def create_vivid_streamlit_app():
 
 def main():
     """Application entry point."""
-    create_vivid_streamlit_app()
+    try:
+        create_vivid_streamlit_app()
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+        st.code(traceback.format_exc())
 
 
 if __name__ == "__main__":
