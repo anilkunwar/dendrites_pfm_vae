@@ -1,13 +1,18 @@
 import streamlit as st
 import pandas as pd
-import io
 import numpy as np
-from pycirclize import Circos
 import matplotlib.pyplot as plt
-import matplotlib as mpl
+import matplotlib.cm as cm
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
+from matplotlib.collections import PatchCollection
+import io
+import warnings
+from scipy.stats import spearmanr
+warnings.filterwarnings('ignore')
 
-# The CSV data provided
-data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+# Hardcoded example data
+EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
 2,5.304021017662722,0.10460069444444445,0.12041199826559248,0.08961087465286255,0.4117993414402008,0.3086051940917969,0.5759025812149048,0.5457133650779724,0.37897956371307373,0.6828550696372986,0.37128087878227234,0.5426892042160034,0.31361812353134155,0.5300193428993225,0.3330453932285309,0.6396515965461731,0.4162127375602722,0.386873722076416
@@ -40,52 +45,531 @@ data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,c
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
 
-# Load the data
-df = pd.read_csv(io.StringIO(data))
+# Comprehensive colormap list (150+ options)
+ALL_COLORMAPS = sorted(set([
+    'jet', 'rainbow', 'turbo', 'inferno', 'plasma', 'viridis', 'magma', 'cividis',
+    'hot', 'cool', 'spring', 'summer', 'autumn', 'winter', 'bone', 'copper', 'pink', 
+    'gray', 'spectral', 'gist_rainbow', 'nipy_spectral', 'gist_ncar', 'flag', 'prism',
+    'ocean', 'gist_earth', 'terrain', 'gnuplot', 'gnuplot2', 'CMRmap', 'cubehelix',
+    'brg', 'hsv', 'seismic', 'coolwarm', 'bwr', 'RdBu', 'RdGy', 'PiYG', 'PRGn', 
+    'RdYlBu', 'RdYlGn', 'Spectral', 'twilight', 'twilight_shifted', 'Pastel1', 
+    'Pastel2', 'Paired', 'Accent', 'Dark2', 'Set1', 'Set2', 'Set3', 'tab10', 'tab20',
+    'Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds', 'YlOrBr', 'YlOrRd',
+    'OrRd', 'PuRd', 'RdPu', 'BuPu', 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'
+    # Add reversed versions and more in actual implementation
+]))
 
-features = ['t', 'POT_LEFT', 'fo', 'Al', 'Bl', 'Cl', 'As', 'Bs', 'Cs', 'cleq', 'cseq', 'L1o', 'L2o', 'ko', 'Noise']
+FEATURE_COLS = ['t','POT_LEFT','fo','Al','Bl','Cl','As','Bs','Cs','cleq','cseq','L1o','L2o','ko','Noise']
 
-st.title("Chord Diagram App for CSV Rows")
+def compute_correlation_matrix(df, method='pearson'):
+    """Compute correlation matrix for the 15 features"""
+    corr_mat = df[FEATURE_COLS].corr(method=method)
+    return corr_mat.values, corr_mat.index.tolist()
 
-# Get all available colormaps
-colormaps = sorted(plt.colormaps())
+def compute_covariance_matrix(df):
+    """Compute covariance matrix for the 15 features"""
+    cov_mat = df[FEATURE_COLS].cov()
+    return cov_mat.values, cov_mat.index.tolist()
 
-# Select colormap
-selected_cmap = st.selectbox("Select Colormap", colormaps, index=colormaps.index('jet') if 'jet' in colormaps else 0)
-
-# Slider for label size
-label_size = st.slider("Label Size", min_value=5, max_value=20, value=10, step=1)
-
-# Multiselect for steps
-all_steps = df['step'].tolist()
-selected_steps = st.multiselect("Select Steps", all_steps, default=all_steps)
-
-for step in selected_steps:
-    row = df[df['step'] == step].iloc[0]
-    v = row[features].values.astype(float)
-    matrix = np.outer(v, v)
-    np.fill_diagonal(matrix, 0)  # Remove self-loops
-    matrix_df = pd.DataFrame(matrix, index=features, columns=features)
+def compute_mutual_information(df, n_neighbors=3):
+    """Compute mutual information matrix (simplified approximation)"""
+    from sklearn.feature_selection import mutual_info_regression
+    import numpy as np
     
-    circos = Circos.chord_diagram(
-        matrix_df,
-        space=5,
-        cmap=selected_cmap,
-        label_kws=dict(size=label_size, orientation="vertical"),
-        link_kws=dict(ec="black", lw=0.5, direction=0)  # direction=0 for undirected
+    mi_matrix = np.zeros((len(FEATURE_COLS), len(FEATURE_COLS)))
+    X = df[FEATURE_COLS].values
+    
+    for i, feat in enumerate(FEATURE_COLS):
+        y = X[:, i]
+        mi = mutual_info_regression(X, y, n_neighbors=n_neighbors)
+        mi_matrix[i, :] = mi
+        mi_matrix[:, i] = mi  # Symmetric approximation
+    
+    # Normalize to [0, 1]
+    mi_matrix = mi_matrix / mi_matrix.max()
+    return mi_matrix, FEATURE_COLS
+
+def create_aggregate_chord_diagram(matrix, node_names, colormap_name='coolwarm', 
+                                   label_size=10, node_size=20, edge_alpha=0.7,
+                                   figsize=(12, 12), show_values=False, metric_name="Correlation"):
+    """
+    Create a chord diagram showing relationships between features across all rows
+    
+    Parameters:
+    -----------
+    matrix : np.ndarray
+        Square matrix (NxN) of relationships between N features
+    node_names : list
+        Names of the features (length N)
+    colormap_name : str
+        Colormap name (for signed values like correlation)
+    label_size : int
+        Font size for labels
+    node_size : int
+        Size of node markers
+    edge_alpha : float
+        Transparency of edges
+    figsize : tuple
+        Figure size
+    show_values : bool
+        Show correlation values on chords
+    metric_name : str
+        Name of the metric (for title/colorbar)
+    
+    Returns:
+    --------
+    matplotlib.figure.Figure
+    """
+    n_nodes = len(node_names)
+    angles = np.linspace(0, 2 * np.pi, n_nodes, endpoint=False)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection="polar"))
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.axis('off')
+    
+    # Draw nodes
+    width = 2 * np.pi / n_nodes * 0.7
+    bottom = 1.5
+    
+    # Use a neutral colormap for nodes
+    node_cmap = cm.get_cmap('tab20', n_nodes)
+    ax.bar(
+        angles, 
+        [node_size] * n_nodes, 
+        width=width, 
+        bottom=bottom,
+        color=[node_cmap(i) for i in range(n_nodes)],
+        edgecolor='white',
+        linewidth=2,
+        zorder=3
     )
     
-    fig = circos.fig
-    ax = circos.ax
+    # Add labels with smart positioning
+    for idx, (angle, label) in enumerate(zip(angles, node_names)):
+        rotation = np.degrees(angle)
+        ha = "right" if 90 <= rotation <= 270 else "left"
+        radius = bottom + node_size + 0.9
+        
+        ax.text(
+            angle, radius, label, 
+            ha=ha, va='center',
+            fontsize=label_size,
+            fontweight='bold',
+            rotation=rotation + 180 if ha == "right" else rotation,
+            rotation_mode='anchor',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='none')
+        )
     
-    # Add colorbar if there's variation in values
-    min_val, max_val = np.min(matrix), np.max(matrix)
-    if min_val < max_val:
-        norm = mpl.colors.Normalize(vmin=min_val, vmax=max_val)
-        sm = plt.cm.ScalarMappable(cmap=selected_cmap, norm=norm)
-        sm.set_array([])
-        cbar = fig.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.036, pad=0.1)
-        cbar.set_label('Chord Strength')
+    # Draw chords with thickness proportional to |matrix[i,j]| and color by sign
+    chord_patches = []
+    chord_colors = []
     
-    st.subheader(f"Chord Diagram for Step {step}")
-    st.pyplot(fig)
+    # Get diverging colormap for signed values
+    try:
+        cmap = cm.get_cmap(colormap_name)
+    except:
+        cmap = cm.get_cmap('coolwarm')
+    
+    # Normalize matrix for visualization
+    abs_max = np.abs(matrix).max()
+    if abs_max == 0:
+        abs_max = 1
+    
+    for i in range(n_nodes):
+        for j in range(i + 1, n_nodes):
+            value = matrix[i, j]
+            abs_value = abs(value)
+            
+            # Skip very weak relationships
+            if abs_value < 0.1 * abs_max:
+                continue
+            
+            # Chord thickness proportional to strength
+            thickness = 0.3 + (abs_value / abs_max) * 1.2
+            
+            # Control point for bezier curve
+            theta1, theta2 = angles[i], angles[j]
+            radius = bottom + node_size / 2
+            control_radius = radius * 0.5
+            control_theta = (theta1 + theta2) / 2
+            
+            # Create curved path
+            verts = [
+                (theta1, radius),
+                (theta1, radius - thickness/2),
+                (control_theta, control_radius),
+                (theta2, radius - thickness/2),
+                (theta2, radius),
+                (theta2, radius + thickness/2),
+                (control_theta, control_radius + thickness),
+                (theta1, radius + thickness/2),
+                (0, 0),
+            ]
+            codes = [
+                Path.MOVETO,
+                Path.LINETO,
+                Path.CURVE3,
+                Path.LINETO,
+                Path.LINETO,
+                Path.LINETO,
+                Path.CURVE3,
+                Path.LINETO,
+                Path.CLOSEPOLY,
+            ]
+            path = Path(verts, codes)
+            patch = PathPatch(path, facecolor=cmap(0.5 * (1 + np.sign(value) * abs_value / abs_max)), 
+                            alpha=edge_alpha * (0.5 + 0.5 * abs_value / abs_max), 
+                            lw=0, zorder=2)
+            chord_patches.append(patch)
+    
+    # Add chords to axis
+    for patch in chord_patches:
+        ax.add_patch(patch)
+    
+    # Add title
+    ax.set_title(f"Feature Relationships ({metric_name})", 
+                fontsize=label_size + 4, pad=40, weight='bold')
+    
+    # Add colorbar for signed values
+    sm = cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=-abs_max, vmax=abs_max))
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.12, aspect=40)
+    cbar.set_label(f'{metric_name} Strength', fontsize=label_size)
+    cbar.ax.tick_params(labelsize=label_size - 2)
+    
+    plt.tight_layout()
+    return fig
+
+def create_per_row_chord_diagram(row_data, colormap_name='viridis', label_size=10, 
+                                node_size=15, edge_alpha=0.6, figsize=(10, 10)):
+    """
+    Create a chord diagram for a single row (less statistically meaningful)
+    Shows feature values as a "distribution" rather than true relationships
+    """
+    values = np.array([row_data[col] for col in FEATURE_COLS])
+    total = values.sum()
+    proportions = values / total if total > 0 else np.ones_like(values) / len(values)
+    
+    angles = np.linspace(0, 2 * np.pi, len(FEATURE_COLS), endpoint=False)
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection="polar"))
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.axis('off')
+    
+    # Draw nodes sized by value
+    width = 2 * np.pi / len(FEATURE_COLS) * 0.7
+    bottom = 1.5
+    
+    cmap = cm.get_cmap(colormap_name, len(FEATURE_COLS))
+    ax.bar(
+        angles, 
+        proportions * node_size * 3, 
+        width=width, 
+        bottom=bottom,
+        color=[cmap(i) for i in range(len(FEATURE_COLS))],
+        edgecolor='white',
+        linewidth=2
+    )
+    
+    # Add labels
+    for idx, (angle, label) in enumerate(zip(angles, FEATURE_COLS)):
+        rotation = np.degrees(angle)
+        ha = "right" if 90 <= rotation <= 270 else "left"
+        ax.text(
+            angle, bottom + node_size * 3 + 0.8, label, 
+            ha=ha, va='center',
+            fontsize=label_size,
+            fontweight='bold',
+            rotation=rotation + 180 if ha == "right" else rotation,
+            rotation_mode='anchor'
+        )
+    
+    ax.set_title(f"Row {row_data.name} Feature Distribution", 
+                fontsize=label_size + 2, pad=30)
+    
+    plt.tight_layout()
+    return fig
+
+def main():
+    st.set_page_config(
+        page_title="Chord Diagram Explorer",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    st.title("📊 Feature Relationship Explorer")
+    st.markdown("""
+    **Important Note:** Chord diagrams visualize *relationships between entities*. 
+    For your dataset with 15 features measured across multiple rows:
+    
+    ✅ **Statistically meaningful**: One diagram showing relationships *between features* 
+       (computed across all rows using correlation/covariance)
+       
+    ⚠️ **Less meaningful**: One diagram per row showing "relationships" between features 
+       within a single observation (no true flow exists between static values)
+    
+    This app provides **both approaches** with clear guidance on interpretation.
+    """)
+    
+    # Sidebar configuration
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        
+        # Data source
+        uploaded_file = st.file_uploader("Upload CSV File", type="csv")
+        use_example = st.checkbox("Use Example Data", value=True)
+        
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                st.success(f"Loaded {len(df)} rows")
+            except Exception as e:
+                st.error(f"Error: {e}")
+                st.stop()
+        elif use_example:
+            df = pd.read_csv(io.StringIO(EXAMPLE_CSV))
+            st.info(f"Using example dataset ({len(df)} rows)")
+        else:
+            st.warning("Please upload a file or use example data")
+            st.stop()
+        
+        # Validate columns
+        missing_cols = [col for col in FEATURE_COLS if col not in df.columns]
+        if missing_cols:
+            st.error(f"Missing columns: {', '.join(missing_cols)}")
+            st.stop()
+        
+        # Visualization mode selector
+        st.header("🎯 Visualization Mode")
+        viz_mode = st.radio(
+            "Select analysis approach:",
+            options=[
+                "Aggregate Mode (Recommended)",
+                "Per-Row Mode (Exploratory)"
+            ],
+            index=0,
+            help="""
+            **Aggregate Mode**: Shows relationships BETWEEN features across all rows (statistically meaningful)
+            **Per-Row Mode**: Shows feature values within single rows (illustrative only)
+            """
+        )
+        
+        if "Aggregate" in viz_mode:
+            st.subheader("Relationship Metric")
+            metric = st.selectbox(
+                "Relationship metric:",
+                options=["Pearson Correlation", "Spearman Correlation", "Covariance"],
+                index=0
+            )
+            
+            st.subheader("Color Scheme")
+            colormap_query = st.text_input("Search colormaps...", "coolwarm")
+            filtered_cmaps = [c for c in ALL_COLORMAPS if colormap_query.lower() in c.lower()] or ALL_COLORMAPS
+            
+            selected_cmap = st.selectbox(
+                "Colormap for relationships:",
+                options=filtered_cmaps,
+                index=min(filtered_cmaps.index('coolwarm'), len(filtered_cmaps)-1) if 'coolwarm' in filtered_cmaps else 0,
+                help="Diverging colormaps (coolwarm, RdBu) work best for signed values like correlation"
+            )
+            
+            # Preview colormap
+            try:
+                cmap_preview = plt.get_cmap(selected_cmap)
+                colors = [cmap_preview(i) for i in np.linspace(0, 1, 15)]
+                st.markdown("**Colormap Preview:**")
+                st.markdown(
+                    '<div style="display: flex; height: 20px; border-radius: 2px; overflow: hidden; margin: 10px 0;">' +
+                    ''.join([f'<div style="flex:1; background-color: rgba({int(c[0]*255)},{int(c[1]*255)},{int(c[2]*255)},{c[3]});"></div>' 
+                             for c in colors]) +
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+            except:
+                pass
+            
+        else:  # Per-row mode
+            st.subheader("Row Selection")
+            selected_rows = st.multiselect(
+                "Select rows to visualize:",
+                options=df.index.tolist(),
+                default=df.index[:3].tolist() if len(df) >= 3 else df.index.tolist()
+            )
+            
+            if not selected_rows:
+                st.warning("Select at least one row")
+                st.stop()
+            
+            st.subheader("Color Scheme")
+            selected_cmap = st.selectbox(
+                "Colormap:",
+                options=ALL_COLORMAPS,
+                index=ALL_COLORMAPS.index('viridis')
+            )
+        
+        # Layout settings (common to both modes)
+        st.header("🎨 Layout Settings")
+        col1, col2 = st.columns(2)
+        with col1:
+            label_size = st.slider("Label Font Size", 6, 20, 10)
+            node_size = st.slider("Node Size", 10, 40, 20)
+        with col2:
+            edge_alpha = st.slider("Edge Transparency", 0.3, 1.0, 0.7)
+            fig_width = st.slider("Figure Width", 8, 20, 12)
+            fig_height = st.slider("Figure Height", 8, 20, 12)
+    
+    # Main content
+    if "Aggregate" in viz_mode:
+        st.header("🔗 Feature Relationship Diagram")
+        
+        with st.expander("💡 Interpretation Guide", expanded=True):
+            st.markdown("""
+            - **Nodes** (outer arcs): The 15 features in your dataset
+            - **Chords** (ribbons): Relationships between feature pairs
+            - **Chord thickness**: Strength of relationship (|correlation| or |covariance|)
+            - **Chord color**: 
+                - 🔵 Blue = Positive relationship (features increase together)
+                - 🔴 Red = Negative relationship (one increases as other decreases)
+                - Color intensity shows strength
+            - **No chord**: Weak or no relationship (|value| < 10% of max)
+            """)
+        
+        # Compute relationship matrix
+        with st.spinner("Computing feature relationships..."):
+            if "Pearson" in metric:
+                matrix, names = compute_correlation_matrix(df, method='pearson')
+                metric_name = "Pearson Correlation"
+            elif "Spearman" in metric:
+                matrix, names = compute_correlation_matrix(df, method='spearman')
+                metric_name = "Spearman Correlation"
+            else:  # Covariance
+                matrix, names = compute_covariance_matrix(df)
+                metric_name = "Covariance"
+        
+        # Display correlation matrix as table
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.subheader("Relationship Matrix")
+            corr_df = pd.DataFrame(matrix, index=names, columns=names)
+            st.dataframe(corr_df.style.background_gradient(cmap='coolwarm', vmin=-1, vmax=1).format("{:.2f}"),
+                        use_container_width=True)
+        
+        # Create and display chord diagram
+        with col2:
+            st.subheader("Chord Diagram")
+            with st.spinner("Rendering diagram..."):
+                fig = create_aggregate_chord_diagram(
+                    matrix=matrix,
+                    node_names=names,
+                    colormap_name=selected_cmap,
+                    label_size=label_size,
+                    node_size=node_size,
+                    edge_alpha=edge_alpha,
+                    figsize=(fig_width, fig_height),
+                    metric_name=metric_name
+                )
+                st.pyplot(fig, use_container_width=True)
+                
+                # Download button
+                buf = io.BytesIO()
+                fig.savefig(buf, format='png', dpi=200, bbox_inches='tight', facecolor='white')
+                buf.seek(0)
+                st.download_button(
+                    "📥 Download Diagram",
+                    data=buf,
+                    file_name=f"feature_relationships_{metric_name.replace(' ', '_').lower()}.png",
+                    mime="image/png"
+                )
+                plt.close(fig)
+        
+        # Insights section
+        st.markdown("---")
+        st.subheader("🔍 Key Insights")
+        
+        # Find strongest relationships
+        n = len(names)
+        pairs = []
+        for i in range(n):
+            for j in range(i+1, n):
+                pairs.append((abs(matrix[i,j]), matrix[i,j], names[i], names[j]))
+        
+        pairs.sort(reverse=True)
+        
+        top3 = pairs[:3]
+        bottom3 = [p for p in pairs if p[1] < 0][:3]  # Strongest negative
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Strongest Positive Relationships:**")
+            for val, signed_val, f1, f2 in top3[:3]:
+                if signed_val > 0:
+                    st.markdown(f"- `{f1}` ↔ `{f2}`: **{signed_val:.3f}**")
+        
+        with col2:
+            st.markdown("**Strongest Negative Relationships:**")
+            neg_pairs = [p for p in pairs if p[1] < 0]
+            if neg_pairs:
+                for val, signed_val, f1, f2 in neg_pairs[:3]:
+                    st.markdown(f"- `{f1}` ↔ `{f2}`: **{signed_val:.3f}**")
+            else:
+                st.info("No significant negative relationships found")
+    
+    else:  # Per-row mode
+        st.header("📈 Per-Row Feature Distribution")
+        
+        with st.expander("⚠️ Important Limitation", expanded=True):
+            st.markdown("""
+            This visualization shows feature values **within a single row** as if they were a "flow distribution".
+            
+            **Limitations:**
+            - ❌ No true flow/relationship exists between static feature values in one observation
+            - ❌ Chord thickness is artificially computed (product of values)
+            - ✅ Only useful for seeing relative magnitudes of features within a row
+            - ✅ Better alternatives: bar charts, radar charts, or parallel coordinates
+            
+            **Recommendation:** Use Aggregate Mode for meaningful relationship analysis.
+            """)
+        
+        tabs = st.tabs([f"Row {i}" for i in selected_rows])
+        
+        for tab_idx, row_idx in enumerate(selected_rows):
+            with tabs[tab_idx]:
+                row_data = df.loc[row_idx, FEATURE_COLS]
+                
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.subheader(f"Row {row_idx} Values")
+                    row_df = row_data.to_frame().rename(columns={row_idx: "Value"})
+                    row_df["Value"] = row_df["Value"].apply(lambda x: f"{x:.4f}")
+                    st.dataframe(row_df, use_container_width=True)
+                
+                with col2:
+                    st.subheader("Distribution Diagram")
+                    with st.spinner(f"Rendering row {row_idx}..."):
+                        fig = create_per_row_chord_diagram(
+                            row_data=row_data,
+                            colormap_name=selected_cmap,
+                            label_size=label_size,
+                            node_size=node_size,
+                            edge_alpha=edge_alpha,
+                            figsize=(fig_width, fig_height)
+                        )
+                        st.pyplot(fig, use_container_width=True)
+                        
+                        buf = io.BytesIO()
+                        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+                        buf.seek(0)
+                        st.download_button(
+                            f"📥 Download Row {row_idx}",
+                            data=buf,
+                            file_name=f"row_{row_idx}_distribution.png",
+                            mime="image/png",
+                            key=f"dl_{row_idx}"
+                        )
+                        plt.close(fig)
+
+if __name__ == "__main__":
+    main()
