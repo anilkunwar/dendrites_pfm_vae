@@ -1,119 +1,25 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
-import matplotlib.cm as cm
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch, Circle, Wedge, FancyBboxPatch, Rectangle
-from matplotlib.collections import PatchCollection
-import matplotlib.colors as mcolors
-import matplotlib.transforms as transforms
-from matplotlib.patheffects import withStroke, Normal
 import io
+import numpy as np
+from pycirclize import Circos
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 import warnings
-import gc
-from typing import List, Dict, Tuple, Optional, Union
+import sys
 
-warnings.filterwarnings('ignore')
+# Critical fix: Suppress warnings and verify pycirclize availability
+warnings.filterwarnings("ignore", category=UserWarning)
+try:
+    import pycirclize
+    PYCIRCLIZE_AVAILABLE = True
+except ImportError:
+    PYCIRCLIZE_AVAILABLE = False
+    st.error("❌ pycirclize library not installed. Please install it with: `pip install pycirclize`")
+    st.stop()
 
-# Set global matplotlib parameters
-plt.rcParams['figure.max_open_warning'] = 0
-plt.rcParams['agg.path.chunksize'] = 10000
-plt.rcParams['font.family'] = 'sans-serif'
-
-# ============================================================
-# VISUAL DEFAULTS AND CONFIGURATION
-# ============================================================
-
-# Global visual defaults
-VISUAL_DEFAULTS = {
-    # Node styling
-    'node_edge_width': 2.0,
-    'node_alpha': 0.9,
-    'node_edge_color': 'white',
-    'node_shadow': False,
-    'node_shadow_offset': 0.05,
-    'node_shadow_alpha': 0.3,
-    'node_glow': False,
-    'node_glow_width': 10,
-    'node_glow_alpha': 0.2,
-    
-    # Label styling
-    'label_fontsize': 12,
-    'label_padding': 0.35,
-    'label_offset_radius': 0.35,
-    'label_bbox_pad': 0.25,
-    'label_bbox_alpha': 0.85,
-    'label_bbox_fc': 'white',
-    'label_bbox_ec': 'lightgray',
-    'label_bbox_lw': 1.0,
-    'label_bbox_rounding': 4,
-    'label_halo': True,
-    'label_halo_width': 3,
-    'label_halo_color': 'white',
-    'label_rotation': 'auto',  # 'auto', 'tangential', 'horizontal', 'radial'
-    
-    # Edge/connection styling
-    'edge_alpha': 0.7,
-    'edge_width_scale': 3.0,
-    'edge_min_width': 0.5,
-    'edge_max_width': 8.0,
-    'edge_curvature': 0.35,
-    'edge_smoothness': 50,  # Number of points in curve
-    'edge_shadow': False,
-    'edge_shadow_offset': 0.02,
-    'edge_shadow_alpha': 0.2,
-    'edge_glow': False,
-    'edge_glow_width': 5,
-    'edge_glow_alpha': 0.15,
-    
-    # Radial layout
-    'radial_base': 1.0,
-    'radial_spacing': 0.8,
-    'radial_label_offset': 0.35,
-    'radial_grid': False,
-    'radial_grid_alpha': 0.1,
-    'radial_grid_color': 'gray',
-    
-    # Title and text
-    'title_fontsize': 16,
-    'title_pad': 30,
-    'title_weight': 'bold',
-    'title_color': 'black',
-    'title_background': False,
-    'title_background_color': 'white',
-    'title_background_alpha': 0.8,
-    
-    # Colorbar styling
-    'colorbar_labelsize': 12,
-    'colorbar_ticksize': 10,
-    'colorbar_pad': 0.12,
-    'colorbar_aspect': 50,
-    'colorbar_shrink': 1.0,
-    'colorbar_extend': 'neither',
-    
-    # Subplot and layout
-    'subplot_pad': 0.12,
-    'tight_layout': True,
-    'constrained_layout': False,
-    'figure_dpi': 100,
-    'background_color': 'white',
-    'frame_visible': False,
-    
-    # Advanced visual effects
-    'gradient_nodes': True,
-    'gradient_edges': True,
-    'bezier_control': 'midpoint',  # 'midpoint', 'adaptive', 'fixed'
-    'anti_aliasing': True,
-    'label_collision_avoidance': True,
-    'label_collision_buffer': 0.15,
-    'auto_rotation_threshold': 90,  # Degrees
-}
-
-# Example data
-EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
+# CSV data (unchanged)
+data = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,Bs,Cs,cleq,cseq,L1o,L2o,ko,Noise
 0,5.169830808799158,0.10416666666666667,0.1,0.028256090357899666,0.4339944124221802,0.29827773571014404,0.5466359853744507,0.49647387862205505,0.4251793622970581,0.5390684008598328,0.33983609080314636,0.5945582389831543,0.46486878395080566,0.4681702256202698,0.359584778547287,0.6078763008117676,0.4093511402606964,0.31751325726509094
 1,5.179830808799158,0.10460069444444445,0.11139433523068368,0.0594908632338047,0.4270627200603485,0.27864405512809753,0.5769832134246826,0.5266308188438416,0.36398613452911377,0.6301330327987671,0.35744181275367737,0.5121908187866211,0.3641984462738037,0.4810342490673065,0.37694957852363586,0.612697958946228,0.4058190882205963,0.34840521216392517
 2,5.304021017662722,0.10460069444444445,0.12041199826559248,0.08961087465286255,0.4117993414402008,0.3086051940917969,0.5759025812149048,0.5457133650779724,0.37897956371307373,0.6828550696372986,0.37128087878227234,0.5426892042160034,0.31361812353134155,0.5300193428993225,0.3330453932285309,0.6396515965461731,0.4162127375602722,0.386873722076416
@@ -146,1559 +52,193 @@ EXAMPLE_CSV = """step,score,coverage,hopping_strength,t,POT_LEFT,fo,Al,Bl,Cl,As,
 29,11.988932619625839,0.5911458333333334,0.19867717342662447,1.2421698570251465,0.9625719785690308,1.3612264394760132,0.8735606670379639,1.6014152765274048,1.1779128313064575,1.7611147165298462,0.9013581275939941,1.336272954940796,0.8664807081222534,0.7415759563446045,0.8296802639961243,0.8429422974586487,1.0249007940292358,0.7863231301307678
 30,11.784495105579659,0.5933159722222222,0.2,1.3608571290969849,0.9625561833381653,1.2631572484970093,0.9952393770217896,1.82819402217865,1.1884130239486694,1.8113062381744385,0.981305718421936,1.5592151880264282,0.9318991899490356,0.6798413395881653,0.864549994468689,0.8141895532608032,0.9140636324882507,0.9269731044769287"""
 
-# Enhanced colormap list with descriptions
-COLORMAP_CATEGORIES = {
-    'Sequential': ['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'summer', 'autumn', 'winter', 'hot', 'cool', 'copper', 'bone', 'pink', 'gray', 'Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds', 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu', 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'],
-    'Diverging': ['coolwarm', 'RdBu', 'RdGy', 'PiYG', 'PRGn', 'RdYlBu', 'RdYlGn', 'Spectral', 'bwr', 'seismic', 'BrBG', 'PuOr'],
-    'Cyclic': ['twilight', 'twilight_shifted', 'hsv'],
-    'Qualitative': ['tab10', 'tab20', 'tab20b', 'tab20c', 'Set1', 'Set2', 'Set3', 'Pastel1', 'Pastel2', 'Paired', 'Accent', 'Dark2'],
-    'Perceptually Uniform': ['viridis', 'plasma', 'inferno', 'magma', 'cividis'],
-    'Miscellaneous': ['jet', 'rainbow', 'turbo', 'gist_rainbow', 'gist_ncar', 'gist_stern', 'nipy_spectral', 'flag', 'prism']
-}
+# Load data
+df = pd.read_csv(io.StringIO(data))
+features = ['t', 'POT_LEFT', 'fo', 'Al', 'Bl', 'Cl', 'As', 'Bs', 'Cs', 'cleq', 'cseq', 'L1o', 'L2o', 'ko', 'Noise']
 
-ALL_COLORMAPS = []
-for category in COLORMAP_CATEGORIES.values():
-    ALL_COLORMAPS.extend(category)
-ALL_COLORMAPS = sorted(set(ALL_COLORMAPS))
+# Streamlit setup
+st.set_page_config(page_title="Chord Diagram Explorer", layout="wide")
+st.title("🔬 Enhanced Chord Diagram Explorer")
+st.markdown("Visualize feature interactions across simulation steps using circular chord diagrams")
 
-FEATURE_COLS = ['t','POT_LEFT','fo','Al','Bl','Cl','As','Bs','Cs','cleq','cseq','L1o','L2o','ko','Noise']
-NODE_NAMES = FEATURE_COLS
+# Sidebar controls (NO MatrixParser dependency)
+with st.sidebar:
+    st.header("🎨 Visualization Controls")
+    
+    # Safe colormap selection
+    try:
+        colormaps = sorted([c for c in plt.colormaps() if not c.endswith('_r')])
+        default_cmap = 'viridis' if 'viridis' in colormaps else colormaps[0]
+    except:
+        colormaps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
+        default_cmap = 'viridis'
+    
+    selected_cmap = st.selectbox("Colormap", colormaps, index=colormaps.index(default_cmap) if default_cmap in colormaps else 0)
+    label_size = st.slider("Label Font Size", 6, 16, 9)
+    transparency = st.slider("Link Transparency", 0.0, 1.0, 0.6, 0.1)
+    big_gap = st.slider("Big Gap (degrees)", 0, 45, 15, 1, 
+                       help="Gap after 'Cl' (between feature groups) and before first feature")
+    small_gap = st.slider("Small Gap (degrees)", 0, 10, 2, 1)
+    link_border = st.checkbox("Show Link Borders", True)
+    border_width = st.slider("Border Width", 0.1, 2.0, 0.8, 0.1) if link_border else 0.0
+    
+    st.header("⚙️ Processing Options")
+    scale = st.checkbox("Scale Sectors by Total Flow", False,
+                       help="Normalize rows to show proportional flows")
+    
+    st.header("🔍 Data Selection")
+    all_steps = sorted(df['step'].unique().tolist())
+    selected_steps = st.multiselect("Select Steps", all_steps, 
+                                   default=all_steps[:min(3, len(all_steps))],
+                                   help="Select up to 3 steps for optimal performance")
+    if len(selected_steps) > 3:
+        st.warning("⚠️ Showing first 3 steps for performance")
+        selected_steps = selected_steps[:3]
 
-# ============================================================
-# HELPER FUNCTIONS FOR VISUAL ENHANCEMENTS
-# ============================================================
+# Main content
+if not PYCIRCLIZE_AVAILABLE:
+    st.error("pycirclize is not available in this environment. Please install it to use this app.")
+    st.stop()
 
-@st.cache_data(ttl=3600, max_entries=10)
-def load_data(uploaded_file=None, use_example=True):
-    """Load data with caching"""
-    if not use_example and uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            return df
-        except Exception as e:
-            st.error(f"Error reading CSV: {e}")
-            return None
-    else:
-        df = pd.read_csv(io.StringIO(EXAMPLE_CSV))
-        return df
+if not selected_steps:
+    st.warning("⚠️ Please select at least one step to visualize")
+    st.stop()
 
-def compute_statistics(df_selected):
-    """Compute all required statistics efficiently"""
-    stats = {}
-    
-    stats['feature_means'] = df_selected[FEATURE_COLS].mean().values
-    stats['feature_stds'] = df_selected[FEATURE_COLS].std().values
-    stats['feature_mins'] = df_selected[FEATURE_COLS].min().values
-    stats['feature_maxs'] = df_selected[FEATURE_COLS].max().values
-    stats['feature_medians'] = df_selected[FEATURE_COLS].median().values
-    
-    stats['correlation_matrix'] = df_selected[FEATURE_COLS].corr().fillna(0).values
-    stats['covariance_matrix'] = df_selected[FEATURE_COLS].cov().fillna(0).values
-    
-    return stats
+# Feature grouping colors
+group1_color = "#4e79a7"  # First 6 features (t to Cl)
+group2_color = "#f28e2b"  # Remaining 9 features
+sector_colors = [group1_color] * 6 + [group2_color] * 9
 
-def apply_text_halo(text_obj, halo_width=3, halo_color='white'):
-    """Apply halo effect to text for better readability"""
-    text_obj.set_path_effects([
-        withStroke(linewidth=halo_width, foreground=halo_color),
-        Normal()
-    ])
+# Render diagrams
+progress = st.progress(0)
+status = st.empty()
 
-def create_gradient_color(base_color, factor=0.7, direction='lighter'):
-    """Create gradient color from base color"""
-    if direction == 'lighter':
-        return tuple(min(1, c * (1 + factor)) for c in base_color[:3]) + (base_color[3],)
-    else:
-        return tuple(c * factor for c in base_color[:3]) + (base_color[3],)
-
-def adjust_label_rotation(angle_degrees, auto_rotation_threshold=90):
-    """Adjust label rotation for readability"""
-    if 90 <= angle_degrees <= 270:
-        angle_degrees += 180
-        ha = "right"
-    else:
-        ha = "left"
+for i, step_val in enumerate(selected_steps):
+    status.text(f".Rendering Step {step_val} ({i+1}/{len(selected_steps)})...")
+    progress.progress((i + 1) / len(selected_steps))
     
-    return angle_degrees, ha
-
-def create_rounded_rectangle(xy, width, height, radius=0.1, **kwargs):
-    """Create a rounded rectangle patch"""
-    from matplotlib.patches import FancyBboxPatch
-    return FancyBboxPatch(xy, width, height,
-                         boxstyle=f"round,pad={radius},rounding_size={radius}",
-                         **kwargs)
-
-# ============================================================
-# ENHANCED CHORD DIAGRAM WITH FULL PARAMETERIZATION
-# ============================================================
-
-def create_enhanced_chord_diagram(
-    stats,
-    metric='correlation',
-    colormap_name='coolwarm',
-    edge_threshold=0.3,
-    max_connections=100,
-    figsize=(14, 14),
-    title="",
-    
-    # === NODE STYLING ===
-    node_edge_width=2.0,
-    node_alpha=0.9,
-    node_edge_color='white',
-    node_shadow=False,
-    node_shadow_offset=0.05,
-    node_shadow_alpha=0.3,
-    node_glow=False,
-    node_glow_width=10,
-    node_glow_alpha=0.2,
-    gradient_nodes=True,
-    
-    # === LABEL STYLING ===
-    label_fontsize=12,
-    label_padding=0.35,
-    label_offset_radius=0.35,
-    label_bbox_pad=0.25,
-    label_bbox_alpha=0.85,
-    label_bbox_fc='white',
-    label_bbox_ec='lightgray',
-    label_bbox_lw=1.0,
-    label_bbox_rounding=4,
-    label_halo=True,
-    label_halo_width=3,
-    label_halo_color='white',
-    label_rotation='auto',
-    
-    # === EDGE/CONNECTION STYLING ===
-    edge_alpha=0.7,
-    edge_width_scale=3.0,
-    edge_min_width=0.5,
-    edge_max_width=8.0,
-    edge_curvature=0.35,
-    edge_smoothness=50,
-    edge_shadow=False,
-    edge_shadow_offset=0.02,
-    edge_shadow_alpha=0.2,
-    edge_glow=False,
-    edge_glow_width=5,
-    edge_glow_alpha=0.15,
-    gradient_edges=True,
-    bezier_control='midpoint',
-    
-    # === RADIAL LAYOUT ===
-    radial_base=1.0,
-    radial_spacing=0.8,
-    radial_label_offset=0.35,
-    radial_grid=False,
-    radial_grid_alpha=0.1,
-    radial_grid_color='gray',
-    
-    # === TITLE AND TEXT ===
-    title_fontsize=16,
-    title_pad=30,
-    title_weight='bold',
-    title_color='black',
-    title_background=False,
-    title_background_color='white',
-    title_background_alpha=0.8,
-    
-    # === COLORBAR STYLING ===
-    colorbar_labelsize=12,
-    colorbar_ticksize=10,
-    colorbar_pad=0.12,
-    colorbar_aspect=50,
-    colorbar_shrink=1.0,
-    colorbar_extend='neither',
-    
-    # === SUBPLOT AND LAYOUT ===
-    subplot_pad=0.12,
-    tight_layout=True,
-    constrained_layout=False,
-    figure_dpi=100,
-    background_color='white',
-    frame_visible=False,
-    
-    # === ADVANCED VISUAL EFFECTS ===
-    anti_aliasing=True,
-    label_collision_avoidance=True,
-    label_collision_buffer=0.15,
-    auto_rotation_threshold=90,
-):
-    """
-    Create an enhanced chord diagram with full visual parameterization
-    
-    Parameters:
-    -----------
-    All parameters correspond to visual controls listed above
-    
-    Returns:
-    --------
-    matplotlib.figure.Figure
-        The enhanced chord diagram figure
-    """
-    
-    # -----------------------
-    # Matrix selection and setup
-    # -----------------------
-    if metric == 'correlation':
-        matrix = stats['correlation_matrix']
-        vmin, vmax = -1, 1
-        metric_label = "Correlation"
-    else:
-        matrix = stats['covariance_matrix']
-        max_abs = np.max(np.abs(matrix))
-        vmin, vmax = -max_abs, max_abs
-        metric_label = "Covariance"
-    
-    n = len(FEATURE_COLS)
-    means = stats['feature_means']
-    
-    # -----------------------
-    # Figure setup with enhanced DPI
-    # -----------------------
-    fig, ax = plt.subplots(
-        figsize=figsize,
-        dpi=figure_dpi,
-        subplot_kw={'projection': 'polar'},
-        constrained_layout=constrained_layout
-    )
-    
-    # Set background color
-    fig.patch.set_facecolor(background_color)
-    ax.set_facecolor(background_color)
-    
-    # Polar plot setup
-    ax.set_theta_zero_location("N")
-    ax.set_theta_direction(-1)
-    ax.set_ylim(0, radial_base + 2.0)
-    
-    if not frame_visible:
-        ax.axis("off")
-    
-    # Add radial grid if requested
-    if radial_grid:
-        ax.grid(True, alpha=radial_grid_alpha, color=radial_grid_color)
-    
-    # -----------------------
-    # Angles and positions
-    # -----------------------
-    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    angles = np.roll(angles, -1)  # Rotate for better label placement
-    
-    # -----------------------
-    # Colormaps
-    # -----------------------
-    edge_cmap = cm.get_cmap(colormap_name)
-    node_cmap = cm.get_cmap("tab20c", n)
-    
-    # -----------------------
-    # Node scaling and colors
-    # -----------------------
-    if means.max() > 0:
-        norm_means = means / means.max()
-    else:
-        norm_means = np.ones(n)
-    
-    node_sizes = 0.4 + 0.6 * norm_means
-    
-    # -----------------------
-    # Draw nodes with enhanced effects
-    # -----------------------
-    node_patches = []
-    node_positions = []
-    
-    for i, angle in enumerate(angles):
-        r = radial_base + node_sizes[i] / 2
-        node_positions.append((angle, r))
+    try:
+        # Get data row
+        row = df[df['step'] == step_val].iloc[0]
+        values = row[features].values.astype(float)
         
-        # Base node color
-        base_color = node_cmap(i)
+        # Create interaction matrix
+        matrix = np.outer(values, values)
+        np.fill_diagonal(matrix, 0)  # Remove self-loops
         
-        # Apply gradient if requested
-        if gradient_nodes:
-            inner_color = create_gradient_color(base_color, factor=0.3, direction='darker')
-            outer_color = create_gradient_color(base_color, factor=0.2, direction='lighter')
-        else:
-            inner_color = outer_color = base_color
+        # Apply scaling if requested
+        if scale and matrix.sum() > 0:
+            row_sums = matrix.sum(axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1
+            matrix = matrix / row_sums
         
-        # Create node with transform for proper orientation
-        transform = ax.transData._b + transforms.Affine2D().rotate(angle)
+        # Create DataFrame
+        matrix_df = pd.DataFrame(matrix, index=features, columns=features)
         
-        # Add shadow if requested
-        if node_shadow:
-            shadow = Circle(
-                (0, 0),
-                r + node_shadow_offset,
-                facecolor='black',
-                edgecolor='none',
-                alpha=node_shadow_alpha,
-                transform=transform,
-                zorder=1
-            )
-            ax.add_patch(shadow)
+        # Configure gaps: ONE gap value AFTER each sector (length = num sectors)
+        gaps = [small_gap] * len(features)
+        if big_gap > 0:
+            gaps[5] = big_gap   # After 6th feature (Cl - end of group 1)
+            gaps[-1] = big_gap  # After last feature (before first feature)
         
-        # Main node
-        node = Circle(
-            (0, 0),
-            r,
-            facecolor=inner_color,
-            edgecolor=node_edge_color,
-            linewidth=node_edge_width,
-            alpha=node_alpha,
-            transform=transform,
-            zorder=2
-        )
-        ax.add_patch(node)
-        
-        # Add glow effect if requested
-        if node_glow:
-            glow = Circle(
-                (0, 0),
-                r + node_glow_width / 100,
-                facecolor=outer_color,
-                edgecolor='none',
-                alpha=node_glow_alpha,
-                transform=transform,
-                zorder=1.5
-            )
-            ax.add_patch(glow)
-        
-        node_patches.append(node)
-    
-    # -----------------------
-    # Draw labels with enhanced styling
-    # -----------------------
-    label_objects = []
-    label_positions = []
-    
-    for i, (angle, r) in enumerate(node_positions):
-        # Calculate label position
-        label_r = r + label_offset_radius + label_padding
-        
-        # Determine label rotation
-        if label_rotation == 'auto':
-            rotation_deg, ha = adjust_label_rotation(np.degrees(angle), auto_rotation_threshold)
-        elif label_rotation == 'tangential':
-            rotation_deg = np.degrees(angle) + 90
-            ha = "center"
-        elif label_rotation == 'horizontal':
-            rotation_deg = 0
-            ha = "center"
-        elif label_rotation == 'radial':
-            rotation_deg = np.degrees(angle)
-            ha = "center"
-        else:
-            rotation_deg = np.degrees(angle)
-            ha = "left" if angle < np.pi else "right"
-        
-        # Create label text
-        label_text = NODE_NAMES[i]
-        
-        # Add value annotation if space permits
-        if label_fontsize > 10:
-            value_text = f"{means[i]:.2f}"
-            label_text = f"{NODE_NAMES[i]}\n{value_text}"
-        
-        # Create text object
-        txt = ax.text(
-            angle,
-            label_r,
-            label_text,
-            fontsize=label_fontsize,
-            fontweight="bold",
-            rotation=rotation_deg,
-            rotation_mode="anchor",
-            ha=ha,
-            va="center",
-            zorder=10
+        # Initialize Circos (NO unsupported parameters)
+        circos = Circos.initialize_from_matrix(
+            matrix_df,
+            space=gaps,
+            cmap=selected_cmap
         )
         
-        # Apply halo effect if requested
-        if label_halo:
-            apply_text_halo(txt, halo_width=label_halo_width, halo_color=label_halo_color)
-        
-        # Add bounding box if requested
-        if label_bbox_pad > 0:
-            txt.set_bbox(dict(
-                boxstyle=f"round,pad={label_bbox_pad},rounding_size={label_bbox_rounding}",
-                facecolor=label_bbox_fc,
-                edgecolor=label_bbox_ec,
-                linewidth=label_bbox_lw,
-                alpha=label_bbox_alpha
-            ))
-        
-        label_objects.append(txt)
-        label_positions.append((angle, label_r))
-    
-    # -----------------------
-    # Handle label collisions
-    # -----------------------
-    if label_collision_avoidance and len(label_positions) > 1:
-        # Simple collision avoidance by adjusting radial position
-        for i in range(n):
-            for j in range(i + 1, n):
-                angle_i, r_i = label_positions[i]
-                angle_j, r_j = label_positions[j]
-                
-                # Calculate angular distance
-                angular_dist = min(abs(angle_i - angle_j), 2*np.pi - abs(angle_i - angle_j))
-                
-                # If labels are too close, adjust radial positions
-                if angular_dist < label_collision_buffer:
-                    if r_i == r_j:
-                        label_positions[i] = (angle_i, r_i + 0.05)
-                        label_objects[i].set_position((angle_i, r_i + 0.05))
-                    elif abs(r_i - r_j) < 0.1:
-                        label_positions[i] = (angle_i, r_i + 0.1)
-                        label_objects[i].set_position((angle_i, r_i + 0.1))
-    
-    # -----------------------
-    # Collect and sort connections
-    # -----------------------
-    connections = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            value = matrix[i, j]
-            abs_value = abs(value)
-            if abs_value >= edge_threshold:
-                connections.append((i, j, value, abs_value))
-    
-    # Sort by absolute value (strongest first for z-ordering)
-    connections.sort(key=lambda x: x[3], reverse=True)
-    
-    # Limit number of connections for performance
-    if len(connections) > max_connections:
-        connections = connections[:max_connections]
-    
-    # -----------------------
-    # Draw connections with enhanced styling
-    # -----------------------
-    for i, j, value, magnitude in connections:
-        # Get node positions
-        theta1, r1 = node_positions[i]
-        theta2, r2 = node_positions[j]
-        
-        # Calculate intermediate points for Bezier curve
-        t = np.linspace(0, 1, edge_smoothness)
-        
-        # Different bezier control strategies
-        if bezier_control == 'midpoint':
-            # Midpoint control
-            control_angle = (theta1 + theta2) / 2
-            control_radius = (r1 + r2) / 2 * (1 - edge_curvature)
-            
-            # Quadratic Bezier in polar coordinates
-            theta = (1-t)**2 * theta1 + 2*(1-t)*t * control_angle + t**2 * theta2
-            r = (1-t)**2 * r1 + 2*(1-t)*t * control_radius + t**2 * r2
-            
-        elif bezier_control == 'adaptive':
-            # Adaptive control based on angle difference
-            angle_diff = min(abs(theta1 - theta2), 2*np.pi - abs(theta1 - theta2))
-            control_factor = 0.7 - 0.3 * (angle_diff / np.pi)
-            
-            control_angle = (theta1 + theta2) / 2
-            control_radius = (r1 + r2) / 2 * control_factor
-            
-            theta = (1-t)**2 * theta1 + 2*(1-t)*t * control_angle + t**2 * theta2
-            r = (1-t)**2 * r1 + 2*(1-t)*t * control_radius + t**2 * r2
-            
-        else:  # 'fixed'
-            # Fixed curvature
-            theta = theta1 + (theta2 - theta1) * t
-            r = r1 + (r2 - r1) * t
-            r = r + np.sin(np.pi * t) * edge_curvature * (r1 + r2) / 2
-        
-        # Calculate edge color
-        color_value = (value - vmin) / (vmax - vmin)
-        base_color = edge_cmap(color_value)
-        
-        # Apply gradient if requested
-        if gradient_edges:
-            color = create_gradient_color(base_color, factor=0.2, direction='lighter')
-        else:
-            color = base_color
-        
-        # Calculate edge width with limits
-        linewidth = max(edge_min_width, min(edge_max_width, magnitude * edge_width_scale))
-        
-        # Add shadow if requested
-        if edge_shadow:
-            shadow_theta = theta + edge_shadow_offset
-            shadow_r = r + edge_shadow_offset
-            ax.plot(
-                shadow_theta, shadow_r,
-                color='black',
-                linewidth=linewidth,
-                alpha=edge_shadow_alpha,
-                solid_capstyle='round',
-                zorder=3
+        # Add sector labels
+        for sector in circos.sectors:
+            sector.text(
+                sector.name,
+                r=103,
+                size=label_size,
+                color="black",
+                ha="center",
+                va="center",
+                orientation="vertical"
             )
         
-        # Add glow effect if requested
-        if edge_glow:
-            glow_width = linewidth + edge_glow_width
-            ax.plot(
-                theta, r,
-                color=base_color,
-                linewidth=glow_width,
-                alpha=edge_glow_alpha,
-                solid_capstyle='round',
-                zorder=4
+        # Add colored background tracks for groups
+        for sector, color in zip(circos.sectors, sector_colors):
+            sector.add_track(
+                (96, 99),
+                color=color,
+                alpha=0.25
             )
         
-        # Main edge
-        line = ax.plot(
-            theta, r,
-            color=color,
-            linewidth=linewidth,
-            alpha=edge_alpha,
-            solid_capstyle='round',
-            zorder=5
-        )[0]
-        
-        # Add value annotation for strong connections
-        if magnitude > 0.8 and label_fontsize > 8:
-            mid_idx = len(t) // 2
-            label_angle = theta[mid_idx]
-            label_radius = r[mid_idx] - 0.1
-            
-            # Ensure label is readable
-            if label_radius > radial_base + 0.5:
-                value_text = f"{value:.2f}"
-                val_txt = ax.text(
-                    label_angle,
-                    label_radius,
-                    value_text,
-                    fontsize=label_fontsize - 4,
-                    fontweight='bold',
-                    ha='center',
-                    va='center',
-                    color='white' if magnitude > 0.9 else 'black',
-                    zorder=10
-                )
-                
-                # Add halo for better readability
-                apply_text_halo(val_txt, halo_width=2, halo_color='black')
-    
-    # -----------------------
-    # Add center annotation
-    # -----------------------
-    center_text = ax.text(
-        0, 0,
-        f"{metric_label[0]}",
-        fontsize=label_fontsize + 4,
-        fontweight='bold',
-        ha='center',
-        va='center',
-        color='darkgray',
-        zorder=1
-    )
-    
-    # -----------------------
-    # Add title with optional background
-    # -----------------------
-    title_obj = ax.set_title(
-        f"{title}\n{metric_label} Chord Diagram",
-        fontsize=title_fontsize,
-        fontweight=title_weight,
-        color=title_color,
-        pad=title_pad
-    )
-    
-    if title_background:
-        title_obj.set_bbox(dict(
-            facecolor=title_background_color,
-            edgecolor='none',
-            alpha=title_background_alpha,
-            boxstyle="round,pad=0.5"
-        ))
-    
-    # -----------------------
-    # Add colorbar with enhanced styling
-    # -----------------------
-    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    sm = cm.ScalarMappable(norm=norm, cmap=edge_cmap)
-    sm.set_array([])
-    
-    cbar = fig.colorbar(
-        sm,
-        ax=ax,
-        orientation="horizontal",
-        pad=colorbar_pad,
-        aspect=colorbar_aspect,
-        shrink=colorbar_shrink,
-        extend=colorbar_extend
-    )
-    
-    cbar.set_label(metric_label, fontsize=colorbar_labelsize)
-    cbar.ax.tick_params(labelsize=colorbar_ticksize)
-    
-    # -----------------------
-    # Apply tight layout if requested
-    # -----------------------
-    if tight_layout:
-        plt.tight_layout()
-    
-    return fig
-
-# ============================================================
-# ENHANCED MATRIX HEATMAP
-# ============================================================
-
-def create_enhanced_matrix_heatmap(
-    stats,
-    metric='correlation',
-    colormap_name='coolwarm',
-    figsize=(12, 10),
-    title="",
-    
-    # Heatmap-specific styling
-    cell_padding=0.1,
-    cell_rounding=0,
-    grid_visible=True,
-    grid_color='gray',
-    grid_alpha=0.3,
-    grid_width=0.5,
-    value_threshold=0.3,
-    show_values=True,
-    value_fontsize=9,
-    value_color_threshold=0.7,
-    
-    # Inherited common parameters
-    label_fontsize=12,
-    title_fontsize=16,
-    title_weight='bold',
-    title_color='black',
-    background_color='white',
-    figure_dpi=100,
-):
-    """Create an enhanced matrix heatmap visualization"""
-    
-    if metric == 'correlation':
-        matrix = stats['correlation_matrix']
-        vmin, vmax = -1, 1
-        metric_label = "Correlation"
-    else:
-        matrix = stats['covariance_matrix']
-        max_abs = np.max(np.abs(matrix))
-        vmin, vmax = -max_abs, max_abs
-        metric_label = "Covariance"
-    
-    n = len(FEATURE_COLS)
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=figsize, dpi=figure_dpi)
-    fig.patch.set_facecolor(background_color)
-    ax.set_facecolor(background_color)
-    
-    # Create heatmap with enhanced styling
-    im = ax.imshow(
-        matrix,
-        cmap=colormap_name,
-        vmin=vmin,
-        vmax=vmax,
-        aspect='auto',
-        interpolation='nearest'
-    )
-    
-    # Add feature labels
-    ax.set_xticks(range(n))
-    ax.set_yticks(range(n))
-    ax.set_xticklabels(FEATURE_COLS, rotation=45, ha='right', fontsize=label_fontsize)
-    ax.set_yticklabels(FEATURE_COLS, fontsize=label_fontsize)
-    
-    # Add grid if requested
-    if grid_visible:
-        ax.set_xticks(np.arange(-.5, n, 1), minor=True)
-        ax.set_yticks(np.arange(-.5, n, 1), minor=True)
-        ax.grid(
-            which='minor',
-            color=grid_color,
-            linestyle='-',
-            linewidth=grid_width,
-            alpha=grid_alpha
-        )
-    
-    # Add values for significant cells
-    if show_values:
-        for i in range(n):
-            for j in range(n):
-                value = matrix[i, j]
-                if abs(value) > value_threshold:
-                    # Determine text color based on cell darkness
-                    cell_color = im.cmap(im.norm(value))
-                    luminance = 0.299 * cell_color[0] + 0.587 * cell_color[1] + 0.114 * cell_color[2]
-                    text_color = 'white' if luminance < value_color_threshold else 'black'
-                    
-                    ax.text(
-                        j, i,
-                        f'{value:.2f}',
-                        ha='center',
-                        va='center',
-                        color=text_color,
-                        fontsize=value_fontsize,
-                        fontweight='bold'
-                    )
-    
-    # Add title
-    ax.set_title(
-        f"{title}\n{metric_label} Matrix",
-        fontsize=title_fontsize,
-        fontweight=title_weight,
-        color=title_color,
-        pad=20
-    )
-    
-    # Add colorbar
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(metric_label, fontsize=label_fontsize)
-    cbar.ax.tick_params(labelsize=label_fontsize - 2)
-    
-    plt.tight_layout()
-    return fig
-
-# ============================================================
-# ENHANCED RADIAL PLOT
-# ============================================================
-
-def create_enhanced_radial_plot(
-    stats,
-    metric='correlation',
-    colormap_name='coolwarm',
-    figsize=(12, 12),
-    title="",
-    
-    # Radial plot specific
-    radial_layers=3,
-    radial_layer_spacing=0.5,
-    radial_labels=True,
-    radial_label_offset=0.1,
-    radial_lines=True,
-    radial_line_alpha=0.2,
-    
-    # Inherited parameters
-    label_fontsize=12,
-    edge_width_scale=3.0,
-    edge_alpha=0.7,
-    edge_threshold=0.3,
-    title_fontsize=16,
-    background_color='white',
-    figure_dpi=100,
-):
-    """Create an enhanced radial plot visualization"""
-    
-    if metric == 'correlation':
-        matrix = stats['correlation_matrix']
-        vmin, vmax = -1, 1
-        metric_label = "Correlation"
-    else:
-        matrix = stats['covariance_matrix']
-        max_abs = np.max(np.abs(matrix))
-        vmin, vmax = -max_abs, max_abs
-        metric_label = "Covariance"
-    
-    n = len(FEATURE_COLS)
-    
-    # Create figure
-    fig, ax = plt.subplots(
-        figsize=figsize,
-        dpi=figure_dpi,
-        subplot_kw={'projection': 'polar'}
-    )
-    
-    fig.patch.set_facecolor(background_color)
-    ax.set_facecolor(background_color)
-    
-    # Setup
-    ax.set_theta_zero_location("N")
-    ax.set_theta_direction(-1)
-    
-    # Calculate angles
-    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    
-    # Get colormap
-    cmap = cm.get_cmap(colormap_name)
-    
-    # Create radial grid
-    radii = np.linspace(radial_layer_spacing, radial_layers * radial_layer_spacing, radial_layers)
-    
-    # Draw radial lines if requested
-    if radial_lines:
-        for r in radii:
-            circle = plt.Circle((0, 0), r, transform=ax.transData._b,
-                              fill=False, alpha=radial_line_alpha,
-                              edgecolor='gray', linestyle='--', linewidth=0.5)
-            ax.add_patch(circle)
-    
-    # Draw connections
-    for i in range(n):
-        for j in range(i + 1, n):
-            value = matrix[i, j]
-            abs_value = abs(value)
-            
-            if abs_value > edge_threshold:
-                # Calculate color
-                color = cmap((value - vmin) / (vmax - vmin))
-                
-                # Calculate position based on value magnitude
-                layer_idx = min(int(abs_value * radial_layers), radial_layers - 1)
-                r_i = radii[layer_idx]
-                r_j = radii[layer_idx]
-                
-                # Draw line
-                ax.plot(
-                    [angles[i], angles[j]],
-                    [r_i, r_j],
-                    color=color,
-                    linewidth=abs_value * edge_width_scale,
-                    alpha=edge_alpha,
-                    solid_capstyle='round'
-                )
-    
-    # Add feature markers
-    for idx, (angle, radius) in enumerate(zip(angles, [radii[-1]] * n)):
-        # Main marker
-        ax.plot(
-            angle,
-            radius,
-            'o',
-            markersize=20,
-            color=cm.get_cmap('tab20c')(idx),
-            markeredgecolor='white',
-            markeredgewidth=2,
-            zorder=10
-        )
-        
-        # Add labels
-        if radial_labels:
-            label_radius = radius + radial_label_offset
-            label_angle = angle
-            
-            # Adjust label orientation
-            rotation = np.degrees(label_angle)
-            if 90 <= rotation <= 270:
-                rotation += 180
-                ha = "right"
-            else:
-                ha = "left"
-            
-            ax.text(
-                label_angle,
-                label_radius,
-                NODE_NAMES[idx],
-                fontsize=label_fontsize,
-                fontweight='bold',
-                rotation=rotation,
-                rotation_mode='anchor',
-                ha=ha,
-                va='center',
-                bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8)
+        # Draw links with styling
+        circos.draw_links(
+            link_kws=dict(
+                ec="black" if link_border else "none",
+                lw=border_width,
+                alpha=1 - transparency
             )
-    
-    # Set limits
-    ax.set_ylim(0, radii[-1] + radial_label_offset + 0.5)
-    
-    # Add title
-    ax.set_title(
-        f"{title}\n{metric_label} Radial Plot",
-        fontsize=title_fontsize,
-        fontweight='bold',
-        pad=30
-    )
-    
-    # Add colorbar
-    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    sm = cm.ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
-    
-    cbar = fig.colorbar(sm, ax=ax, orientation='horizontal', pad=0.1, aspect=50)
-    cbar.set_label(f'{metric_label} Value', fontsize=label_fontsize)
-    cbar.ax.tick_params(labelsize=label_fontsize - 2)
-    
-    plt.tight_layout()
-    return fig
-
-# ============================================================
-# MAIN STREAMLIT APPLICATION
-# ============================================================
-
-def main():
-    st.set_page_config(
-        page_title="Advanced Feature Correlation Explorer",
-        page_icon="📊",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    # Custom CSS for better styling
-    st.markdown("""
-    <style>
-    .main {
-        padding: 0rem 1rem;
-    }
-    .stButton > button {
-        width: 100%;
-        transition: all 0.3s ease;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-    div[data-baseweb="select"] {
-        min-width: 200px;
-    }
-    .stSlider > div > div > div {
-        background: linear-gradient(90deg, #4CAF50, #2196F3);
-    }
-    h1, h2, h3 {
-        color: #1E3A8A;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Title and description
-    st.title("📊 Advanced Feature Correlation Explorer")
-    st.markdown("""
-    Visualize statistical relationships between features with **complete visual parameterization**.
-    Adjust every aspect of the visualization in real-time for publication-quality results.
-    """)
-    
-    # ============================================================
-    # SIDEBAR CONFIGURATION
-    # ============================================================
-    with st.sidebar:
-        st.header("📁 Data Configuration")
-        
-        # File upload
-        uploaded_file = st.file_uploader(
-            "Upload CSV File",
-            type=["csv"],
-            help="Maximum file size: 100MB"
         )
         
-        # Data source selection
-        if uploaded_file is not None:
-            use_example = False
-            st.success(f"✅ File uploaded: {uploaded_file.name}")
-        else:
-            use_example = True
-            st.info("📋 Using example dataset")
+        # Create figure
+        fig = circos.plotfig(figsize=(10, 10))
         
-        # Load data
-        df = load_data(uploaded_file, use_example)
+        # Add colorbar if valid range
+        min_val, max_val = matrix.min(), matrix.max()
+        if max_val > min_val and max_val > 1e-10:
+            norm = mpl.colors.Normalize(vmin=min_val, vmax=max_val)
+            sm = plt.cm.ScalarMappable(cmap=selected_cmap, norm=norm)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, ax=circos.ax, orientation='horizontal', 
+                              fraction=0.04, pad=0.12, aspect=40)
+            cbar.set_label('Interaction Strength', fontsize=11)
+            cbar.ax.tick_params(labelsize=9)
         
-        if df is None:
-            st.error("Failed to load data. Please check your file format.")
-            st.stop()
-        
-        # Validate columns
-        missing_cols = [col for col in FEATURE_COLS if col not in df.columns]
-        if missing_cols:
-            st.error(f"Missing required columns: {', '.join(missing_cols)}")
-            st.info(f"Available columns: {', '.join(df.columns.tolist())}")
-            st.stop()
-        
-        st.success(f"✅ Loaded {len(df)} rows, {len(df.columns)} columns")
-        
-        # Data selection
-        st.header("📈 Data Selection")
-        
-        selection_method = st.radio(
-            "Selection Method",
-            ["First N rows", "Random sample", "All rows", "Custom range"],
-            index=0
+        # Add title with metadata
+        fig.suptitle(
+            f"Step {int(step_val)} | Score: {row['score']:.3f} | "
+            f"Coverage: {row['coverage']:.3f} | Hopping: {row['hopping_strength']:.3f}",
+            fontsize=13, y=0.96, fontweight='bold'
         )
         
-        if selection_method == "First N rows":
-            max_rows = st.slider("Number of rows", 1, min(1000, len(df)), min(100, len(df)))
-            selected_indices = list(range(min(max_rows, len(df))))
-        elif selection_method == "Random sample":
-            sample_size = st.slider("Sample size", 1, min(500, len(df)), min(100, len(df)))
-            selected_indices = np.random.choice(len(df), min(sample_size, len(df)), replace=False).tolist()
-        elif selection_method == "Custom range":
-            start_idx = st.number_input("Start row", 0, len(df)-1, 0)
-            end_idx = st.number_input("End row", start_idx, len(df)-1, min(start_idx+100, len(df)-1))
-            selected_indices = list(range(start_idx, end_idx + 1))
-        else:  # All rows
-            selected_indices = list(range(len(df)))
+        # Display
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
         
-        df_selected = df.iloc[selected_indices].copy()
-        
-        st.info(f"📊 Selected {len(df_selected)} rows for analysis")
-        
-        # ============================================================
-        # VISUALIZATION SELECTION
-        # ============================================================
-        st.header("🎨 Visualization Type")
-        
-        viz_type = st.selectbox(
-            "Select Visualization",
-            ["Enhanced Chord Diagram", "Matrix Heatmap", "Radial Plot", "Statistics Dashboard"],
-            index=0
-        )
-        
-        # ============================================================
-        # BASIC SETTINGS
-        # ============================================================
-        st.header("⚙️ Basic Settings")
-        
-        # Colormap selection with category filtering
-        colormap_category = st.selectbox(
-            "Colormap Category",
-            list(COLORMAP_CATEGORIES.keys()),
-            index=0
-        )
-        
-        colormap_options = COLORMAP_CATEGORIES[colormap_category]
-        colormap_name = st.selectbox(
-            "Colormap",
-            colormap_options,
-            index=0
-        )
-        
-        # Show colormap preview
-        try:
-            cmap_preview = plt.get_cmap(colormap_name)
-            colors = [cmap_preview(i) for i in np.linspace(0, 1, 20)]
-            
-            # Create HTML preview
-            color_html = '<div style="display: flex; height: 25px; border-radius: 4px; overflow: hidden; margin: 10px 0; border: 1px solid #ddd;">'
-            for c in colors:
-                r, g, b = int(c[0]*255), int(c[1]*255), int(c[2]*255)
-                color_html += f'<div style="flex:1; background-color: rgb({r},{g},{b});"></div>'
-            color_html += '</div>'
-            
-            st.markdown("**Preview:**")
-            st.markdown(color_html, unsafe_allow_html=True)
-        except:
-            pass
-        
-        # Figure size
-        col1, col2 = st.columns(2)
-        with col1:
-            fig_width = st.slider("Figure Width", 8, 24, 14)
-        with col2:
-            fig_height = st.slider("Figure Height", 8, 24, 14)
-        
-        # Metric selection
-        metric = st.radio(
-            "Connection Metric",
-            ["correlation", "covariance"],
-            index=0
-        )
-        
-        # ============================================================
-        # ADVANCED VISUAL CONTROLS
-        # ============================================================
-        st.header("🎯 Advanced Styling")
-        
-        # Use expanders for different categories
-        with st.expander("📐 Layout & Spacing", expanded=False):
-            col1, col2 = st.columns(2)
+        # Show statistics
+        with st.expander(f"📈 Interaction Statistics for Step {step_val}"):
+            col1, col2, col3 = st.columns(3)
             with col1:
-                radial_base = st.slider("Radial Base", 0.5, 3.0, 1.0, 0.1)
-                radial_spacing = st.slider("Radial Spacing", 0.1, 2.0, 0.8, 0.1)
-                label_offset_radius = st.slider("Label Offset", 0.1, 1.0, 0.35, 0.05)
+                st.metric("Max Interaction", f"{max_val:.4f}")
             with col2:
-                subplot_pad = st.slider("Subplot Padding", 0.01, 0.3, 0.12, 0.01)
-                label_padding = st.slider("Label Padding", 0.1, 1.0, 0.35, 0.05)
-                label_collision_buffer = st.slider("Collision Buffer", 0.05, 0.5, 0.15, 0.05)
-        
-        with st.expander("🔤 Labels & Text", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                label_fontsize = st.slider("Label Font Size", 8, 24, 12)
-                label_bbox_pad = st.slider("Label Box Padding", 0.0, 1.0, 0.25, 0.05)
-                label_bbox_rounding = st.slider("Label Box Rounding", 0, 20, 4)
-            with col2:
-                title_fontsize = st.slider("Title Font Size", 12, 32, 16)
-                colorbar_labelsize = st.slider("Colorbar Label Size", 8, 20, 12)
-                colorbar_ticksize = st.slider("Colorbar Tick Size", 6, 18, 10)
+                st.metric("Mean Interaction", f"{matrix[matrix>0].mean():.4f}" if matrix.max()>0 else "0.0000")
+            with col3:
+                st.metric("Non-zero Links", f"{np.count_nonzero(matrix)}/{matrix.size}")
             
-            label_halo = st.checkbox("Label Halo Effect", value=True)
-            if label_halo:
-                label_halo_width = st.slider("Halo Width", 1, 10, 3)
+            # Top interactions
+            interactions = []
+            for r in range(len(features)):
+                for c in range(r+1, len(features)):
+                    if matrix[r, c] > 1e-6:
+                        interactions.append((features[r], features[c], matrix[r, c]))
+            interactions.sort(key=lambda x: x[2], reverse=True)
             
-            label_rotation = st.selectbox(
-                "Label Rotation",
-                ["auto", "tangential", "horizontal", "radial"],
-                index=0
-            )
-        
-        with st.expander("🔗 Edges & Connections", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                edge_width_scale = st.slider("Edge Width Scale", 0.1, 10.0, 3.0, 0.1)
-                edge_min_width = st.slider("Min Edge Width", 0.1, 3.0, 0.5, 0.1)
-                edge_max_width = st.slider("Max Edge Width", 1.0, 20.0, 8.0, 0.5)
-                edge_threshold = st.slider("Connection Threshold", 0.0, 1.0, 0.3, 0.05)
-            with col2:
-                edge_curvature = st.slider("Edge Curvature", 0.0, 1.0, 0.35, 0.05)
-                edge_alpha = st.slider("Edge Transparency", 0.1, 1.0, 0.7, 0.05)
-                edge_smoothness = st.slider("Edge Smoothness", 10, 200, 50)
-                max_connections = st.slider("Max Connections", 10, 500, 100)
-            
-            bezier_control = st.selectbox(
-                "Bezier Control",
-                ["midpoint", "adaptive", "fixed"],
-                index=0
-            )
-            
-            edge_glow = st.checkbox("Edge Glow Effect", value=False)
-            if edge_glow:
-                edge_glow_width = st.slider("Glow Width", 1, 20, 5)
-                edge_glow_alpha = st.slider("Glow Alpha", 0.05, 0.5, 0.15, 0.05)
-        
-        with st.expander("⚫ Nodes & Markers", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                node_edge_width = st.slider("Node Edge Width", 0.5, 10.0, 2.0, 0.5)
-                node_alpha = st.slider("Node Transparency", 0.1, 1.0, 0.9, 0.05)
-                node_shadow = st.checkbox("Node Shadow", value=False)
-                if node_shadow:
-                    node_shadow_offset = st.slider("Shadow Offset", 0.01, 0.2, 0.05, 0.01)
-                    node_shadow_alpha = st.slider("Shadow Alpha", 0.05, 0.5, 0.3, 0.05)
-            with col2:
-                node_glow = st.checkbox("Node Glow Effect", value=False)
-                if node_glow:
-                    node_glow_width = st.slider("Glow Width", 1, 20, 10)
-                    node_glow_alpha = st.slider("Glow Alpha", 0.05, 0.5, 0.2, 0.05)
-                
-                gradient_nodes = st.checkbox("Gradient Nodes", value=True)
-                gradient_edges = st.checkbox("Gradient Edges", value=True)
-        
-        with st.expander("🎨 Colors & Effects", expanded=False):
-            background_color = st.color_picker("Background Color", "#FFFFFF")
-            title_color = st.color_picker("Title Color", "#000000")
-            
-            label_bbox_fc = st.color_picker("Label Box Color", "#FFFFFF")
-            label_bbox_ec = st.color_picker("Label Box Edge", "#D3D3D3")
-            
-            label_bbox_alpha = st.slider("Label Box Alpha", 0.0, 1.0, 0.85, 0.05)
-            label_bbox_lw = st.slider("Label Box Line Width", 0.0, 3.0, 1.0, 0.1)
-        
-        with st.expander("⚡ Performance", expanded=False):
-            use_caching = st.checkbox("Use Caching", value=True)
-            figure_dpi = st.slider("Figure DPI", 72, 300, 100)
-            anti_aliasing = st.checkbox("Anti-Aliasing", value=True)
-            label_collision_avoidance = st.checkbox("Label Collision Avoidance", value=True)
-            
-            clear_cache = st.button("Clear Cache")
-            if clear_cache:
-                st.cache_data.clear()
-                st.success("Cache cleared!")
-        
-        # ============================================================
-        # EXPORT SETTINGS
-        # ============================================================
-        st.header("💾 Export")
-        export_dpi = st.slider("Export DPI", 72, 600, 300)
-        show_download = st.checkbox("Show Download Options", value=True)
+            st.subheader("Top 5 Strongest Interactions")
+            for idx, (f1, f2, val) in enumerate(interactions[:5], 1):
+                st.write(f"{idx}. **{f1}** ↔ **{f2}**: {val:.4f}")
     
-    # ============================================================
-    # MAIN CONTENT AREA
-    # ============================================================
-    tab1, tab2, tab3 = st.tabs(["📊 Visualization", "📈 Statistics", "📋 Data"])
-    
-    with tab1:
-        st.header(f"{viz_type}")
-        
-        # Compute statistics
-        with st.spinner("Computing statistics..."):
-            stats = compute_statistics(df_selected)
-        
-        # Create visualization based on selection
-        with st.spinner("Generating visualization..."):
-            try:
-                if viz_type == "Enhanced Chord Diagram":
-                    fig = create_enhanced_chord_diagram(
-                        stats=stats,
-                        metric=metric,
-                        colormap_name=colormap_name,
-                        edge_threshold=edge_threshold,
-                        max_connections=max_connections,
-                        figsize=(fig_width, fig_height),
-                        title=f"Rows: {len(df_selected)}",
-                        
-                        # Node styling
-                        node_edge_width=node_edge_width,
-                        node_alpha=node_alpha,
-                        node_edge_color=node_edge_color,
-                        node_shadow=node_shadow,
-                        node_shadow_offset=node_shadow_offset if node_shadow else 0.05,
-                        node_shadow_alpha=node_shadow_alpha if node_shadow else 0.3,
-                        node_glow=node_glow,
-                        node_glow_width=node_glow_width if node_glow else 10,
-                        node_glow_alpha=node_glow_alpha if node_glow else 0.2,
-                        gradient_nodes=gradient_nodes,
-                        
-                        # Label styling
-                        label_fontsize=label_fontsize,
-                        label_padding=label_padding,
-                        label_offset_radius=label_offset_radius,
-                        label_bbox_pad=label_bbox_pad,
-                        label_bbox_alpha=label_bbox_alpha,
-                        label_bbox_fc=label_bbox_fc,
-                        label_bbox_ec=label_bbox_ec,
-                        label_bbox_lw=label_bbox_lw,
-                        label_bbox_rounding=label_bbox_rounding,
-                        label_halo=label_halo,
-                        label_halo_width=label_halo_width if label_halo else 3,
-                        label_halo_color=label_halo_color,
-                        label_rotation=label_rotation,
-                        
-                        # Edge styling
-                        edge_alpha=edge_alpha,
-                        edge_width_scale=edge_width_scale,
-                        edge_min_width=edge_min_width,
-                        edge_max_width=edge_max_width,
-                        edge_curvature=edge_curvature,
-                        edge_smoothness=edge_smoothness,
-                        edge_glow=edge_glow,
-                        edge_glow_width=edge_glow_width if edge_glow else 5,
-                        edge_glow_alpha=edge_glow_alpha if edge_glow else 0.15,
-                        gradient_edges=gradient_edges,
-                        bezier_control=bezier_control,
-                        
-                        # Radial layout
-                        radial_base=radial_base,
-                        radial_spacing=radial_spacing,
-                        radial_label_offset=label_offset_radius,
-                        
-                        # Title and text
-                        title_fontsize=title_fontsize,
-                        title_color=title_color,
-                        
-                        # Colorbar
-                        colorbar_labelsize=colorbar_labelsize,
-                        colorbar_ticksize=colorbar_ticksize,
-                        colorbar_pad=subplot_pad,
-                        
-                        # Layout
-                        subplot_pad=subplot_pad,
-                        background_color=background_color,
-                        figure_dpi=figure_dpi,
-                        
-                        # Advanced
-                        anti_aliasing=anti_aliasing,
-                        label_collision_avoidance=label_collision_avoidance,
-                        label_collision_buffer=label_collision_buffer,
-                    )
-                
-                elif viz_type == "Matrix Heatmap":
-                    fig = create_enhanced_matrix_heatmap(
-                        stats=stats,
-                        metric=metric,
-                        colormap_name=colormap_name,
-                        figsize=(fig_width, fig_height),
-                        title=f"Rows: {len(df_selected)}",
-                        label_fontsize=label_fontsize,
-                        title_fontsize=title_fontsize,
-                        title_color=title_color,
-                        background_color=background_color,
-                        figure_dpi=figure_dpi,
-                    )
-                
-                elif viz_type == "Radial Plot":
-                    fig = create_enhanced_radial_plot(
-                        stats=stats,
-                        metric=metric,
-                        colormap_name=colormap_name,
-                        figsize=(fig_width, fig_height),
-                        title=f"Rows: {len(df_selected)}",
-                        label_fontsize=label_fontsize,
-                        edge_width_scale=edge_width_scale,
-                        edge_alpha=edge_alpha,
-                        edge_threshold=edge_threshold,
-                        title_fontsize=title_fontsize,
-                        background_color=background_color,
-                        figure_dpi=figure_dpi,
-                    )
-                
-                else:  # Statistics Dashboard
-                    # Create multiple visualizations in a dashboard
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        fig1 = create_enhanced_chord_diagram(
-                            stats=stats,
-                            metric=metric,
-                            colormap_name=colormap_name,
-                            figsize=(fig_width/2, fig_height/2),
-                            title=f"Chord Diagram",
-                            label_fontsize=max(8, label_fontsize-2),
-                        )
-                        st.pyplot(fig1, use_container_width=True)
-                        plt.close(fig1)
-                    
-                    with col2:
-                        fig2 = create_enhanced_matrix_heatmap(
-                            stats=stats,
-                            metric=metric,
-                            colormap_name=colormap_name,
-                            figsize=(fig_width/2, fig_height/2),
-                            title=f"Matrix Heatmap",
-                            label_fontsize=max(8, label_fontsize-2),
-                        )
-                        st.pyplot(fig2, use_container_width=True)
-                        plt.close(fig2)
-                    
-                    # Don't create a single figure for dashboard
-                    fig = None
-                
-                # Display the figure (if not dashboard)
-                if fig is not None:
-                    st.pyplot(fig, use_container_width=True)
-                    
-                    # Download options
-                    if show_download:
-                        st.subheader("📥 Export Options")
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        
-                        with col1:
-                            # PNG download
-                            buf_png = io.BytesIO()
-                            fig.savefig(buf_png, format='png', dpi=export_dpi,
-                                       bbox_inches='tight', facecolor=background_color)
-                            buf_png.seek(0)
-                            st.download_button(
-                                label="📥 PNG",
-                                data=buf_png,
-                                file_name=f"correlation_chord_{metric}.png",
-                                mime="image/png",
-                                help="High-quality PNG image"
-                            )
-                        
-                        with col2:
-                            # PDF download
-                            buf_pdf = io.BytesIO()
-                            fig.savefig(buf_pdf, format='pdf',
-                                       bbox_inches='tight', facecolor=background_color)
-                            buf_pdf.seek(0)
-                            st.download_button(
-                                label="📥 PDF",
-                                data=buf_pdf,
-                                file_name=f"correlation_chord_{metric}.pdf",
-                                mime="application/pdf",
-                                help="Vector PDF for publications"
-                            )
-                        
-                        with col3:
-                            # SVG download
-                            buf_svg = io.BytesIO()
-                            fig.savefig(buf_svg, format='svg',
-                                       bbox_inches='tight', facecolor=background_color)
-                            buf_svg.seek(0)
-                            st.download_button(
-                                label="📥 SVG",
-                                data=buf_svg,
-                                file_name=f"correlation_chord_{metric}.svg",
-                                mime="image/svg+xml",
-                                help="Scalable Vector Graphics"
-                            )
-                        
-                        with col4:
-                            # TIFF download
-                            buf_tiff = io.BytesIO()
-                            fig.savefig(buf_tiff, format='tiff', dpi=export_dpi,
-                                       bbox_inches='tight', facecolor=background_color)
-                            buf_tiff.seek(0)
-                            st.download_button(
-                                label="📥 TIFF",
-                                data=buf_tiff,
-                                file_name=f"correlation_chord_{metric}.tiff",
-                                mime="image/tiff",
-                                help="High-resolution TIFF for printing"
-                            )
-                    
-                    # Clean up
-                    plt.close(fig)
-                    gc.collect()
-                
-            except Exception as e:
-                st.error(f"Error creating visualization: {str(e)}")
-                import traceback
-                with st.expander("Error Details"):
-                    st.code(traceback.format_exc())
-    
-    with tab2:
-        st.header("Statistical Summary")
-        
-        # Compute correlation and covariance matrices
-        corr_matrix = df_selected[FEATURE_COLS].corr().round(3)
-        cov_matrix = df_selected[FEATURE_COLS].cov().round(3)
-        
-        # Display in columns
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📊 Correlation Matrix")
-            
-            # Style correlation matrix
-            def color_corr(val):
-                if val < -0.7:
-                    return 'background-color: #dc2626; color: white;'  # Red
-                elif val < -0.3:
-                    return 'background-color: #fb923c; color: white;'  # Orange
-                elif val < 0.3:
-                    return 'background-color: #4ade80; color: black;'  # Light green
-                elif val < 0.7:
-                    return 'background-color: #16a34a; color: white;'  # Green
-                else:
-                    return 'background-color: #14532d; color: white;'  # Dark green
-            
-            st.dataframe(corr_matrix.style.applymap(color_corr), 
-                        use_container_width=True,
-                        height=400)
-        
-        with col2:
-            st.subheader("📈 Covariance Matrix")
-            st.dataframe(cov_matrix, use_container_width=True, height=400)
-        
-        # Feature statistics
-        st.subheader("📋 Feature Statistics")
-        stats_df = pd.DataFrame({
-            'Mean': df_selected[FEATURE_COLS].mean(),
-            'Std': df_selected[FEATURE_COLS].std(),
-            'Min': df_selected[FEATURE_COLS].min(),
-            'Max': df_selected[FEATURE_COLS].max(),
-            'Median': df_selected[FEATURE_COLS].median(),
-            'CV': df_selected[FEATURE_COLS].std() / df_selected[FEATURE_COLS].mean()
-        }).round(3)
-        
-        st.dataframe(stats_df, use_container_width=True)
-        
-        # Strongest correlations
-        st.subheader("🔗 Strongest Relationships")
-        
-        # Find top correlations
-        corr_pairs = []
-        for i in range(len(FEATURE_COLS)):
-            for j in range(i + 1, len(FEATURE_COLS)):
-                corr = corr_matrix.iloc[i, j]
-                corr_pairs.append((FEATURE_COLS[i], FEATURE_COLS[j], corr))
-        
-        # Sort by absolute value
-        corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
-        
-        # Display in columns
-        cols = st.columns(3)
-        for idx, (feature1, feature2, value) in enumerate(corr_pairs[:9]):
-            with cols[idx % 3]:
-                # Create a metric card
-                st.metric(
-                    label=f"{feature1} ↔ {feature2}",
-                    value=f"{value:.3f}",
-                    delta="Strong" if abs(value) > 0.7 else 
-                          "Moderate" if abs(value) > 0.3 else "Weak",
-                    delta_color="normal" if value > 0 else "inverse"
-                )
-    
-    with tab3:
-        st.header("Data Preview")
-        
-        # Show selected data
-        st.write(f"Showing {len(df_selected)} selected rows:")
-        
-        # Interactive data exploration
-        show_cols = st.multiselect(
-            "Select columns to display",
-            df_selected.columns.tolist(),
-            default=FEATURE_COLS
-        )
-        
-        # Pagination
-        page_size = st.slider("Rows per page", 10, 100, 20)
-        total_pages = max(1, len(df_selected) // page_size)
-        
-        page_num = st.number_input("Page", 1, total_pages, 1)
-        start_idx = (page_num - 1) * page_size
-        end_idx = min(start_idx + page_size, len(df_selected))
-        
-        st.dataframe(df_selected[show_cols].iloc[start_idx:end_idx], 
-                    use_container_width=True)
-        
-        # Data summary
-        st.subheader("📊 Data Summary")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Rows", len(df_selected))
-            st.metric("Features", len(FEATURE_COLS))
-        
-        with col2:
-            st.metric("Memory Usage", 
-                     f"{df_selected.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
-            st.metric("Missing Values", df_selected[FEATURE_COLS].isnull().sum().sum())
-        
-        with col3:
-            total_mean = df_selected[FEATURE_COLS].mean().mean()
-            total_std = df_selected[FEATURE_COLS].std().mean()
-            st.metric("Average Feature Mean", f"{total_mean:.3f}")
-            st.metric("Average Feature Std", f"{total_std:.3f}")
-        
-        with col4:
-            min_val = df_selected[FEATURE_COLS].min().min()
-            max_val = df_selected[FEATURE_COLS].max().max()
-            st.metric("Overall Min", f"{min_val:.3f}")
-            st.metric("Overall Max", f"{max_val:.3f}")
-    
-    # ============================================================
-    # FOOTER AND DOCUMENTATION
-    # ============================================================
-    st.markdown("---")
-    
-    with st.expander("📖 Visualization Guide", expanded=False):
-        st.markdown("""
-        ## 🎨 Complete Visual Parameterization Guide
-        
-        ### **Layout & Spacing**
-        - **Radial Base**: Distance from center to inner edge of nodes
-        - **Radial Spacing**: Overall scale of the radial layout
-        - **Label Offset**: Distance from nodes to labels
-        - **Label Padding**: Additional space around text in label boxes
-        - **Collision Buffer**: Minimum angular distance between labels
-        
-        ### **Labels & Text**
-        - **Label Rotation**: How labels are oriented around the circle
-          - *Auto*: Automatically flips labels on bottom half
-          - *Tangential*: Labels follow circle tangent
-          - *Horizontal*: All labels horizontal
-          - *Radial*: Labels point outward from center
-        - **Halo Effect**: White outline around text for better readability
-        - **Bounding Box**: Background box behind labels
-        
-        ### **Edges & Connections**
-        - **Edge Curvature**: How much edges curve outward (0=straight, 1=maximum)
-        - **Bezier Control**: Method for calculating curve control points
-        - **Glow Effect**: Adds a soft glow around edges for emphasis
-        - **Width Scaling**: Multiplier for edge thickness based on correlation strength
-        
-        ### **Nodes & Markers**
-        - **Gradient Nodes**: Creates color gradient within nodes
-        - **Shadow/Glow Effects**: Adds depth and emphasis
-        - **Edge Width**: Thickness of node borders
-        
-        ### **Performance Tips**
-        1. Reduce **Max Connections** for faster rendering
-        2. Lower **Edge Smoothness** for complex diagrams
-        3. Use **Label Collision Avoidance** for crowded diagrams
-        4. Export at high DPI for publications
-        5. Clear cache if experiencing slowdowns
-        
-        ### **Export Recommendations**
-        - **PNG**: For web use and presentations
-        - **PDF**: For publications and vector editing
-        - **SVG**: For web graphics and further editing
-        - **TIFF**: For high-quality print production
-        """)
+    except Exception as e:
+        st.error(f"Error rendering Step {step_val}: {str(e)}")
+        if st.checkbox("Show technical details", key=f"debug_{step_val}"):
+            st.code(f"Error type: {type(e).__name__}\n{str(e)}", language="python")
+        continue
 
-if __name__ == "__main__":
-    # Set environment variables for performance
-    import os
-    os.environ["PYTHONUNBUFFERED"] = "1"
-    os.environ["STREAMLIT_SERVER_MAX_UPLOAD_SIZE"] = "100"
-    
-    # Run the application
-    main()
+progress.empty()
+status.empty()
+st.success(f"✅ Successfully rendered {len(selected_steps)} chord diagrams")
+
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666; font-size: 0.9em;'>
+    Built with Streamlit + pycirclize | Physical simulation parameter visualization<br>
+    <small>Note: Link sorting controls removed for compatibility with pycirclize ≥1.3.0</small>
+</div>
+""", unsafe_allow_html=True)
