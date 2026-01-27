@@ -5,5 +5,6 @@ chord
 plotly
 pyCirclize
 scipy
+seaborn
 
 
