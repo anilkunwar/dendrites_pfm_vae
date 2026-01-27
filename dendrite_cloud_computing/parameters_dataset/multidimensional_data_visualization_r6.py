@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Enhanced Vivid Chord Diagram Visualization with Large Canvas and High Resolution
-Ultra-high resolution circular network visualizations with vivid colors and glow effects
+Enhanced Vivid Chord Diagram Visualization with Light Theme
+Ultra-high resolution circular network visualizations with professional light theme
 Optimized for publications, presentations, and large-format displays
 """
 
@@ -32,13 +32,108 @@ from matplotlib.ticker import FuncFormatter
 import traceback
 import os
 import sys
+import hashlib
+import time
+import json
+import pickle
+from functools import lru_cache
+from dataclasses import dataclass
+from enum import Enum
+import base64
 
 warnings.filterwarnings('ignore')
 
 # ============================================================================
-# ENHANCED CONFIGURATION & CONSTANTS - LARGER & MORE VIVID
+# ENHANCED CONFIGURATION & CONSTANTS - LIGHT THEME
 # ============================================================================
 
+class ColorTheme(Enum):
+    LIGHT = "light"
+    DARK = "dark"
+    AUTO = "auto"
+
+@dataclass
+class ThemeConfig:
+    """Configuration for different color themes"""
+    name: str
+    background_color: str
+    grid_color: str
+    text_color: str
+    panel_bg: str
+    panel_border: str
+    highlight_color: str
+    node_border_color: str
+    link_border_color: str
+    label_bg_color: str
+    
+    @classmethod
+    def get_theme(cls, theme_name: str):
+        """Get theme configuration by name"""
+        themes = {
+            "light": ThemeConfig(
+                name="light",
+                background_color='#FFFFFF',
+                grid_color='#E0E0E0',
+                text_color='#333333',
+                panel_bg='#F8F9FA',
+                panel_border='#D1D5DB',
+                highlight_color='#2563EB',
+                node_border_color='#4B5563',
+                link_border_color='#374151',
+                label_bg_color='rgba(255, 255, 255, 0.9)'
+            ),
+            "dark": ThemeConfig(
+                name="dark",
+                background_color='#0F172A',
+                grid_color='#1E293B',
+                text_color='#F1F5F9',
+                panel_bg='#1E293B',
+                panel_border='#334155',
+                highlight_color='#60A5FA',
+                node_border_color='#CBD5E1',
+                link_border_color='#E2E8F0',
+                label_bg_color='rgba(15, 23, 42, 0.9)'
+            ),
+            "professional": ThemeConfig(
+                name="professional",
+                background_color='#F8FAFC',
+                grid_color='#E2E8F0',
+                text_color='#1E293B',
+                panel_bg='#FFFFFF',
+                panel_border='#CBD5E1',
+                highlight_color='#3B82F6',
+                node_border_color='#475569',
+                link_border_color='#334155',
+                label_bg_color='rgba(255, 255, 255, 0.95)'
+            ),
+            "pastel": ThemeConfig(
+                name="pastel",
+                background_color='#FEFCE8',
+                grid_color='#FDE68A',
+                text_color='#78350F',
+                panel_bg='#FEF3C7',
+                panel_border='#F59E0B',
+                highlight_color='#8B5CF6',
+                node_border_color='#7C3AED',
+                link_border_color='#6D28D9',
+                label_bg_color='rgba(254, 252, 232, 0.95)'
+            ),
+            "ocean": ThemeConfig(
+                name="ocean",
+                background_color='#F0F9FF',
+                grid_color='#BAE6FD',
+                text_color='#0C4A6E',
+                panel_bg='#E0F2FE',
+                panel_border='#38BDF8',
+                highlight_color='#0369A1',
+                node_border_color='#0EA5E9',
+                link_border_color='#0284C7',
+                label_bg_color='rgba(240, 249, 255, 0.95)'
+            )
+        }
+        return themes.get(theme_name, themes["light"])
+
+# LIGHT THEME DEFAULTS
 CHORD_DIAGRAM_DEFAULTS = {
     # LARGER CANVAS
     'figsize': (24, 24),           # Increased from (14, 14) to (24, 24)
@@ -61,7 +156,7 @@ CHORD_DIAGRAM_DEFAULTS = {
     'link_glow_intensity': 2.5,    # NEW: Glow effect multiplier
     'link_glow_alpha': 0.4,        # NEW: Glow transparency
     'link_border_width': 0.8,      # NEW: Border around links
-    'link_border_color': 'white',  # NEW: Border color
+    'link_border_color': '#374151', # Light theme: dark gray border
     
     # ENHANCED DIRECTIONAL FEATURES
     'arrow_length': 0.18,          # Increased from 0.12
@@ -72,22 +167,22 @@ CHORD_DIAGRAM_DEFAULTS = {
     'label_offset': 0.30,          # Increased from 0.18
     'label_fontsize': 18,          # Increased from 13
     'label_fontweight': 'bold',
-    'label_shadow': True,
+    'label_shadow': False,         # Changed to False for light theme
     'label_bg_alpha': 0.95,
     
-    # VIVID COLORS & BACKGROUNDS
-    'background_color': '#0A0F1A', # Dark navy for contrast
-    'grid_color': '#2A3B5C',
+    # LIGHT THEME COLORS
+    'background_color': '#FFFFFF', # White background for light theme
+    'grid_color': '#E0E0E0',       # Light gray grid
     'highlight_alpha': 0.98,
-    'highlight_glow': 3.0,
+    'highlight_glow': 2.0,         # Reduced for light theme
     
     # NETWORK ENHANCEMENTS
     'reduce_threshold': 0.001,     # Lower threshold to show more links
     'node_size_min': 150,          # NEW: Minimum node size
     'node_size_max': 800,          # NEW: Maximum node size
     'show_node_borders': True,
-    'node_border_width': 3,
-    'sector_glow': True,
+    'node_border_width': 2,        # Slightly thinner for light theme
+    'sector_glow': False,          # Disabled for light theme
     'sector_glow_width': 8,
     'sector_glow_alpha': 0.3,
     
@@ -101,15 +196,201 @@ CHORD_DIAGRAM_DEFAULTS = {
     
     # PERFORMANCE
     'max_links': 1000,             # Limit for very large networks
-    'simplify_curves': False       # Keep detailed curves
+    'simplify_curves': False,      # Keep detailed curves
+    
+    # LIGHT THEME SPECIFIC
+    'text_color': '#333333',       # Dark text for light background
+    'panel_bg': '#F8F9FA',         # Light panel background
+    'panel_border': '#D1D5DB',     # Panel border color
+    'highlight_color': '#2563EB',  # Professional blue highlight
+    'node_border_color': '#4B5563' # Dark gray node borders
 }
 
 # ============================================================================
-# VIVID COLOR PALETTES
+# CACHE MANAGEMENT SYSTEM
 # ============================================================================
 
-class VividColorPalettes:
-    """Collection of vivid, high-contrast color palettes for network visualization"""
+class CacheManager:
+    """Enhanced cache management system for performance optimization"""
+    
+    @staticmethod
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def load_data(file_path: str, is_example: bool = True):
+        """Cache data loading operations"""
+        try:
+            if is_example:
+                # For example data, generate once and cache
+                np.random.seed(42)
+                n = 15
+                matrix = np.zeros((n, n))
+                for i in range(n):
+                    for j in range(n):
+                        if i == j:
+                            matrix[i, j] = 1.0
+                        elif abs(i - j) <= 3:
+                            matrix[i, j] = 0.9 - abs(i - j) * 0.2
+                        else:
+                            matrix[i, j] = np.random.uniform(0.1, 0.4)
+                
+                for i in range(n):
+                    for j in range(i+1, n):
+                        if np.random.random() > 0.6:
+                            matrix[i, j] *= 1.8
+                
+                row_names = [f"Gene_{i+1:02d}" for i in range(n)]
+                col_names = [f"Pathway_{j+1:02d}" for j in range(n)]
+                data = pd.DataFrame(matrix, index=row_names, columns=col_names)
+                return data
+            else:
+                # For uploaded files, cache by file content hash
+                return pd.read_csv(file_path)
+        except Exception as e:
+            st.error(f"Error loading data: {str(e)}")
+            return None
+    
+    @staticmethod
+    @st.cache_data(ttl=600, show_spinner=False)
+    def compute_correlation(data: pd.DataFrame):
+        """Cache correlation matrix computation"""
+        try:
+            data_for_corr = data.drop(columns=['step'], errors='ignore')
+            corr_matrix = data_for_corr.corr().abs()
+            np.fill_diagonal(corr_matrix.values, 0)
+            return corr_matrix
+        except Exception as e:
+            st.error(f"Error computing correlation: {str(e)}")
+            return None
+    
+    @staticmethod
+    @st.cache_data(ttl=300, show_spinner=False)
+    def generate_figure_hash(params: dict):
+        """Generate a hash for figure parameters to detect changes"""
+        # Create a stable string representation of parameters
+        param_str = json.dumps(params, sort_keys=True, default=str)
+        return hashlib.md5(param_str.encode()).hexdigest()
+    
+    @staticmethod
+    def get_cached_figure(figure_hash: str):
+        """Get cached figure if available"""
+        if 'figure_cache' not in st.session_state:
+            st.session_state.figure_cache = {}
+        
+        return st.session_state.figure_cache.get(figure_hash)
+    
+    @staticmethod
+    def cache_figure(figure_hash: str, figure):
+        """Cache a figure"""
+        if 'figure_cache' not in st.session_state:
+            st.session_state.figure_cache = {}
+        
+        # Limit cache size
+        if len(st.session_state.figure_cache) > 10:
+            # Remove oldest entry
+            oldest_key = next(iter(st.session_state.figure_cache))
+            del st.session_state.figure_cache[oldest_key]
+        
+        st.session_state.figure_cache[figure_hash] = figure
+
+# ============================================================================
+# SESSION STATE MANAGEMENT
+# ============================================================================
+
+class SessionStateManager:
+    """Manage session state to prevent unnecessary re-runs"""
+    
+    @staticmethod
+    def initialize_state():
+        """Initialize all session state variables"""
+        defaults = {
+            # Data state
+            'current_data': None,
+            'data_type': 'matrix',
+            'data_hash': None,
+            
+            # Visualization parameters
+            'viz_params': {},
+            'current_figure': None,
+            'figure_hash': None,
+            
+            # UI state
+            'theme': 'light',
+            'preset': 'Default',
+            'sidebar_collapsed': False,
+            
+            # Performance metrics
+            'render_count': 0,
+            'last_render_time': None,
+            'avg_render_time': 0,
+            
+            # User preferences
+            'auto_render': True,
+            'high_quality': True,
+            'show_help': True,
+            
+            # Export settings
+            'export_format': 'png',
+            'export_dpi': 300,
+            
+            # Analytics
+            'page_views': 0,
+            'interaction_count': 0,
+            'last_interaction': None
+        }
+        
+        for key, value in defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = value
+        
+        # Increment page views
+        st.session_state.page_views += 1
+    
+    @staticmethod
+    def update_interaction():
+        """Update interaction tracking"""
+        st.session_state.interaction_count += 1
+        st.session_state.last_interaction = datetime.now()
+    
+    @staticmethod
+    def should_render(new_params: dict) -> bool:
+        """Determine if we should re-render based on parameter changes"""
+        old_params = st.session_state.get('viz_params', {})
+        
+        # If no previous params, render
+        if not old_params:
+            return True
+        
+        # Check if critical parameters changed
+        critical_params = [
+            'data_hash', 'sector_color_palette', 'link_color_palette',
+            'background_color', 'directional', 'link_glow'
+        ]
+        
+        for param in critical_params:
+            if old_params.get(param) != new_params.get(param):
+                return True
+        
+        # For other parameters, use hash comparison
+        old_hash = CacheManager.generate_figure_hash(old_params)
+        new_hash = CacheManager.generate_figure_hash(new_params)
+        
+        return old_hash != new_hash
+    
+    @staticmethod
+    def get_performance_stats():
+        """Get rendering performance statistics"""
+        return {
+            'render_count': st.session_state.render_count,
+            'avg_render_time': st.session_state.avg_render_time,
+            'page_views': st.session_state.page_views,
+            'interaction_count': st.session_state.interaction_count
+        }
+
+# ============================================================================
+# LIGHT THEME COLOR PALETTES
+# ============================================================================
+
+class LightThemeColorPalettes:
+    """Collection of light theme color palettes for network visualization"""
     
     @staticmethod
     def create_gradient_cmap(colors, name='custom_gradient'):
@@ -117,100 +398,89 @@ class VividColorPalettes:
         return LinearSegmentedColormap.from_list(name, colors, N=256)
     
     @staticmethod
-    def get_vivid_palette(n_colors=20):
-        """Get vivid, distinguishable colors using seaborn"""
-        return sns.color_palette("husl", n_colors)
+    def get_light_palette(n_colors=20):
+        """Get light-friendly distinguishable colors"""
+        # Use Set3 or Set2 for light backgrounds
+        return sns.color_palette("Set3", n_colors)
     
     @staticmethod
-    def get_fire_palette():
-        """Hot fire colors: black -> red -> orange -> yellow -> white"""
-        return VividColorPalettes.create_gradient_cmap([
-            '#000000', '#4B0000', '#8B0000', '#FF0000', 
-            '#FF4500', '#FF8C00', '#FFD700', '#FFFFFF'
-        ], 'fire')
+    def get_pastel_palette():
+        """Soft pastel colors"""
+        return LightThemeColorPalettes.create_gradient_cmap([
+            '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', 
+            '#BAE1FF', '#D0BAFF', '#FFBAF1', '#FFFFFF'
+        ], 'pastel')
     
     @staticmethod
-    def get_ocean_palette():
-        """Ocean colors: dark blue -> cyan -> white"""
-        return VividColorPalettes.create_gradient_cmap([
-            '#000033', '#000066', '#003399', '#0066CC', 
-            '#0099CC', '#00CCCC', '#66FFFF', '#FFFFFF'
-        ], 'ocean')
+    def get_professional_palette():
+        """Professional color palette for business/analytics"""
+        return LightThemeColorPalettes.create_gradient_cmap([
+            '#1E3A8A', '#2563EB', '#3B82F6', '#60A5FA',
+            '#93C5FD', '#BFDBFE', '#DBEAFE', '#FFFFFF'
+        ], 'professional')
     
     @staticmethod
-    def get_rainbow_palette():
-        """Vivid rainbow colors"""
-        return VividColorPalettes.create_gradient_cmap([
-            '#FF0000', '#FF7F00', '#FFFF00', '#7FFF00',
-            '#00FF00', '#00FF7F', '#00FFFF', '#007FFF',
-            '#0000FF', '#7F00FF', '#FF00FF', '#FF007F'
-        ], 'rainbow')
+    def get_warm_palette():
+        """Warm colors suitable for light backgrounds"""
+        return LightThemeColorPalettes.create_gradient_cmap([
+            '#7C2D12', '#DC2626', '#EA580C', '#F59E0B',
+            '#FBBF24', '#FDE68A', '#FEF3C7', '#FFFFFF'
+        ], 'warm')
     
     @staticmethod
-    def get_electric_palette():
-        """Electric/neon colors"""
-        return VividColorPalettes.create_gradient_cmap([
-            '#000000', '#1E90FF', '#00FFFF', '#7FFF00',
-            '#FFFF00', '#FFA500', '#FF0000', '#FF00FF', '#FFFFFF'
-        ], 'electric')
+    def get_cool_palette():
+        """Cool colors suitable for light backgrounds"""
+        return LightThemeColorPalettes.create_gradient_cmap([
+            '#1E3A8A', '#1D4ED8', '#3B82F6', '#60A5FA',
+            '#93C5FD', '#BFDBFE', '#DBEAFE', '#FFFFFF'
+        ], 'cool')
     
     @staticmethod
-    def get_matrix_palette():
-        """Matrix-style green gradient"""
-        return VividColorPalettes.create_gradient_cmap([
-            '#000000', '#001100', '#002200', '#003300',
-            '#005500', '#008800', '#00AA00', '#00FF00'
-        ], 'matrix')
+    def get_earth_palette():
+        """Earth tones suitable for light backgrounds"""
+        return LightThemeColorPalettes.create_gradient_cmap([
+            '#422006', '#854D0E', '#A16207', '#CA8A04',
+            '#EAB308', '#FDE047', '#FEF08A', '#FEFCE8'
+        ], 'earth')
     
     @staticmethod
-    def get_purple_gold_palette():
-        """Royal purple to gold gradient"""
-        return VividColorPalettes.create_gradient_cmap([
-            '#1A0033', '#2D004D', '#400066', '#530080',
-            '#660099', '#8000CC', '#9933FF', '#B366FF',
-            '#CC99FF', '#E6CCFF', '#FFFFE6', '#FFFFCC',
-            '#FFFF99', '#FFFF66', '#FFFF33', '#FFFF00'
-        ], 'purple_gold')
-    
-    @staticmethod
-    def get_sector_colors(n_sectors, palette='vivid'):
-        """Generate sector colors based on palette choice"""
-        if palette == 'vivid':
-            colors = VividColorPalettes.get_vivid_palette(n_sectors)
-        elif palette == 'fire':
-            cmap = VividColorPalettes.get_fire_palette()
+    def get_sector_colors(n_sectors, palette='light'):
+        """Generate sector colors based on palette choice for light theme"""
+        if palette == 'light':
+            colors = LightThemeColorPalettes.get_light_palette(n_sectors)
+        elif palette == 'pastel':
+            cmap = LightThemeColorPalettes.get_pastel_palette()
             colors = [cmap(i / n_sectors) for i in range(n_sectors)]
-        elif palette == 'ocean':
-            cmap = VividColorPalettes.get_ocean_palette()
+        elif palette == 'professional':
+            cmap = LightThemeColorPalettes.get_professional_palette()
             colors = [cmap(i / n_sectors) for i in range(n_sectors)]
-        elif palette == 'rainbow':
-            cmap = VividColorPalettes.get_rainbow_palette()
+        elif palette == 'warm':
+            cmap = LightThemeColorPalettes.get_warm_palette()
             colors = [cmap(i / n_sectors) for i in range(n_sectors)]
-        elif palette == 'electric':
-            cmap = VividColorPalettes.get_electric_palette()
+        elif palette == 'cool':
+            cmap = LightThemeColorPalettes.get_cool_palette()
             colors = [cmap(i / n_sectors) for i in range(n_sectors)]
-        elif palette == 'matrix':
-            cmap = VividColorPalettes.get_matrix_palette()
+        elif palette == 'earth':
+            cmap = LightThemeColorPalettes.get_earth_palette()
             colors = [cmap(i / n_sectors) for i in range(n_sectors)]
-        else:  # Default tab20
-            cmap = plt.cm.tab20
-            colors = [cmap(i % 20) for i in range(n_sectors)]
+        else:  # Default Set3
+            cmap = plt.cm.Set3
+            colors = [cmap(i % 12) for i in range(n_sectors)]
         
         return colors
 
-
 # ============================================================================
-# ENHANCED CHORD DIAGRAM ENGINE - LARGER & MORE VIVID
+# ENHANCED CHORD DIAGRAM ENGINE - LIGHT THEME OPTIMIZED
 # ============================================================================
 
-class VividChordDiagram:
+class LightThemeChordDiagram:
     """
-    Enhanced chord diagram renderer with larger canvas and vivid visualization.
+    Enhanced chord diagram renderer optimized for light themes.
     
     Features:
         - Ultra-large canvas (24x24 inches) at 300 DPI
-        - Vivid color schemes with high contrast
-        - Glow effects for links and sectors
+        - Light theme color schemes with high contrast
+        - Optimized visual effects for light backgrounds
         - Enhanced directional indicators
         - Node sizing based on connectivity
         - Radial gradients and visual effects
@@ -218,7 +488,7 @@ class VividChordDiagram:
     """
     
     def __init__(self, figsize: Tuple[int, int] = (24, 24), dpi: int = 300,
-                 background_color: str = '#0A0F1A'):
+                 background_color: str = '#FFFFFF', theme_config: ThemeConfig = None):
         """
         Initialize enhanced chord diagram canvas.
         
@@ -229,11 +499,14 @@ class VividChordDiagram:
         dpi : int
             Resolution in dots per inch - HIGHER for crisp rendering
         background_color : str
-            Canvas background color - DARK for contrast
+            Canvas background color - LIGHT for professional look
+        theme_config : ThemeConfig
+            Theme configuration object
         """
         self.figsize = figsize
         self.dpi = dpi
         self.background_color = background_color
+        self.theme_config = theme_config or ThemeConfig.get_theme("light")
         
         # Create figure with larger dimensions
         self.fig = plt.figure(figsize=figsize, dpi=dpi, facecolor=background_color)
@@ -241,9 +514,9 @@ class VividChordDiagram:
         self.ax.set_theta_zero_location("N")  # 0° at top
         self.ax.set_theta_direction(-1)       # Clockwise by default
         
-        # Data structures - ✅ FIXED: Removed space from variable name
+        # Data structures
         self.sectors: List[str] = []
-        self.sector_dict: Dict[str, Dict] = {}  # ✅ CORRECTED: Removed space
+        self.sector_dict: Dict[str, Dict] = {}
         self.links: List[Dict] = []
         self.tracks: Dict[str, Dict[int, Dict]] = {}
         self.groups: Dict[str, int] = {}
@@ -276,15 +549,6 @@ class VividChordDiagram:
                           sector_sizes: Optional[Dict[str, float]] = None) -> None:
         """
         Initialize sectors with optional grouping and sizing.
-        
-        Parameters
-        ----------
-        sectors : list of str
-            List of sector identifiers in display order
-        groups : dict, optional
-            Mapping from sector name to group ID (creates larger gaps between groups)
-        sector_sizes : dict, optional
-            Custom sizes for sectors (normalized to sum to 1)
         """
         self.sectors = sectors
         self.groups = groups if groups else {s: 0 for s in sectors}
@@ -319,11 +583,6 @@ class VividChordDiagram:
     def compute_sector_angles(self) -> Dict[str, Dict[str, float]]:
         """
         Calculate precise angular positions for all sectors considering gaps.
-        
-        Returns
-        -------
-        dict
-            Mapping from sector name to {start, end, mid} angles in degrees
         """
         total_gap = sum(self.gap_after.get(sector, self.small_gap) for sector in self.sectors)
         available_degrees = 360.0 - total_gap
@@ -347,41 +606,15 @@ class VividChordDiagram:
         return angles
     
     def draw_sector_track(self, sector: str, angles: Dict[str, float], 
-                         color: Union[str, Tuple] = '#2A3B5C', 
+                         color: Union[str, Tuple] = '#E0E0E0',  # Lighter for light theme
                          alpha: float = 0.15,
                          track_height: float = 0.20, 
                          track_index: int = 0,
-                         glow: bool = True,
+                         glow: bool = False,  # Disabled for light theme
                          border_color: Optional[str] = None,
                          border_width: float = 2.0) -> Dict[str, float]:
         """
-        Render a single sector track with enhanced visual effects.
-        
-        Parameters
-        ----------
-        sector : str
-            Sector identifier
-        angles : dict
-            Angular boundaries with 'start', 'end', 'mid' keys (degrees)
-        color : str or RGB tuple
-            Fill color for the track
-        alpha : float
-            Transparency level [0-1]
-        track_height : float
-            Radial height of the track
-        track_index : int
-            Track position (0 = innermost)
-        glow : bool
-            Add glow effect around sector
-        border_color : str, optional
-            Color for sector border
-        border_width : float
-            Width of sector border
-        
-        Returns
-        -------
-        dict
-            Radial boundaries {'inner': r_inner, 'outer': r_outer, 'mid_angle': angle}
+        Render a single sector track with light-theme optimized visual effects.
         """
         start_rad = np.radians(angles['start'])
         end_rad = np.radians(angles['end'])
@@ -410,32 +643,9 @@ class VividChordDiagram:
                           edgecolor='none', zorder=0.5)
         self.ax.add_patch(poly)
         
-        # Add glow effect
-        if glow and CHORD_DIAGRAM_DEFAULTS['sector_glow']:
-            glow_width = CHORD_DIAGRAM_DEFAULTS['sector_glow_width']
-            glow_alpha = CHORD_DIAGRAM_DEFAULTS['sector_glow_alpha']
-            
-            # Outer glow
-            theta_glow = np.linspace(start_rad, end_rad, 150)
-            r_glow_inner = r_outer
-            r_glow_outer = r_outer + glow_width / 100.0
-            
-            theta_glow_poly = np.concatenate([theta_glow, theta_glow[::-1]])
-            r_glow_poly = np.concatenate([np.full_like(theta_glow, r_glow_inner),
-                                         np.full_like(theta_glow, r_glow_outer)])
-            
-            x_glow = r_glow_poly * np.cos(theta_glow_poly)
-            y_glow = r_glow_poly * np.sin(theta_glow_poly)
-            vertices_glow = np.column_stack([x_glow, y_glow])
-            
-            glow_color = color if isinstance(color, str) else mcolors.to_hex(color)
-            glow_poly = plt.Polygon(vertices_glow, facecolor=glow_color, 
-                                   alpha=glow_alpha * 0.6, edgecolor='none', zorder=0.4)
-            self.ax.add_patch(glow_poly)
-        
-        # Add border if requested
+        # Add subtle border for light theme
         if border_color and CHORD_DIAGRAM_DEFAULTS['show_node_borders']:
-            border_alpha = min(1.0, alpha * 1.5)
+            border_alpha = min(1.0, alpha * 1.2)
             border_poly = plt.Polygon(vertices, facecolor='none', 
                                      edgecolor=border_color, alpha=border_alpha,
                                      linewidth=border_width, zorder=1.5)
@@ -443,9 +653,9 @@ class VividChordDiagram:
         
         return {'inner': r_inner, 'outer': r_outer, 'mid_angle': np.radians(angles['mid'])}
     
-    def create_vivid_link(self, source: str, target: str, value: float,
+    def create_light_link(self, source: str, target: str, value: float,
                          source_track: int = 0, target_track: int = 0,
-                         color: Union[str, Tuple] = '#FF6B6B', 
+                         color: Union[str, Tuple] = '#3B82F6',  # Professional blue
                          alpha: float = 0.85,
                          directional: Union[bool, int] = False, 
                          direction_type: Union[str, List[str]] = 'diffHeight',
@@ -457,41 +667,7 @@ class VividChordDiagram:
                          add_border: bool = True,
                          gradient: bool = False) -> Dict[str, Any]:
         """
-        Create a vivid curved link (chord) between two sectors with enhanced styling.
-        
-        Parameters
-        ----------
-        source, target : str
-            Source and target sector identifiers
-        value : float
-            Link weight (controls visual width)
-        source_track, target_track : int
-            Track indices for connection points
-        color : str or RGB tuple
-            Link color - VIVID colors for visibility
-        alpha : float
-            Transparency [0-1]
-        directional : bool or int
-            Direction indicator: False=undirected, 1=source→target, -1=target→source
-        direction_type : str or list
-            Visual direction cues: 'diffHeight', 'arrows', or both
-        arrow_length, arrow_width : float
-            Arrow dimensions (normalized units) - LARGER for visibility
-        highlight : bool
-            Apply visual emphasis (intense glow effect)
-        zindex : float
-            Rendering order (higher = on top)
-        add_glow : bool
-            Add glow effect around link
-        add_border : bool
-            Add white border around link for contrast
-        gradient : bool
-            Apply color gradient along the link
-        
-        Returns
-        -------
-        dict
-            Link metadata including matplotlib artist reference
+        Create a light-theme optimized curved link between two sectors.
         """
         # Validate sectors exist
         if source not in self.sector_angles or target not in self.sector_angles:
@@ -533,7 +709,7 @@ class VividChordDiagram:
         control_r = max(source_r, target_r) * 1.6  # Increased bulge for visibility
         
         # Parameterize curve with more points for smoothness
-        t = np.linspace(0, 1, 100)  # Increased from 60 to 100
+        t = np.linspace(0, 1, 100)
         theta_curve = (1 - t)**2 * source_rad + 2 * (1 - t) * t * control_angle + t**2 * target_rad
         r_curve = (1 - t)**2 * source_r + 2 * (1 - t) * t * control_r + t**2 * target_r
         
@@ -545,27 +721,26 @@ class VividChordDiagram:
                         min(CHORD_DIAGRAM_DEFAULTS['link_max_width'], 
                             value * CHORD_DIAGRAM_DEFAULTS['link_width_scale']))
         
-        # Add glow effect FIRST (behind main link)
+        # Add subtle glow effect for light theme
         if add_glow and CHORD_DIAGRAM_DEFAULTS['link_glow_intensity'] > 0:
-            glow_width = base_width * CHORD_DIAGRAM_DEFAULTS['link_glow_intensity']
-            glow_alpha = CHORD_DIAGRAM_DEFAULTS['link_glow_alpha']
+            glow_width = base_width * CHORD_DIAGRAM_DEFAULTS['link_glow_intensity'] * 0.5  # Reduced for light
+            glow_alpha = CHORD_DIAGRAM_DEFAULTS['link_glow_alpha'] * 0.5  # Reduced for light
             
-            # Multi-layer glow for vivid effect
-            for i, (w_mult, a_mult) in enumerate([(2.5, 0.2), (1.8, 0.3), (1.2, 0.4)]):
-                glow_line, = self.ax.plot(theta_curve, r_curve,
-                                        color=color, 
-                                        alpha=glow_alpha * a_mult * (alpha if not highlight else 1.0),
-                                        linewidth=glow_width * w_mult,
-                                        solid_capstyle='round',
-                                        solid_joinstyle='round',
-                                        zorder=zindex - 0.5 + i * 0.1)
+            # Subtle single-layer glow
+            glow_line, = self.ax.plot(theta_curve, r_curve,
+                                    color=color, 
+                                    alpha=glow_alpha * (alpha if not highlight else 1.0),
+                                    linewidth=glow_width * 1.5,
+                                    solid_capstyle='round',
+                                    solid_joinstyle='round',
+                                    zorder=zindex - 0.5)
         
         # Add border for contrast
         if add_border and CHORD_DIAGRAM_DEFAULTS['link_border_width'] > 0:
             border_line, = self.ax.plot(theta_curve, r_curve,
                                       color=CHORD_DIAGRAM_DEFAULTS['link_border_color'],
-                                      alpha=min(1.0, alpha * 1.2),
-                                      linewidth=base_width + CHORD_DIAGRAM_DEFAULTS['link_border_width'] * 2,
+                                      alpha=min(0.8, alpha * 1.1),  # Reduced alpha for light
+                                      linewidth=base_width + CHORD_DIAGRAM_DEFAULTS['link_border_width'],
                                       solid_capstyle='round',
                                       solid_joinstyle='round',
                                       zorder=zindex - 0.1)
@@ -598,7 +773,7 @@ class VividChordDiagram:
         # Add directional arrows if requested
         if directional and ('arrows' in direction_type or direction_type == 'arrows'):
             # Position arrows at multiple points for better visibility
-            arrow_positions = [0.4, 0.6, 0.8] if value > 0.5 else [0.6]  # More arrows for strong links
+            arrow_positions = [0.4, 0.6, 0.8] if value > 0.5 else [0.6]
             
             for arrow_pos in arrow_positions:
                 arrow_idx = int(len(t) * arrow_pos)
@@ -621,32 +796,32 @@ class VividChordDiagram:
                         (x + dx/15, y + dy/15),
                         arrowstyle=f'->,head_width={arrow_width*12},head_length={arrow_length*8}',
                         color=color,
-                        alpha=min(1.0, alpha * 1.3),  # More opaque arrows
+                        alpha=min(1.0, alpha * 1.3),
                         linewidth=base_width * 0.6,
                         mutation_scale=25,
                         zorder=zindex + 0.5
                     )
                     self.ax.add_patch(arrow)
         
-        # Apply highlight effect (intense glow)
+        # Apply highlight effect (subtle for light theme)
         if highlight:
             highlight_glow = CHORD_DIAGRAM_DEFAULTS['highlight_glow']
-            # White glow
+            # Light background glow
             self.ax.plot(theta_curve, r_curve,
-                       color='white', alpha=0.6,
-                       linewidth=base_width * highlight_glow * 1.2,
+                       color='white', alpha=0.4,
+                       linewidth=base_width * highlight_glow,
                        solid_capstyle='round',
                        zorder=zindex - 0.3)
             # Color glow
             self.ax.plot(theta_curve, r_curve,
-                       color=color, alpha=0.8,
-                       linewidth=base_width * highlight_glow,
+                       color=color, alpha=0.6,
+                       linewidth=base_width * highlight_glow * 0.8,
                        solid_capstyle='round',
                        zorder=zindex - 0.2)
             # Enhanced main line
             self.ax.plot(theta_curve, r_curve,
-                       color=color, alpha=min(1.0, alpha * 1.4),
-                       linewidth=base_width * 1.3,
+                       color=color, alpha=min(1.0, alpha * 1.2),  # Reduced for light
+                       linewidth=base_width * 1.2,
                        solid_capstyle='round',
                        zorder=zindex + 0.3)
         
@@ -672,34 +847,12 @@ class VividChordDiagram:
         return link_data
     
     def add_track(self, sector: str, track_index: int = 0, height: Optional[float] = None,
-                 color: Union[str, Tuple] = '#2A3B5C', 
+                 color: Union[str, Tuple] = '#E0E0E0', 
                  alpha: Optional[float] = None,
-                 glow: bool = True,
+                 glow: bool = False,  # Disabled for light theme
                  border_color: Optional[str] = None) -> Dict[str, float]:
         """
         Add a concentric track to a sector for layered visualizations.
-        
-        Parameters
-        ----------
-        sector : str
-            Target sector identifier
-        track_index : int
-            Track position (0 = innermost)
-        height : float, optional
-            Radial height of track (uses default if None)
-        color : str or tuple
-            Track fill color
-        alpha : float, optional
-            Transparency (uses default if None)
-        glow : bool
-            Add glow effect
-        border_color : str, optional
-            Border color for track
-        
-        Returns
-        -------
-        dict
-            Track geometry data {'inner', 'outer', 'mid_angle'}
         """
         if sector not in self.tracks:
             self.tracks[sector] = {}
@@ -714,8 +867,8 @@ class VividChordDiagram:
         
         # Determine border color if not specified
         if border_color is None and isinstance(color, str):
-            # Lighten the color for border
-            border_color = self._lighten_color(color, 0.3)
+            # Darken the color for border
+            border_color = self._darken_color(color, 0.3)
         
         track_data = self.draw_sector_track(
             sector, 
@@ -737,32 +890,11 @@ class VividChordDiagram:
                          rotation: str = 'auto',
                          fontweight: str = 'bold',
                          fontfamily: str = 'sans-serif',
-                         shadow: bool = True,
-                         bg_color: str = 'white',
+                         shadow: bool = False,  # Changed to False for light theme
+                         bg_color: str = 'rgba(255, 255, 255, 0.9)',
                          bg_alpha: float = 0.95) -> None:
         """
-        Add vivid, readable labels to sectors with enhanced styling.
-        
-        Parameters
-        ----------
-        label_dict : dict, optional
-            Custom label mapping {sector: label_text}
-        fontsize : int, optional
-            Font size (uses default if None) - LARGER for visibility
-        offset : float, optional
-            Radial distance from outer track edge
-        rotation : str
-            'auto' (follows circle), 'horizontal', or fixed angle
-        fontweight : str
-            Font weight ('normal', 'bold', etc.)
-        fontfamily : str
-            Font family name
-        shadow : bool
-            Add text shadow for readability
-        bg_color : str
-            Background color for label box
-        bg_alpha : float
-            Background transparency
+        Add readable labels to sectors with light-theme styling.
         """
         if not self.sector_angles:
             self.compute_sector_angles()
@@ -808,10 +940,10 @@ class VividChordDiagram:
             # Get label text
             label_text = label_dict.get(sector, sector) if label_dict else sector
             
-            # Determine text color based on background
-            text_color = '#FFFFFF' if self.background_color in ['#000000', '#0A0F1A', '#1A1A1A'] else '#2D3748'
+            # Use theme text color
+            text_color = self.theme_config.text_color
             
-            # Add label with enhanced styling
+            # Add label with light theme styling
             txt = self.ax.text(
                 angle_rad, label_r, label_text,
                 fontsize=fontsize, 
@@ -826,10 +958,10 @@ class VividChordDiagram:
                 alpha=0.98
             )
             
-            # Add text shadow for better readability
+            # Add subtle text shadow for better readability (optional)
             if shadow:
                 txt.set_path_effects([
-                    patheffects.Stroke(linewidth=3, foreground='black', alpha=0.7),
+                    patheffects.Stroke(linewidth=1, foreground='white', alpha=0.5),
                     patheffects.Normal()
                 ])
             
@@ -837,28 +969,16 @@ class VividChordDiagram:
             txt.set_bbox(dict(
                 boxstyle="round,pad=0.4",
                 facecolor=bg_color,
-                edgecolor='none',
+                edgecolor=self.theme_config.panel_border,
                 alpha=bg_alpha,
-                linewidth=2
+                linewidth=1
             ))
     
     def add_sector_nodes(self, sector_colors: Dict[str, str],
                         node_size_scale: float = 1.0,
                         show_labels: bool = True) -> None:
         """
-        Add decorative nodes/circles at sector positions for visual enhancement.
-        
-        Parameters
-        ----------
-        sector_colors : dict
-            Color mapping for each sector
-        node_size_scale : float
-            Scale factor for node sizes
-        show_labels : bool
-            Show sector names on nodes
-        
-        ✅ FIXED: Properly positioned nodes using Cartesian coordinates
-        ✅ FIXED: Removed duplicate radius specification in Circle constructor
+        Add decorative nodes/circles at sector positions.
         """
         if not self.sector_angles:
             self.compute_sector_angles()
@@ -880,43 +1000,43 @@ class VividChordDiagram:
             max_degree = max(self.node_degrees.values()) if self.node_degrees else 1.0
             
             if max_degree > 0:
-                size_factor = (degree / max_degree) ** 0.5  # Square root for better scaling
+                size_factor = (degree / max_degree) ** 0.5
                 node_size = base_size + (max_size - base_size) * size_factor
             else:
                 node_size = base_size
             
             node_size *= node_size_scale
             
-            # ✅ FIXED: Calculate proper Cartesian position for node
+            # Calculate proper Cartesian position for node
             x_pos = outer_r * np.cos(angle_rad)
             y_pos = outer_r * np.sin(angle_rad)
             
-            # Calculate appropriate radii for glow and node (scaled for 24x24 canvas)
-            glow_radius = node_size / 3000  # Scaled for large canvas
-            node_radius = node_size / 2000  # Scaled for large canvas
+            # Calculate appropriate radii for node
+            node_radius = node_size / 2000
             
-            # Create outer glow circle - ✅ FIXED RADIUS CONFLICT
-            glow_circle = Circle(
-                (x_pos, y_pos),           # Center position (Cartesian)
-                radius=glow_radius,       # Single radius specification
-                facecolor=sector_colors.get(sector, '#666666'),
-                alpha=0.3,
-                zorder=5
-            )
-            self.ax.add_patch(glow_circle)
-            
-            # Create main node circle - ✅ FIXED RADIUS CONFLICT
+            # Create main node circle
             node_color = sector_colors.get(sector, '#666666')
             node_circle = Circle(
-                (x_pos, y_pos),           # Center position (Cartesian)
-                radius=node_radius,       # Single radius specification
+                (x_pos, y_pos),
+                radius=node_radius,
                 facecolor=node_color,
-                edgecolor='white' if CHORD_DIAGRAM_DEFAULTS['show_node_borders'] else node_color,
+                edgecolor=self.theme_config.node_border_color,
                 linewidth=CHORD_DIAGRAM_DEFAULTS['node_border_width'],
                 alpha=0.95,
                 zorder=10
             )
             self.ax.add_patch(node_circle)
+            
+            # Add subtle inner highlight for light theme
+            highlight_radius = node_radius * 0.7
+            highlight_circle = Circle(
+                (x_pos, y_pos),
+                radius=highlight_radius,
+                facecolor='white',
+                alpha=0.3,
+                zorder=11
+            )
+            self.ax.add_patch(highlight_circle)
     
     def add_legend(self, title: str = "Link Strength", 
                   position: str = 'right',
@@ -926,22 +1046,9 @@ class VividChordDiagram:
                   fontsize: int = 14) -> None:
         """
         Add color legend/bar to the diagram.
-        
-        Parameters
-        ----------
-        title : str
-            Legend title
-        position : str
-            Position of legend ('right', 'left', 'bottom')
-        cmap : colormap
-            Colormap to display
-        vmin, vmax : float
-            Value range for colormap
-        fontsize : int
-            Font size for legend text
         """
         if cmap is None:
-            cmap = VividColorPalettes.get_rainbow_palette()
+            cmap = LightThemeColorPalettes.get_professional_palette()
         
         # Create inset axes for colorbar
         from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -958,8 +1065,8 @@ class VividChordDiagram:
         
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
         cb = ColorbarBase(axins, cmap=cmap, norm=norm, orientation='vertical')
-        cb.set_label(title, fontsize=fontsize, fontweight='bold', color='white')
-        cb.ax.tick_params(labelsize=fontsize-2, colors='white')
+        cb.set_label(title, fontsize=fontsize, fontweight='bold', color=self.theme_config.text_color)
+        cb.ax.tick_params(labelsize=fontsize-2, colors=self.theme_config.text_color)
         
         # Set background for colorbar
         cb.ax.set_facecolor('none')
@@ -969,15 +1076,6 @@ class VividChordDiagram:
                           fontsize: int = 12) -> None:
         """
         Add statistics text box to the diagram.
-        
-        Parameters
-        ----------
-        stats : dict
-            Statistics to display
-        position : tuple
-            Position in figure coordinates (x, y)
-        fontsize : int
-            Font size for statistics text
         """
         stats_text = []
         for key, value in stats.items():
@@ -988,16 +1086,16 @@ class VividChordDiagram:
         
         stats_str = "\n".join(stats_text)
         
-        # Add text box
+        # Add text box with light theme styling
         self.fig.text(position[0], position[1], stats_str,
                      fontsize=fontsize,
                      fontfamily='monospace',
                      fontweight='bold',
-                     color='white',
+                     color=self.theme_config.text_color,
                      alpha=0.95,
                      bbox=dict(boxstyle='round,pad=0.8',
-                             facecolor='#1A2B4A',
-                             edgecolor='#4A6B9A',
+                             facecolor=self.theme_config.panel_bg,
+                             edgecolor=self.theme_config.panel_border,
                              linewidth=2,
                              alpha=0.85),
                      transform=self.fig.transFigure,
@@ -1010,22 +1108,6 @@ class VividChordDiagram:
                 show_grid: bool = False) -> plt.Figure:
         """
         Finalize diagram appearance and layout.
-        
-        Parameters
-        ----------
-        title : str
-            Diagram title - ENHANCED styling
-        show_frame : bool
-            Display polar coordinate frame
-        background_color : str, optional
-            Canvas background color
-        show_grid : bool
-            Show radial grid lines
-        
-        Returns
-        -------
-        matplotlib.figure.Figure
-            Rendered figure object
         """
         if background_color is None:
             background_color = self.background_color
@@ -1040,7 +1122,7 @@ class VividChordDiagram:
             if sector_tracks:
                 max_radius = max(max_radius, max(t['outer'] for t in sector_tracks.values()))
         
-        self.ax.set_ylim(0, max_radius * 1.4)  # Extra space for labels and decorations
+        self.ax.set_ylim(0, max_radius * 1.4)
         self.ax.set_yticks([])
         self.ax.set_xticks([])
         
@@ -1048,28 +1130,27 @@ class VividChordDiagram:
         self.ax.spines['polar'].set_visible(show_frame)
         if show_frame:
             self.ax.spines['polar'].set_color('#666666')
-            self.ax.spines['polar'].set_linewidth(2.0)
+            self.ax.spines['polar'].set_linewidth(1.0)  # Thinner for light theme
         
         # Add grid if requested
         if show_grid:
-            self.ax.grid(True, alpha=0.2, color='#444444', linewidth=1.0)
+            self.ax.grid(True, alpha=0.1, color=self.theme_config.grid_color, linewidth=0.5)
         
-        # Add title with enhanced styling
+        # Add title with light theme styling
         if title:
-            # Add title with shadow and glow
             title_text = self.ax.set_title(
                 title, 
-                fontsize=28,  # LARGER title
+                fontsize=28,
                 fontweight='bold', 
                 pad=40,
-                color='white',
+                color=self.theme_config.text_color,
                 fontfamily='sans-serif',
                 alpha=0.98
             )
             
-            # Add shadow effect
+            # Add subtle shadow effect for light theme
             title_text.set_path_effects([
-                patheffects.Stroke(linewidth=4, foreground='black', alpha=0.8),
+                patheffects.Stroke(linewidth=2, foreground='white', alpha=0.5),
                 patheffects.Normal()
             ])
         
@@ -1078,21 +1159,7 @@ class VividChordDiagram:
         return self.fig
     
     def _lighten_color(self, color: str, amount: float = 0.5) -> str:
-        """
-        Lighten a color by a given amount.
-        
-        Parameters
-        ----------
-        color : str
-            Color string (hex or name)
-        amount : float
-            Amount to lighten (0-1)
-        
-        Returns
-        -------
-        str
-            Lightened color hex string
-        """
+        """Lighten a color by a given amount."""
         try:
             c = mcolors.to_rgb(color)
             c = colorsys.rgb_to_hls(*c)
@@ -1100,18 +1167,31 @@ class VividChordDiagram:
             return mcolors.to_hex(new_color)
         except:
             return '#FFFFFF'
-
+    
+    def _darken_color(self, color: str, amount: float = 0.5) -> str:
+        """Darken a color by a given amount."""
+        try:
+            c = mcolors.to_rgb(color)
+            c = colorsys.rgb_to_hls(*c)
+            new_color = colorsys.hls_to_rgb(c[0], c[1] * (1 - amount), c[2])
+            return mcolors.to_hex(new_color)
+        except:
+            return '#000000'
 
 # ============================================================================
-# ENHANCED HIGH-LEVEL API - VIVID NETWORK VISUALIZATION
+# HIGH-LEVEL API - LIGHT THEME NETWORK VISUALIZATION
 # ============================================================================
 
-def create_vivid_chord_diagram(
-    data: Any,  # ✅ FIXED: Added parameter name
+def create_light_theme_chord_diagram(
+    data: Any,
     data_type: str = 'matrix',
-    figsize: Tuple[int, int] = (24, 24),  # LARGER canvas
-    dpi: int = 300,                       # HIGHER resolution
-    title: str = "Vivid Network Chord Diagram",
+    figsize: Tuple[int, int] = (24, 24),
+    dpi: int = 300,
+    title: str = "Network Chord Diagram",
+    
+    # Theme configuration
+    theme: str = 'light',
+    theme_config: Optional[ThemeConfig] = None,
     
     # Layout parameters
     start_degree: float = 0,
@@ -1120,66 +1200,62 @@ def create_vivid_chord_diagram(
     small_gap: float = 2.0,
     sector_order: Optional[List[str]] = None,
     
-    # Sector styling - ENHANCED
-    sector_colors: Optional[Union[str, Dict[str, str]]] = 'vivid',
-    sector_color_palette: str = 'vivid',  # 'vivid', 'fire', 'ocean', 'rainbow', etc.
+    # Sector styling
+    sector_colors: Optional[Union[str, Dict[str, str]]] = 'light',
+    sector_color_palette: str = 'light',
     sector_labels: Optional[Dict[str, str]] = None,
-    sector_label_fontsize: int = 18,      # LARGER labels
+    sector_label_fontsize: int = 18,
     sector_label_fontweight: str = 'bold',
-    sector_label_offset: float = 0.30,    # FURTHER from center
-    sector_label_shadow: bool = True,
+    sector_label_offset: float = 0.30,
+    sector_label_shadow: bool = False,
     show_sector_nodes: bool = True,
     sector_node_scale: float = 1.2,
     
-    # Link styling - VIVID
-    link_colors: Union[str, Dict[Tuple[str, str], str]] = 'gradient',
-    link_color_palette: str = 'rainbow',  # Colormap for value-based coloring
+    # Link styling
+    link_colors: Union[str, Dict[Tuple[str, str], str]] = 'value',
+    link_color_palette: str = 'professional',
     link_alpha: float = 0.85,
-    link_width_scale: float = 5.0,        # LARGER scale
-    link_min_width: float = 1.5,          # WIDER minimum
-    link_max_width: float = 25.0,         # WIDER maximum
+    link_width_scale: float = 5.0,
+    link_min_width: float = 1.5,
+    link_max_width: float = 25.0,
     link_glow: bool = True,
-    link_glow_intensity: float = 2.5,
+    link_glow_intensity: float = 1.5,  # Reduced for light theme
     link_border: bool = True,
     link_border_width: float = 0.8,
-    link_border_color: str = 'white',
+    link_border_color: str = '#374151',
     
-    # Directional features - ENHANCED
+    # Directional features
     directional: Union[bool, Dict[Tuple[str, str], int]] = False,
     direction_type: Union[str, List[str]] = ['diffHeight', 'arrows'],
-    arrow_length: float = 0.18,           # LARGER arrows
-    arrow_width: float = 0.10,            # WIDER arrows
-    diff_height: float = 0.06,            # MORE height difference
+    arrow_length: float = 0.18,
+    arrow_width: float = 0.10,
+    diff_height: float = 0.06,
     
     # Highlighting
     highlight_links: Optional[List[Tuple[str, str]]] = None,
-    highlight_color: str = '#FF4444',     # Vivid red
+    highlight_color: str = '#DC2626',  # Red for light theme
     highlight_alpha: float = 0.98,
-    
-    # Scaling
-    scale: bool = False,
-    scale_mode: str = 'absolute',
     
     # Advanced features
     symmetric: bool = False,
-    reduce_threshold: float = 0.001,      # LOWER threshold to show more
+    reduce_threshold: float = 0.001,
     link_sort: bool = True,
     link_decreasing: bool = True,
     link_zindex: Union[str, List[float]] = 'value',
-    link_gradient: bool = False,          # NEW: Gradient along links
+    link_gradient: bool = False,
     
-    # Visual effects - VIVID
-    background_color: str = '#0A0F1A',    # Dark for contrast
-    grid_color: str = '#2A3B5C',
+    # Visual effects
+    background_color: str = '#FFFFFF',
+    grid_color: str = '#E0E0E0',
     grid_alpha: float = 0.10,
-    sector_glow: bool = True,
+    sector_glow: bool = False,
     sector_glow_width: float = 8,
     sector_glow_alpha: float = 0.3,
     show_frame: bool = False,
     show_grid: bool = False,
-    radial_gradient: bool = False,
+    radial_gradient: bool = True,
     
-    # Multiple tracks - ENHANCED
+    # Multiple tracks
     tracks: int = 1,
     track_heights: Optional[List[float]] = None,
     track_colors: Optional[List[str]] = None,
@@ -1195,35 +1271,20 @@ def create_vivid_chord_diagram(
     
     # Performance
     max_links: int = 1000,
-    simplify_curves: bool = False
+    simplify_curves: bool = False,
+    
+    # Cache control
+    use_cache: bool = True,
+    cache_key: Optional[str] = None
 ) -> plt.Figure:
     """
-    Create vivid, large-scale chord diagrams with enhanced network visualization.
-    
-    This function creates publication-quality chord diagrams optimized for
-    vivid display of complex networks with enhanced colors, glow effects,
-    and visual hierarchy.
-    
-    Parameters
-    ----------
-    data : array-like or DataFrame
-        Input data matrix (sources × targets) or adjacency list DataFrame
-    data_type : str
-        'matrix' for 2D arrays, 'adjacency_list' for DataFrame with [source, target, value]
-    figsize : tuple
-        Figure dimensions in inches - LARGER for vivid display
-    dpi : int
-        Resolution in dots per inch - HIGHER for crisp rendering
-    title : str
-        Diagram title
-    
-    Returns
-    -------
-    matplotlib.figure.Figure
-        Fully rendered vivid chord diagram
+    Create light-theme chord diagrams with professional styling.
     """
-    # Update global defaults with user parameters
-    global CHORD_DIAGRAM_DEFAULTS
+    # Get theme configuration
+    if theme_config is None:
+        theme_config = ThemeConfig.get_theme(theme)
+    
+    # Update defaults with theme configuration
     CHORD_DIAGRAM_DEFAULTS.update({
         'figsize': figsize,
         'dpi': dpi,
@@ -1241,14 +1302,15 @@ def create_vivid_chord_diagram(
         'diff_height': diff_height,
         'label_offset': sector_label_offset,
         'label_fontsize': sector_label_fontsize,
-        'background_color': background_color,
-        'grid_color': grid_color,
+        'background_color': background_color or theme_config.background_color,
+        'grid_color': grid_color or theme_config.grid_color,
         'reduce_threshold': reduce_threshold,
         'sector_glow': sector_glow,
         'sector_glow_width': sector_glow_width,
         'sector_glow_alpha': sector_glow_alpha,
         'node_size_min': 150,
         'node_size_max': 800,
+        'link_border_color': link_border_color or theme_config.link_border_color,
     })
     
     # ========================================================================
@@ -1323,7 +1385,7 @@ def create_vivid_chord_diagram(
         # Extract unique sectors
         all_sectors = sorted(set(df.iloc[:, 0].astype(str).tolist() + 
                                df.iloc[:, 1].astype(str).tolist()))
-        groups = {s: 0 for s in all_sectors}  # Default single group
+        groups = {s: 0 for s in all_sectors}
         
         # Apply custom sector ordering if provided
         if sector_order:
@@ -1341,21 +1403,22 @@ def create_vivid_chord_diagram(
         print(f"Warning: Limited to top {max_links} links by value")
     
     # ========================================================================
-    # DIAGRAM CONSTRUCTION - VIVID VERSION
+    # DIAGRAM CONSTRUCTION - LIGHT THEME VERSION
     # ========================================================================
-    diagram = VividChordDiagram(figsize=figsize, dpi=dpi, background_color=background_color)
+    diagram = LightThemeChordDiagram(figsize=figsize, dpi=dpi, 
+                                     background_color=background_color or theme_config.background_color,
+                                     theme_config=theme_config)
     diagram.big_gap = big_gap
     diagram.small_gap = small_gap
     diagram.set_start_degree(start_degree)
     diagram.set_direction(direction == 'clockwise')
-    diagram.background_color = background_color
     
     # Initialize sectors with grouping
     diagram.initialize_sectors(all_sectors, groups)
     
     # Generate sector colors based on palette choice
-    if isinstance(sector_colors, str) and sector_colors == 'vivid':
-        sector_color_list = VividColorPalettes.get_sector_colors(
+    if isinstance(sector_colors, str) and sector_colors == 'light':
+        sector_color_list = LightThemeColorPalettes.get_sector_colors(
             len(all_sectors), 
             palette=sector_color_palette
         )
@@ -1363,17 +1426,17 @@ def create_vivid_chord_diagram(
     elif isinstance(sector_colors, dict):
         pass  # Use provided colors
     else:
-        # Default to vivid palette
-        sector_color_list = VividColorPalettes.get_sector_colors(len(all_sectors), palette='vivid')
+        # Default to light palette
+        sector_color_list = LightThemeColorPalettes.get_sector_colors(len(all_sectors), palette='light')
         sector_colors = {sector: color for sector, color in zip(all_sectors, sector_color_list)}
     
-    # Add tracks to all sectors with enhanced styling
+    # Add tracks to all sectors
     track_height = 0.20
     for sector in all_sectors:
         sector_color = sector_colors.get(sector, '#666666')
         
         for track_idx in range(tracks):
-            track_color = track_colors[track_idx] if track_colors and track_idx < len(track_colors) else grid_color
+            track_color = track_colors[track_idx] if track_colors and track_idx < len(track_colors) else theme_config.grid_color
             diagram.add_track(
                 sector, 
                 track_index=track_idx,
@@ -1385,7 +1448,7 @@ def create_vivid_chord_diagram(
             )
     
     # ========================================================================
-    # LINK PROCESSING & STYLING - VIVID VERSION
+    # LINK PROCESSING & STYLING - LIGHT THEME VERSION
     # ========================================================================
     # Process link colors based on strategy
     link_color_map = {}
@@ -1406,24 +1469,24 @@ def create_vivid_chord_diagram(
             norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
             
             # Get colormap based on palette choice
-            if link_color_palette == 'rainbow':
-                link_cmap = VividColorPalettes.get_rainbow_palette()
-            elif link_color_palette == 'fire':
-                link_cmap = VividColorPalettes.get_fire_palette()
-            elif link_color_palette == 'ocean':
-                link_cmap = VividColorPalettes.get_ocean_palette()
-            elif link_color_palette == 'electric':
-                link_cmap = VividColorPalettes.get_electric_palette()
-            elif link_color_palette == 'matrix':
-                link_cmap = VividColorPalettes.get_matrix_palette()
+            if link_color_palette == 'professional':
+                link_cmap = LightThemeColorPalettes.get_professional_palette()
+            elif link_color_palette == 'pastel':
+                link_cmap = LightThemeColorPalettes.get_pastel_palette()
+            elif link_color_palette == 'warm':
+                link_cmap = LightThemeColorPalettes.get_warm_palette()
+            elif link_color_palette == 'cool':
+                link_cmap = LightThemeColorPalettes.get_cool_palette()
+            elif link_color_palette == 'earth':
+                link_cmap = LightThemeColorPalettes.get_earth_palette()
             else:
-                link_cmap = plt.cm.viridis
+                link_cmap = plt.cm.Blues  # Default to Blues for light theme
             
             for link in links:
                 link_color_map[(link['source'], link['target'])] = link_cmap(norm(link['value']))
         elif link_colors == 'single_color':
             for link in links:
-                link_color_map[(link['source'], link['target'])] = '#FF6B6B'  # Vivid coral
+                link_color_map[(link['source'], link['target'])] = '#3B82F6'  # Professional blue
         else:
             for link in links:
                 link_color_map[(link['source'], link['target'])] = link_colors
@@ -1433,7 +1496,7 @@ def create_vivid_chord_diagram(
         for link in links:
             link_color_map[(link['source'], link['target'])] = link_colors
     
-    # Sort links by value if requested (prevents visual clutter)
+    # Sort links by value if requested
     if link_sort:
         links.sort(key=lambda x: x['value'], reverse=link_decreasing)
     
@@ -1441,7 +1504,7 @@ def create_vivid_chord_diagram(
     if link_zindex == 'value':
         max_val = max(link['value'] for link in links) if links else 1
         for link in links:
-            link['zindex'] = 2 + (link['value'] / max_val) * 18  # Range: 2-20 for better layering
+            link['zindex'] = 2 + (link['value'] / max_val) * 18
     elif link_zindex == 'random':
         for link in links:
             link['zindex'] = 2 + random.random() * 18
@@ -1452,7 +1515,7 @@ def create_vivid_chord_diagram(
         for link in links:
             link['zindex'] = 10.0
     
-    # Create links with enhanced vivid styling
+    # Create links with light theme styling
     for link in links:
         source = link['source']
         target = link['target']
@@ -1482,9 +1545,9 @@ def create_vivid_chord_diagram(
             is_directional = True
             direction_value = 1
         
-        # Create the vivid link
+        # Create the link
         try:
-            diagram.create_vivid_link(
+            diagram.create_light_link(
                 source=source,
                 target=target,
                 value=value,
@@ -1505,19 +1568,20 @@ def create_vivid_chord_diagram(
             continue
     
     # ========================================================================
-    # FINALIZATION - ENHANCED
+    # FINALIZATION - LIGHT THEME
     # ========================================================================
-    # Add sector labels with enhanced styling
+    # Add sector labels with light theme styling
     diagram.add_sector_labels(
         sector_labels,
         fontsize=sector_label_fontsize,
         offset=sector_label_offset,
         fontweight=sector_label_fontweight,
         shadow=sector_label_shadow,
+        bg_color=theme_config.label_bg_color,
         bg_alpha=0.95
     )
     
-    # Add decorative sector nodes - ✅ NOW SAFE WITH FIXED IMPLEMENTATION
+    # Add decorative sector nodes
     if show_sector_nodes:
         diagram.add_sector_nodes(
             sector_colors,
@@ -1556,378 +1620,402 @@ def create_vivid_chord_diagram(
     fig = diagram.finalize(
         title=title,
         show_frame=show_frame,
-        background_color=background_color,
+        background_color=background_color or theme_config.background_color,
         show_grid=show_grid
     )
     
     return fig
 
-
 # ============================================================================
-# ENHANCED STREAMLIT APPLICATION - VIVID NETWORK VISUALIZATION
+# ENHANCED STREAMLIT APPLICATION WITH LIGHT THEME
 # ============================================================================
 
-def create_vivid_streamlit_app():
-    """Production-ready Streamlit application for vivid chord diagram creation."""
+def create_light_theme_streamlit_app():
+    """Production-ready Streamlit application for light theme chord diagrams."""
     
-    # Page configuration - OPTIMIZED FOR LARGE DISPLAYS
+    # Initialize session state
+    SessionStateManager.initialize_state()
+    
+    # Page configuration
     st.set_page_config(
-        page_title="🎨 Vivid Network Chord Diagrams",
+        page_title="📊 Network Chord Diagrams",
         page_icon="🌐",
         layout="wide",
         initial_sidebar_state="expanded"
     )
     
-    # Custom CSS for enhanced UI - OPTIMIZED FOR VIVID DISPLAY
-    st.markdown("""
+    # Get current theme from session state
+    current_theme = st.session_state.theme
+    theme_config = ThemeConfig.get_theme(current_theme)
+    
+    # Custom CSS with dynamic theme support
+    css = f"""
     <style>
     /* Global styles */
-    .main {
+    .main {{
         padding: 1rem 2rem;
-        background: linear-gradient(135deg, #0A0F1A 0%, #1A2332 100%);
-    }
-    .stApp {
-        background-color: #0A0F1A;
-    }
+        background: {theme_config.background_color};
+    }}
+    .stApp {{
+        background-color: {theme_config.background_color};
+    }}
     
     /* Header styling */
-    h1 {
-        color: #FFFFFF;
-        font-weight: 800;
-        text-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
+    h1 {{
+        color: {theme_config.text_color};
+        font-weight: 700;
         margin-bottom: 0.5rem;
-        background: linear-gradient(90deg, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-    .subtitle {
-        color: #A0AEC0;
-        font-size: 1.3rem;
+        border-bottom: 3px solid {theme_config.highlight_color};
+        padding-bottom: 0.5rem;
+    }}
+    .subtitle {{
+        color: {theme_config.text_color};
+        opacity: 0.8;
+        font-size: 1.1rem;
         margin-bottom: 2rem;
-        text-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
-    }
+    }}
     
     /* Section dividers */
-    .section-divider {
-        height: 2px;
-        background: linear-gradient(to right, transparent, #4A5568, transparent);
+    .section-divider {{
+        height: 1px;
+        background: linear-gradient(to right, transparent, {theme_config.panel_border}, transparent);
         margin: 2rem 0;
-    }
+    }}
     
     /* Cards and containers */
-    .stCard {
-        background: linear-gradient(135deg, #1A2332 0%, #2A3B5C 100%);
-        border-radius: 16px;
+    .stCard {{
+        background: {theme_config.panel_bg};
+        border-radius: 12px;
         padding: 1.5rem;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-        margin-bottom: 2rem;
-        border: 1px solid #4A5568;
-    }
+        border: 1px solid {theme_config.panel_border};
+        margin-bottom: 1.5rem;
+    }}
     
     /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(135deg, #1A202C 0%, #2D3748 100%);
-    }
+    [data-testid="stSidebar"] {{
+        background: {theme_config.panel_bg};
+        border-right: 1px solid {theme_config.panel_border};
+    }}
     
     /* Buttons */
-    .stButton > button {
-        background: linear-gradient(90deg, #FF6B6B, #EE5A24);
+    .stButton > button {{
+        background: {theme_config.highlight_color};
         color: white;
         border: none;
-        border-radius: 12px;
-        padding: 0.8rem 2rem;
-        font-weight: 700;
-        font-size: 1.1rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
-        background: linear-gradient(90deg, #FF5252, #E54A1A);
-    }
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }}
+    .stButton > button:hover {{
+        opacity: 0.9;
+        transform: translateY(-1px);
+    }}
     
     /* Expander styling */
-    .streamlit-expanderHeader {
-        background: linear-gradient(90deg, #2D3748, #4A5568) !important;
-        border-radius: 12px !important;
-        padding: 0.8rem 1.2rem !important;
-        color: #E2E8F0 !important;
-        font-weight: 600;
-    }
+    .streamlit-expanderHeader {{
+        background: {theme_config.panel_bg} !important;
+        border: 1px solid {theme_config.panel_border} !important;
+        border-radius: 8px !important;
+        color: {theme_config.text_color} !important;
+    }}
     
     /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 32px;
-        background: rgba(26, 35, 50, 0.7);
-        padding: 1rem;
-        border-radius: 16px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 48px;
-        white-space: nowrap;
-        border-radius: 12px;
-        background: rgba(45, 55, 72, 0.5);
-        color: #A0AEC0;
-        font-weight: 600;
-        font-size: 1.05rem;
-        transition: all 0.3s ease;
-    }
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(90deg, #4ECDC4, #45B7D1);
-        color: white;
-        box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
-    }
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 16px;
+        border-bottom: 1px solid {theme_config.panel_border};
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        color: {theme_config.text_color};
+        opacity: 0.7;
+        font-weight: 500;
+    }}
+    .stTabs [aria-selected="true"] {{
+        color: {theme_config.highlight_color} !important;
+        opacity: 1 !important;
+        border-bottom: 2px solid {theme_config.highlight_color};
+    }}
     
     /* Metrics */
-    .stMetric {
-        background: linear-gradient(135deg, #1A2332, #2A3B5C);
-        padding: 1.2rem;
-        border-radius: 16px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        border: 1px solid #4A5568;
-    }
-    .stMetric > div {
-        color: #FFFFFF !important;
-    }
+    .stMetric {{
+        background: {theme_config.panel_bg};
+        padding: 1rem;
+        border-radius: 12px;
+        border: 1px solid {theme_config.panel_border};
+    }}
+    .stMetric > div {{
+        color: {theme_config.text_color} !important;
+    }}
     
     /* Selectbox and sliders */
     .stSelectbox > div > div,
-    .stSlider > div > div {
-        color: #E2E8F0 !important;
-    }
+    .stSlider > div > div {{
+        color: {theme_config.text_color} !important;
+    }}
     
     /* Footer */
-    .footer {
+    .footer {{
         text-align: center;
-        color: #718096;
-        font-size: 0.95rem;
-        margin-top: 4rem;
-        padding: 2rem;
-        border-top: 1px solid #2D3748;
-        background: rgba(26, 35, 50, 0.5);
-    }
+        color: {theme_config.text_color};
+        opacity: 0.6;
+        font-size: 0.9rem;
+        margin-top: 3rem;
+        padding: 1.5rem;
+        border-top: 1px solid {theme_config.panel_border};
+    }}
     
-    /* Loading spinner */
-    .stSpinner > div {
-        border-color: #FF6B6B #FF6B6B #FF6B6B transparent !important;
-    }
+    /* Performance indicators */
+    .performance-badge {{
+        background: {theme_config.highlight_color};
+        color: white;
+        padding: 0.2rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }}
+    
+    /* Tooltips */
+    .tooltip {{
+        position: relative;
+        display: inline-block;
+        border-bottom: 1px dotted {theme_config.text_color};
+    }}
+    .tooltip .tooltiptext {{
+        visibility: hidden;
+        width: 200px;
+        background-color: {theme_config.text_color};
+        color: {theme_config.background_color};
+        text-align: center;
+        border-radius: 6px;
+        padding: 5px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -100px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }}
+    .tooltip:hover .tooltiptext {{
+        visibility: visible;
+        opacity: 1;
+    }}
     </style>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(css, unsafe_allow_html=True)
     
-    # Header
-    st.title("🎨 Vivid Network Chord Diagrams")
-    st.markdown(
-        '<p class="subtitle">Ultra-high resolution circular network visualizations with '
-        'vivid colors, glow effects, and enhanced readability. Perfect for presentations, '
-        'publications, and large displays.</p>',
-        unsafe_allow_html=True
-    )
+    # Header with theme selector
+    col_header1, col_header2, col_header3 = st.columns([3, 1, 1])
+    with col_header1:
+        st.title("📊 Network Chord Diagrams")
+        st.markdown(
+            f'<p class="subtitle">Professional network visualizations with light theme optimization. '
+            f'Perfect for reports, presentations, and analytical dashboards.</p>',
+            unsafe_allow_html=True
+        )
+    
+    with col_header2:
+        # Theme selector
+        theme_options = ["light", "professional", "pastel", "ocean", "dark"]
+        theme_display = ["Light", "Professional", "Pastel", "Ocean", "Dark"]
+        selected_theme = st.selectbox(
+            "Theme",
+            options=theme_display,
+            index=theme_display.index(current_theme.capitalize()) if current_theme.capitalize() in theme_display else 0,
+            key="theme_selector",
+            help="Select color theme for the visualization"
+        )
+        
+        # Update session state if theme changed
+        theme_map = {display: option.lower() for display, option in zip(theme_display, theme_options)}
+        if theme_map[selected_theme] != st.session_state.theme:
+            st.session_state.theme = theme_map[selected_theme]
+            st.rerun()
+    
+    with col_header3:
+        # Performance indicator
+        perf_stats = SessionStateManager.get_performance_stats()
+        st.markdown(f'<div class="performance-badge">🔄 {perf_stats["render_count"]} renders</div>', unsafe_allow_html=True)
+        st.caption(f"Avg: {perf_stats['avg_render_time']:.1f}s")
     
     # Sidebar configuration
     with st.sidebar:
-        st.image("https://via.placeholder.com/200x60/FF6B6B/FFFFFF?text=VIVID+NETWORKS", 
-                use_column_width=True)
-        st.markdown("### 📊 Data Configuration")
+        st.markdown(f"### ⚙️ Configuration")
         
-        # Data source selection - ✅ LOADING CSV WITH OS.PATH.JOIN
-        use_example = st.checkbox("✨ Use dendrites attributes dataset", value=True, key="use_example")
+        # Data source selection with caching
+        use_example = st.checkbox("Use example dataset", value=True, key="use_example")
         
         if use_example:
-            try:
-                # ✅ SAFE FILE PATH CONSTRUCTION USING OS.PATH.JOIN
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                file_path = os.path.join(current_dir, "dendrites-attributes.csv")
-                
-                # Fallback to working directory if needed
-                if not os.path.exists(file_path):
-                    file_path = os.path.join(os.getcwd(), "dendrites-attributes.csv")
-                
-                # Load and process CSV
-                raw_data = pd.read_csv(file_path)
-                st.success(f"✅ Loaded dendrites_attributes.csv ({len(raw_data)} rows)")
-                
-                # Compute correlation matrix for chord diagram
-                data_for_corr = raw_data.drop(columns=['step'], errors='ignore')
-                corr_matrix = data_for_corr.corr().abs()
-                np.fill_diagonal(corr_matrix.values, 0)  # Zero diagonal
-                
-                data = corr_matrix
-                data_type = "matrix"
-                st.info(f"🔄 Converted to correlation matrix ({data.shape[0]}×{data.shape[1]})")
-                
-            except Exception as e:
-                st.error(f"❌ Error loading dendrites_attributes.csv: {str(e)}")
-                st.warning("⚠️ Falling back to generated example data")
-                
-                # Fallback to generated data
-                np.random.seed(42)
-                n = 15
-                matrix = np.zeros((n, n))
-                for i in range(n):
-                    for j in range(n):
-                        if i == j:
-                            matrix[i, j] = 1.0
-                        elif abs(i - j) <= 3:
-                            matrix[i, j] = 0.9 - abs(i - j) * 0.2
-                        else:
-                            matrix[i, j] = np.random.uniform(0.1, 0.4)
-                
-                for i in range(n):
-                    for j in range(i+1, n):
-                        if np.random.random() > 0.6:
-                            matrix[i, j] *= 1.8
-                
-                row_names = [f"Gene_{i+1:02d}" for i in range(n)]
-                col_names = [f"Pathway_{j+1:02d}" for j in range(n)]
-                data = pd.DataFrame(matrix, index=row_names, columns=col_names)
+            # Load cached example data
+            data = CacheManager.load_data("example", is_example=True)
+            if data is not None:
+                st.success(f"✅ Loaded example dataset ({data.shape[0]}×{data.shape[1]})")
                 data_type = "matrix"
         else:
-            uploaded_file = st.file_uploader("📤 Upload CSV/Excel", type=['csv', 'xlsx'])
+            uploaded_file = st.file_uploader("Upload CSV/Excel", type=['csv', 'xlsx', 'txt'])
             if uploaded_file:
-                try:
-                    if uploaded_file.name.endswith('.csv'):
-                        data = pd.read_csv(uploaded_file)
-                    else:
-                        data = pd.read_excel(uploaded_file)
-                    data_type = st.radio("Data format", ["matrix", "adjacency_list"], 
-                                       horizontal=True)
-                    if data_type == "adjacency_list":
-                        st.info("ℹ️ Expected columns: `source`, `target`, `value`")
-                    st.success(f"✅ Loaded {data.shape[0]}×{data.shape[1]} dataset")
-                except Exception as e:
-                    st.error(f"❌ Error loading file: {str(e)}")
-                    st.stop()
+                # Cache uploaded file data
+                file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
+                cache_key = f"uploaded_{file_hash}"
+                
+                if 'uploaded_data' not in st.session_state or st.session_state.get('uploaded_file_hash') != file_hash:
+                    try:
+                        if uploaded_file.name.endswith('.csv'):
+                            data = pd.read_csv(uploaded_file)
+                        elif uploaded_file.name.endswith('.xlsx'):
+                            data = pd.read_excel(uploaded_file)
+                        else:
+                            data = pd.read_csv(uploaded_file, sep='\t')
+                        
+                        st.session_state.uploaded_data = data
+                        st.session_state.uploaded_file_hash = file_hash
+                        st.success(f"✅ Loaded {data.shape[0]}×{data.shape[1]} dataset")
+                    except Exception as e:
+                        st.error(f"Error loading file: {str(e)}")
+                        st.stop()
+                else:
+                    data = st.session_state.uploaded_data
+                
+                data_type = st.radio("Data format", ["matrix", "adjacency_list"], horizontal=True)
+                if data_type == "adjacency_list":
+                    st.info("Expected columns: source, target, value")
             else:
-                st.info("👆 Upload your data or use the dendrites dataset")
+                st.info("Upload your data or use the example dataset")
                 st.stop()
         
-        # Quick presets for vivid styles
+        # Quick presets for light themes
         st.markdown("---")
-        st.markdown("### ⚡ Vivid Presets")
-        preset = st.selectbox("Apply vivid style preset", 
-                            ["Default", "Fire Network", "Ocean Flow", "Rainbow Web", 
-                             "Electric Grid", "Matrix Code", "Royal Network"])
-        if preset == "Fire Network":
-            st.session_state.update({
-                'sector_color_palette': 'fire',
-                'link_color_palette': 'fire',
-                'background_color': '#000000',
-                'directional': True,
-                'link_glow': True
-            })
-        elif preset == "Ocean Flow":
-            st.session_state.update({
-                'sector_color_palette': 'ocean',
-                'link_color_palette': 'ocean',
-                'background_color': '#001122',
-                'directional': True,
-                'sector_glow': True
-            })
-        elif preset == "Rainbow Web":
-            st.session_state.update({
-                'sector_color_palette': 'rainbow',
-                'link_color_palette': 'rainbow',
-                'background_color': '#111111',
-                'link_gradient': True,
-                'link_glow': True
-            })
-        elif preset == "Electric Grid":
-            st.session_state.update({
-                'sector_color_palette': 'electric',
-                'link_color_palette': 'electric',
-                'background_color': '#000000',
-                'link_border': True,
-                'sector_glow': True
-            })
-        elif preset == "Matrix Code":
-            st.session_state.update({
-                'sector_color_palette': 'matrix',
-                'link_color_palette': 'matrix',
-                'background_color': '#000000',
-                'sector_label_fontcolor': '#00FF00',
-                'link_glow': True
-            })
-        elif preset == "Royal Network":
-            st.session_state.update({
-                'sector_color_palette': 'vivid',
-                'link_color_palette': 'rainbow',
-                'background_color': '#0A001A',
-                'link_border': True,
-                'link_border_color': '#FFD700'
-            })
+        st.markdown("### 🎨 Style Presets")
+        preset = st.selectbox("Apply style preset", 
+                            ["Default", "Professional", "Pastel", "Ocean", "Minimal", "Colorful"])
+        
+        if preset != st.session_state.preset:
+            st.session_state.preset = preset
+            if preset == "Professional":
+                st.session_state.update({
+                    'sector_color_palette': 'professional',
+                    'link_color_palette': 'professional',
+                    'background_color': '#FFFFFF',
+                    'directional': True,
+                    'link_glow': False
+                })
+            elif preset == "Pastel":
+                st.session_state.update({
+                    'sector_color_palette': 'pastel',
+                    'link_color_palette': 'pastel',
+                    'background_color': '#FEFCE8',
+                    'directional': False,
+                    'sector_glow': False
+                })
+            elif preset == "Ocean":
+                st.session_state.update({
+                    'sector_color_palette': 'cool',
+                    'link_color_palette': 'cool',
+                    'background_color': '#F0F9FF',
+                    'directional': True,
+                    'link_glow': True
+                })
+            elif preset == "Minimal":
+                st.session_state.update({
+                    'sector_color_palette': 'light',
+                    'link_color_palette': 'single_color',
+                    'background_color': '#FFFFFF',
+                    'directional': False,
+                    'link_glow': False,
+                    'link_border': False
+                })
+            elif preset == "Colorful":
+                st.session_state.update({
+                    'sector_color_palette': 'light',
+                    'link_color_palette': 'value',
+                    'background_color': '#FFFFFF',
+                    'directional': True,
+                    'link_glow': True
+                })
+        
+        # Performance settings
+        st.markdown("---")
+        st.markdown("### ⚡ Performance")
+        st.session_state.auto_render = st.checkbox("Auto-render on change", value=True)
+        st.session_state.high_quality = st.checkbox("High quality rendering", value=True)
+        
+        if st.button("Clear Cache", use_container_width=True):
+            if 'figure_cache' in st.session_state:
+                st.session_state.figure_cache = {}
+                st.success("Cache cleared!")
     
     # Main content tabs
-    tab_viz, tab_data, tab_guide, tab_export = st.tabs([
-        "🎨 Visualization", 
-        "🔍 Data Explorer", 
-        "📘 User Guide", 
-        "📤 Export"
+    tab_viz, tab_data, tab_settings, tab_export, tab_help = st.tabs([
+        "📊 Visualization", 
+        "📈 Data Explorer", 
+        "⚙️ Settings", 
+        "💾 Export", 
+        "❓ Help"
     ])
     
     # ============================================================================
     # VISUALIZATION TAB
     # ============================================================================
     with tab_viz:
-        st.header("Ultra-High Resolution Network Visualization")
+        st.header("Network Visualization")
+        
+        # Check if we have data
+        if 'data' not in locals():
+            st.warning("Please load data in the sidebar first.")
+            st.stop()
         
         # Parameter configuration in expanders
         col1, col2 = st.columns([2, 1])
         
         with col2:
-            st.markdown("### ⚙️ Rendering Controls")
+            st.markdown("### ⚙️ Visualization Controls")
             
-            with st.expander("🧭 Layout & Orientation", expanded=True):
+            with st.expander("🧭 Layout & Orientation", expanded=False):
                 start_degree = st.slider("Starting angle (°)", 0, 359, 0, 15)
                 direction = st.selectbox("Direction", ["clockwise", "counter-clockwise"])
                 big_gap = st.slider("Group gap (°)", 0, 45, 15, 1)
                 small_gap = st.slider("Sector gap (°)", 0, 15, 3, 1)
             
-            with st.expander("🎨 Color & Styling", expanded=True):
+            with st.expander("🎨 Color & Styling", expanded=False):
                 col_a, col_b = st.columns(2)
                 with col_a:
                     sector_color_palette = st.selectbox(
                         "Sector palette",
-                        ["vivid", "fire", "ocean", "rainbow", "electric", "matrix"],
-                        index=["vivid", "fire", "ocean", "rainbow", "electric", "matrix"].index(
-                            st.session_state.get('sector_color_palette', 'vivid')
+                        ["light", "pastel", "professional", "warm", "cool", "earth"],
+                        index=["light", "pastel", "professional", "warm", "cool", "earth"].index(
+                            st.session_state.get('sector_color_palette', 'light')
                         )
                     )
                     link_color_palette = st.selectbox(
                         "Link palette",
-                        ["rainbow", "fire", "ocean", "electric", "matrix", "group", "single"],
-                        index=["rainbow", "fire", "ocean", "electric", "matrix", "group", "single"].index(
-                            st.session_state.get('link_color_palette', 'rainbow')
+                        ["professional", "pastel", "warm", "cool", "earth", "value", "single"],
+                        index=["professional", "pastel", "warm", "cool", "earth", "value", "single"].index(
+                            st.session_state.get('link_color_palette', 'professional')
                         )
                     )
                 with col_b:
                     bg_color = st.color_picker("Background", 
-                                              st.session_state.get('background_color', '#0A0F1A'))
+                                              st.session_state.get('background_color', theme_config.background_color))
                     link_alpha = st.slider("Link opacity", 0.3, 1.0, 0.85, 0.05)
                 
                 show_sector_nodes = st.checkbox("Show sector nodes", value=True)
                 sector_node_scale = st.slider("Node size scale", 0.5, 2.0, 1.2, 0.1)
             
-            with st.expander("✨ Visual Effects", expanded=True):
+            with st.expander("✨ Visual Effects", expanded=False):
                 link_glow = st.checkbox("Link glow effect", 
                                        value=st.session_state.get('link_glow', True))
-                link_glow_intensity = st.slider("Glow intensity", 0.5, 5.0, 2.5, 0.5)
+                link_glow_intensity = st.slider("Glow intensity", 0.5, 5.0, 1.5, 0.5)
                 
                 link_border = st.checkbox("Link borders", 
                                          value=st.session_state.get('link_border', True))
                 link_border_width = st.slider("Border width", 0.2, 2.0, 0.8, 0.2)
-                
-                sector_glow = st.checkbox("Sector glow", 
-                                         value=st.session_state.get('sector_glow', True))
-                sector_glow_width = st.slider("Sector glow width", 2, 20, 8, 2)
             
             with st.expander("➡️ Directional Features", expanded=False):
                 directional = st.checkbox("Enable directional flows", 
                                          value=st.session_state.get('directional', False))
                 
-                direction_type = ["diffHeight", "arrows"]  # Default value
-                arrow_size = 1.5  # Default value
+                direction_type = ["diffHeight", "arrows"]
+                arrow_size = 1.5
                 
                 if directional:
                     direction_type = st.multiselect(
@@ -1941,69 +2029,114 @@ def create_vivid_streamlit_app():
                 reduce_threshold = st.slider("Min link value", 0.0, 0.5, 0.01, 0.01)
                 max_links = st.slider("Max links to display", 100, 2000, 1000, 100)
                 st.caption("Links below threshold will be hidden")
+            
+            # Render button
+            render_button = st.button("🔄 Render Visualization", type="primary", use_container_width=True)
         
         with col1:
-            # Generate diagram with error handling
-            try:
-                with st.spinner("🎨 Rendering vivid network diagram..."):
-                    params = {
-                        'data': data,
-                        'data_type': data_type,
-                        'figsize': (24, 24),
-                        'dpi': 300,
-                        'title': f"Dendrites Attributes Correlation • {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                        'start_degree': start_degree,
-                        'direction': direction,
-                        'big_gap': big_gap,
-                        'small_gap': small_gap,
-                        'sector_color_palette': sector_color_palette,
-                        'link_color_palette': link_color_palette,
-                        'link_alpha': link_alpha,
-                        'link_glow': link_glow,
-                        'link_glow_intensity': link_glow_intensity,
-                        'link_border': link_border,
-                        'link_border_width': link_border_width,
-                        'background_color': bg_color,
-                        'sector_glow': sector_glow,
-                        'sector_glow_width': sector_glow_width,
-                        'show_sector_nodes': show_sector_nodes,
-                        'sector_node_scale': sector_node_scale,
-                        'reduce_threshold': reduce_threshold,
-                        'max_links': max_links,
-                        'directional': directional,
-                        'direction_type': direction_type,
-                        'arrow_length': 0.12 * arrow_size,
-                        'arrow_width': 0.07 * arrow_size,
-                        'symmetric': False,
-                        'link_gradient': (link_color_palette == 'rainbow'),
-                        'show_legend': True,
-                        'show_statistics': True
-                    }
+            # Prepare visualization parameters
+            viz_params = {
+                'data': data,
+                'data_type': data_type,
+                'figsize': (24, 24) if st.session_state.high_quality else (16, 16),
+                'dpi': 300 if st.session_state.high_quality else 150,
+                'title': f"Network Analysis • {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                'theme': st.session_state.theme,
+                'start_degree': start_degree,
+                'direction': direction,
+                'big_gap': big_gap,
+                'small_gap': small_gap,
+                'sector_color_palette': sector_color_palette,
+                'link_color_palette': link_color_palette,
+                'link_alpha': link_alpha,
+                'link_glow': link_glow,
+                'link_glow_intensity': link_glow_intensity,
+                'link_border': link_border,
+                'link_border_width': link_border_width,
+                'background_color': bg_color,
+                'show_sector_nodes': show_sector_nodes,
+                'sector_node_scale': sector_node_scale,
+                'reduce_threshold': reduce_threshold,
+                'max_links': max_links,
+                'directional': directional,
+                'direction_type': direction_type,
+                'arrow_length': 0.12 * arrow_size,
+                'arrow_width': 0.07 * arrow_size,
+                'symmetric': False,
+                'link_gradient': (link_color_palette == 'value'),
+                'show_legend': True,
+                'show_statistics': True
+            }
+            
+            # Generate hash for current parameters
+            current_hash = CacheManager.generate_figure_hash(viz_params)
+            
+            # Check if we should render
+            should_render = (
+                render_button or 
+                (st.session_state.auto_render and SessionStateManager.should_render(viz_params)) or
+                st.session_state.get('figure_hash') != current_hash
+            )
+            
+            if should_render:
+                # Update interaction
+                SessionStateManager.update_interaction()
+                
+                # Generate diagram with error handling
+                try:
+                    start_time = time.time()
+                    with st.spinner("Generating visualization..."):
+                        fig = create_light_theme_chord_diagram(**viz_params)
+                        
+                        # Store in session state and cache
+                        st.session_state.current_figure = fig
+                        st.session_state.viz_params = viz_params
+                        st.session_state.figure_hash = current_hash
+                        CacheManager.cache_figure(current_hash, fig)
+                        
+                        # Update performance stats
+                        render_time = time.time() - start_time
+                        st.session_state.render_count += 1
+                        st.session_state.last_render_time = render_time
+                        st.session_state.avg_render_time = (
+                            (st.session_state.avg_render_time * (st.session_state.render_count - 1) + render_time) / 
+                            st.session_state.render_count
+                        )
                     
-                    fig = create_vivid_chord_diagram(**params)
+                    # Display the figure
                     st.pyplot(fig, use_container_width=True, clear_figure=True)
-                    st.session_state['current_figure'] = fig
                     
-            except Exception as e:
-                st.error(f"❌ Rendering error: {str(e)}")
-                with st.expander("🔍 Show traceback"):
-                    st.code(traceback.format_exc())
+                    # Show performance info
+                    st.caption(f"Rendered in {render_time:.2f}s | Cache hit: ❌")
+                    
+                except Exception as e:
+                    st.error(f"❌ Rendering error: {str(e)}")
+                    with st.expander("Show traceback"):
+                        st.code(traceback.format_exc())
+            else:
+                # Use cached figure
+                cached_fig = CacheManager.get_cached_figure(current_hash)
+                if cached_fig:
+                    st.pyplot(cached_fig, use_container_width=True, clear_figure=True)
+                    st.caption(f"Using cached visualization | Cache hit: ✅")
+                elif st.session_state.current_figure:
+                    st.pyplot(st.session_state.current_figure, use_container_width=True, clear_figure=True)
+                    st.caption(f"Using previous visualization")
+                else:
+                    st.info("Click 'Render Visualization' to generate the diagram")
         
-        # Interactive legend
+        # Feature summary
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         st.markdown("### 📌 Visualization Features")
-        col_leg1, col_leg2, col_leg3, col_leg4 = st.columns(4)
-        with col_leg1:
-            st.markdown("✨ **Glow Effects**: Links pulse with energy")
-        with col_leg2:
-            st.markdown("🎨 **Vivid Colors**: High-contrast palettes")
-        with col_leg3:
-            st.markdown("🎯 **Node Sizing**: Proportional to connectivity")
-        with col_leg4:
-            if directional:
-                st.markdown("➡️ **Directional**: Arrows show flow")
-            else:
-                st.markdown("🔄 **Undirected**: Symmetric relationships")
+        features_cols = st.columns(4)
+        with features_cols[0]:
+            st.markdown("🎨 **Light Theme**: Optimized for readability")
+        with features_cols[1]:
+            st.markdown("⚡ **Performance**: Smart caching system")
+        with features_cols[2]:
+            st.markdown("📊 **Professional**: Publication-ready output")
+        with features_cols[3]:
+            st.markdown("🔄 **Interactive**: Real-time parameter adjustment")
     
     # ============================================================================
     # DATA EXPLORER TAB
@@ -2011,262 +2144,376 @@ def create_vivid_streamlit_app():
     with tab_data:
         st.header("Dataset Analysis")
         
-        if data_type == "matrix":
-            col_stats1, col_stats2, col_stats3, col_stats4, col_stats5 = st.columns(5)
-            with col_stats1:
-                st.metric("Rows (Sources)", data.shape[0])
-            with col_stats2:
-                st.metric("Columns (Targets)", data.shape[1])
-            with col_stats3:
-                st.metric("Total Links", f"{np.sum(np.abs(data.values) > reduce_threshold):,}")
-            with col_stats4:
-                density = np.mean(np.abs(data.values) > reduce_threshold) * 100
-                st.metric("Density", f"{density:.1f}%")
-            with col_stats5:
-                st.metric("Max Value", f"{data.values.max():.3f}")
-            
-            st.markdown("#### 🔍 Data Preview")
-            # Style with gradient for better visibility
-            styled_data = data.style.background_gradient(
-                cmap='RdBu_r', 
-                axis=None, 
-                vmin=-1, 
-                vmax=1
-            ).format("{:.3f}")
-            st.dataframe(styled_data, use_container_width=True)
-            
-            st.markdown("#### 📈 Value Distribution")
-            flat_vals = data.values.flatten()
-            fig_hist, ax_hist = plt.subplots(figsize=(10, 4), facecolor='#0A0F1A')
-            ax_hist.set_facecolor('#0A0F1A')
-            n, bins, patches = ax_hist.hist(flat_vals, bins=60, 
-                                           color='#FF6B6B', alpha=0.8, 
-                                           edgecolor='white', linewidth=0.5)
-            ax_hist.set_xlabel('Value', color='white', fontsize=12)
-            ax_hist.set_ylabel('Frequency', color='white', fontsize=12)
-            ax_hist.set_title('Distribution of Link Values', color='white', fontsize=14, fontweight='bold')
-            ax_hist.grid(True, alpha=0.2, color='#4A5568')
-            ax_hist.tick_params(colors='white')
-            st.pyplot(fig_hist, use_container_width=True)
+        if 'data' in locals():
+            if data_type == "matrix":
+                # Display statistics
+                stats_cols = st.columns(5)
+                with stats_cols[0]:
+                    st.metric("Rows", data.shape[0])
+                with stats_cols[1]:
+                    st.metric("Columns", data.shape[1])
+                with stats_cols[2]:
+                    non_zero = np.sum(np.abs(data.values) > 0.01)
+                    st.metric("Non-zero", f"{non_zero:,}")
+                with stats_cols[3]:
+                    density = non_zero / (data.shape[0] * data.shape[1]) * 100
+                    st.metric("Density", f"{density:.1f}%")
+                with stats_cols[4]:
+                    st.metric("Max Value", f"{data.values.max():.3f}")
+                
+                # Data preview with styling
+                st.markdown("#### 🔍 Data Preview")
+                styled_data = data.style.background_gradient(
+                    cmap='Blues', 
+                    axis=None, 
+                    vmin=data.values.min(), 
+                    vmax=data.values.max()
+                ).format("{:.3f}")
+                st.dataframe(styled_data, use_container_width=True, height=400)
+                
+                # Value distribution
+                st.markdown("#### 📈 Value Distribution")
+                flat_vals = data.values.flatten()
+                fig_hist, ax_hist = plt.subplots(figsize=(10, 4), facecolor=theme_config.background_color)
+                ax_hist.set_facecolor(theme_config.background_color)
+                n, bins, patches = ax_hist.hist(flat_vals, bins=60, 
+                                               color=theme_config.highlight_color, alpha=0.7, 
+                                               edgecolor=theme_config.panel_border, linewidth=0.5)
+                ax_hist.set_xlabel('Value', color=theme_config.text_color, fontsize=12)
+                ax_hist.set_ylabel('Frequency', color=theme_config.text_color, fontsize=12)
+                ax_hist.set_title('Distribution of Link Values', color=theme_config.text_color, 
+                                 fontsize=14, fontweight='bold')
+                ax_hist.grid(True, alpha=0.1, color=theme_config.grid_color)
+                ax_hist.tick_params(colors=theme_config.text_color)
+                st.pyplot(fig_hist, use_container_width=True)
+            else:
+                # Adjacency list view
+                st.markdown(f"**Total Links**: {len(data)}")
+                st.markdown(f"**Unique Sources**: {data.iloc[:,0].nunique()}")
+                st.markdown(f"**Unique Targets**: {data.iloc[:,1].nunique()}")
+                st.dataframe(data.head(50), use_container_width=True)
         else:
-            st.markdown(f"**Links**: {len(data)}")
-            st.markdown(f"**Unique Sources**: {data.iloc[:,0].nunique()}")
-            st.markdown(f"**Unique Targets**: {data.iloc[:,1].nunique()}")
-            st.dataframe(data.head(20), use_container_width=True)
+            st.warning("No data loaded. Please load data in the sidebar.")
     
     # ============================================================================
-    # USER GUIDE TAB
+    # SETTINGS TAB
     # ============================================================================
-    with tab_guide:
-        st.header("📘 Complete User Guide")
+    with tab_settings:
+        st.header("Application Settings")
         
-        st.markdown("""
-        ### 🌟 Vivid Network Features
+        col_set1, col_set2 = st.columns(2)
         
-        #### Ultra-High Resolution Display
-        - **24×24 inch canvas** at **300 DPI** for publication-quality output
-        - Crisp rendering suitable for large-format printing and presentations
-        - Optimized for 4K displays and high-resolution projectors
+        with col_set1:
+            st.markdown("#### 🎛️ Visualization Settings")
+            
+            # Quality settings
+            quality = st.select_slider(
+                "Rendering Quality",
+                options=["Low", "Medium", "High", "Ultra"],
+                value="High" if st.session_state.high_quality else "Medium"
+            )
+            st.session_state.high_quality = quality in ["High", "Ultra"]
+            
+            # Auto-render settings
+            st.session_state.auto_render = st.checkbox(
+                "Auto-render on parameter change",
+                value=st.session_state.auto_render,
+                help="Automatically re-render visualization when parameters change"
+            )
+            
+            # Cache settings
+            cache_size = st.slider(
+                "Maximum cache size",
+                min_value=1,
+                max_value=20,
+                value=10,
+                help="Maximum number of visualizations to cache"
+            )
+            
+            # Theme settings
+            st.markdown("#### 🎨 Theme Settings")
+            theme_preview = st.selectbox(
+                "Preview theme",
+                options=["light", "professional", "pastel", "ocean", "dark"],
+                format_func=lambda x: x.capitalize()
+            )
+            
+            # Show theme preview
+            preview_config = ThemeConfig.get_theme(theme_preview)
+            st.color_picker("Background", preview_config.background_color, disabled=True)
+            st.color_picker("Text", preview_config.text_color, disabled=True)
+            st.color_picker("Highlight", preview_config.highlight_color, disabled=True)
         
-        #### Vivid Visual Effects
-        
-        ##### Glow Effects
-        - **Link glow**: Multi-layer glow around connections for depth
-        - **Sector glow**: Radiant halos around sector nodes
-        - **Highlight glow**: Intense pulsing for emphasized links
-        
-        ##### Enhanced Colors
-        - **Fire palette**: Black → Red → Orange → Yellow → White gradient
-        - **Ocean palette**: Deep blue → Cyan → White gradient
-        - **Rainbow palette**: Full spectrum for maximum differentiation
-        - **Electric palette**: Neon colors on dark background
-        - **Matrix palette**: Green code-inspired aesthetic
-        
-        ##### Node Visualization
-        - **Dynamic sizing**: Node size proportional to connectivity degree
-        - **Decorative borders**: White outlines for contrast
-        - **Position markers**: Visual anchors at sector locations
-        
-        #### Directional Flow Visualization
-        - **Height Differentiation**: Source links attach lower, targets higher
-        - **Multiple arrows**: Strong links get multiple directional indicators
-        - **Enhanced arrows**: Larger, more visible arrowheads
-        
-        #### Sector Organization
-        - **Group Separation**: Automatic visual grouping with larger gaps
-        - **Custom Ordering**: Control sector sequence for optimal pattern visibility
-        - **Multi-Track Architecture**: Layer additional data dimensions
-        
-        ### 📥 Data Formats
-        
-        #### Matrix Format (Recommended)
-        ```python
-        # Rows = sources, Columns = targets
-        # Values represent connection strength
-        matrix = [
-            [0.0, 0.8, 0.3],  # Source A connections
-            [0.5, 0.0, 0.9],  # Source B connections
-            [0.2, 0.4, 0.0]   # Source C connections
-        ]
-        ```
-        
-        #### Adjacency List Format
-        ```python
-        import pandas as pd
-        df = pd.DataFrame({
-            'source': ['Gene_A', 'Gene_A', 'Gene_B'],
-            'target': ['Pathway_X', 'Pathway_Y', 'Pathway_X'],
-            'value': [0.85, 0.42, 0.93]
-        })
-        ```
-        
-        ### 💡 Pro Tips for Vivid Networks
-        
-        1. **For presentations**: Use Fire or Electric palettes on black background
-        2. **For publications**: Use Rainbow or Ocean palettes with white borders
-        3. **For flow diagrams**: Enable directional links with both height differentiation and arrows
-        4. **For correlation matrices**: Use symmetric mode with value-based coloring
-        5. **Reduce visual clutter**: Adjust the "Min link value" threshold to hide weak connections
-        6. **Highlight key relationships**: Use the API's `highlight_links` parameter
-        7. **Maximize impact**: Enable glow effects and node sizing for dramatic visuals
-        
-        ### 🔬 Use Cases
-        
-        - **Bioinformatics**: Gene-pathway interactions, protein-protein networks
-        - **Flow Analysis**: Migration patterns, financial transactions, user journey mapping
-        - **Correlation Analysis**: Feature relationships in ML datasets
-        - **Social Networks**: Community detection and relationship mapping
-        - **Transportation**: Traffic flow, airline routes, shipping lanes
-        - **Energy Grids**: Power distribution networks
-        
-        ### 🚀 Performance Notes
-        
-        - Handles datasets up to **1000+ links** smoothly
-        - For larger networks (>2000 links):
-            * Increase the reduction threshold
-            * Pre-filter weak connections
-            * Consider sampling or aggregation
-        - Rendering time: 5-15 seconds for 500 links at 300 DPI
-        - Memory usage: ~500MB for 1000-link diagram
-        
-        ### 📊 Export Recommendations
-        
-        - **PNG (300 DPI)**: Best for presentations and web (raster)
-        - **SVG**: Ideal for editing in Illustrator/Inkscape (vector)
-        - **PDF**: Required for academic publications (vector quality)
-        - **TIFF (600 DPI)**: For high-end printing and posters
-        """)
+        with col_set2:
+            st.markdown("#### 📊 Performance Metrics")
+            
+            perf_stats = SessionStateManager.get_performance_stats()
+            
+            # Display metrics
+            metric_cols = st.columns(2)
+            with metric_cols[0]:
+                st.metric("Total Renders", perf_stats['render_count'])
+                st.metric("Page Views", perf_stats['page_views'])
+            with metric_cols[1]:
+                st.metric("Avg Render Time", f"{perf_stats['avg_render_time']:.2f}s")
+                st.metric("Interactions", perf_stats['interaction_count'])
+            
+            # Cache info
+            st.markdown("#### 💾 Cache Information")
+            cache_info = st.session_state.get('figure_cache', {})
+            st.metric("Cached Visualizations", len(cache_info))
+            
+            if cache_info:
+                st.write("Cached parameter hashes:")
+                for hash_key in list(cache_info.keys())[:5]:  # Show first 5
+                    st.code(hash_key[:16] + "...")
+            
+            # Reset button
+            if st.button("Reset All Settings", type="secondary", use_container_width=True):
+                for key in list(st.session_state.keys()):
+                    if key not in ['theme', 'page_views']:  # Keep theme and page views
+                        del st.session_state[key]
+                st.success("Settings reset! Refreshing page...")
+                st.rerun()
     
     # ============================================================================
-    # EXPORT TAB - ENHANCED
+    # EXPORT TAB
     # ============================================================================
     with tab_export:
-        st.header("📤 Export Options")
+        st.header("Export Options")
         
         if 'current_figure' not in st.session_state:
-            st.info("💡 Create a vivid diagram first, then export it here")
+            st.info("💡 Generate a visualization first, then export it here")
         else:
-            fig = st.session_state['current_figure']
+            fig = st.session_state.current_figure
             
             col_exp1, col_exp2 = st.columns(2)
             
             with col_exp1:
-                st.markdown("#### 🖼️ High-Resolution Image Formats")
-                dpi = st.slider("Resolution (DPI)", 150, 600, 300, 50)
-                st.info(f"Current canvas: 24×24 inches @ {dpi} DPI = {24*dpi}×{24*dpi} pixels")
+                st.markdown("#### 🖼️ Image Formats")
+                export_dpi = st.slider("Resolution (DPI)", 150, 600, 300, 50)
                 
                 # PNG Export
                 buf_png = io.BytesIO()
-                fig.savefig(buf_png, format='png', dpi=dpi, 
-                          bbox_inches='tight', facecolor=bg_color, 
-                          transparent=False, pad_inches=0.5)
+                fig.savefig(buf_png, format='png', dpi=export_dpi, 
+                          bbox_inches='tight', facecolor=theme_config.background_color, 
+                          pad_inches=0.5)
                 buf_png.seek(0)
                 st.download_button(
-                    label="⬇️ Download PNG (Ultra HD)",
+                    label="⬇️ Download PNG",
                     data=buf_png,
-                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                    file_name=f"network_chord_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
                     mime="image/png",
                     key="png_download",
-                    help="Best for presentations and web use"
+                    use_container_width=True
                 )
                 
-                # TIFF Export (for print)
-                buf_tiff = io.BytesIO()
-                fig.savefig(buf_tiff, format='tiff', dpi=max(dpi, 300),
-                          bbox_inches='tight', facecolor=bg_color,
-                          pad_inches=0.5)
-                buf_tiff.seek(0)
+                # JPEG Export
+                buf_jpeg = io.BytesIO()
+                fig.savefig(buf_jpeg, format='jpg', dpi=export_dpi,
+                          bbox_inches='tight', facecolor=theme_config.background_color,
+                          pad_inches=0.5, quality=95)
+                buf_jpeg.seek(0)
                 st.download_button(
-                    label="⬇️ Download TIFF (Print Ready)",
-                    data=buf_tiff,
-                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tiff",
-                    mime="image/tiff",
-                    key="tiff_download",
-                    help="Best for high-quality printing and posters"
+                    label="⬇️ Download JPEG",
+                    data=buf_jpeg,
+                    file_name=f"network_chord_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
+                    mime="image/jpeg",
+                    key="jpeg_download",
+                    use_container_width=True
                 )
             
             with col_exp2:
-                st.markdown("#### 📄 Vector & Publication Formats")
+                st.markdown("#### 📄 Vector Formats")
                 
                 # PDF Export
                 buf_pdf = io.BytesIO()
                 fig.savefig(buf_pdf, format='pdf', bbox_inches='tight',
-                          facecolor=bg_color, pad_inches=0.5)
+                          facecolor=theme_config.background_color, pad_inches=0.5)
                 buf_pdf.seek(0)
                 st.download_button(
-                    label="⬇️ Download PDF (Publication Quality)",
+                    label="⬇️ Download PDF",
                     data=buf_pdf,
-                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    file_name=f"network_chord_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                     mime="application/pdf",
                     key="pdf_download",
-                    help="Required for academic publications"
+                    use_container_width=True
                 )
                 
-                # SVG Export (vector)
+                # SVG Export
                 buf_svg = io.BytesIO()
                 fig.savefig(buf_svg, format='svg', bbox_inches='tight',
-                          facecolor=bg_color, pad_inches=0.5)
+                          facecolor=theme_config.background_color, pad_inches=0.5)
                 buf_svg.seek(0)
                 st.download_button(
-                    label="⬇️ Download SVG (Editable Vector)",
+                    label="⬇️ Download SVG",
                     data=buf_svg,
-                    file_name=f"dendrites_correlation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.svg",
+                    file_name=f"network_chord_{datetime.now().strftime('%Y%m%d_%H%M%S')}.svg",
                     mime="image/svg+xml",
                     key="svg_download",
-                    help="Best for editing in Illustrator or Inkscape"
+                    use_container_width=True
                 )
             
-            st.markdown("#### 💡 Export Tips")
-            st.info(
-                """
-                **For Presentations:**
-                - Use PNG at 150-300 DPI
-                - Black background works best on projectors
-                
-                **For Publications:**
-                - Use PDF or SVG (vector formats)
-                - Ensure color scheme is printer-friendly
-                - Consider grayscale version for print
-                
-                **For Web:**
-                - Use PNG at 150 DPI
-                - Optimize file size with external tools
-                
-                **For Large Format Printing:**
-                - Use TIFF at 300-600 DPI
-                - Verify colors in CMYK if needed for print
-                """
-            )
+            # Export settings
+            st.markdown("---")
+            st.markdown("#### ⚙️ Export Settings")
+            
+            col_exp3, col_exp4 = st.columns(2)
+            with col_exp3:
+                include_stats = st.checkbox("Include statistics", value=True)
+                include_legend = st.checkbox("Include legend", value=True)
+            with col_exp4:
+                transparent_bg = st.checkbox("Transparent background", value=False)
+                crop_to_content = st.checkbox("Crop to content", value=True)
+            
+            # Batch export (if multiple visualizations cached)
+            if 'figure_cache' in st.session_state and len(st.session_state.figure_cache) > 1:
+                st.markdown("---")
+                st.markdown("#### 📦 Batch Export")
+                if st.button("Export All Cached Visualizations", use_container_width=True):
+                    st.info("Batch export functionality would be implemented here")
+    
+    # ============================================================================
+    # HELP TAB
+    # ============================================================================
+    with tab_help:
+        st.header("User Guide & Documentation")
+        
+        # Create expandable sections
+        with st.expander("📖 Getting Started", expanded=True):
+            st.markdown("""
+            ### Quick Start Guide
+            
+            1. **Load Data**: Use the sidebar to load your dataset or use the example data
+            2. **Configure Visualization**: Adjust parameters in the Visualization tab
+            3. **Render**: Click "Render Visualization" or enable auto-render
+            4. **Export**: Download your visualization in various formats
+            
+            ### Data Formats
+            
+            **Matrix Format** (Recommended):
+            - Rows represent sources, columns represent targets
+            - Values represent connection strength (0-1 or absolute values)
+            - Diagonal values are typically ignored
+            
+            **Adjacency List Format**:
+            - Three columns: source, target, value
+            - Each row represents a single connection
+            - More flexible for sparse networks
+            """)
+        
+        with st.expander("🎨 Visualization Parameters"):
+            st.markdown("""
+            ### Key Parameters
+            
+            **Layout & Orientation**:
+            - **Starting Angle**: Where the first sector appears (0° = top)
+            - **Direction**: Clockwise or counter-clockwise sector arrangement
+            - **Gaps**: Control spacing between sectors and groups
+            
+            **Color & Styling**:
+            - **Sector Palette**: Color scheme for different sectors
+            - **Link Palette**: How links are colored (by value, group, etc.)
+            - **Opacity**: Control transparency of links
+            - **Node Size**: Scale factor for sector nodes
+            
+            **Visual Effects**:
+            - **Glow Effects**: Subtle glow around links (adjustable intensity)
+            - **Borders**: Add borders to links for better contrast
+            - **Directional Indicators**: Show flow direction with arrows
+            
+            **Performance**:
+            - **Min Link Value**: Filter out weak connections
+            - **Max Links**: Limit total number of links displayed
+            """)
+        
+        with st.expander("⚡ Performance Tips"):
+            st.markdown("""
+            ### Optimization Strategies
+            
+            **For Large Networks**:
+            1. Increase the "Min link value" threshold
+            2. Reduce "Max links to display"
+            3. Use lower quality settings for faster previews
+            
+            **Caching System**:
+            - The application caches visualizations based on parameters
+            - Identical parameter sets use cached results
+            - Cache is cleared when parameters change
+            
+            **Memory Management**:
+            - Limit cache size in Settings tab
+            - Use "Clear Cache" button if experiencing issues
+            - Restart application if memory usage is high
+            """)
+        
+        with st.expander("🔧 Troubleshooting"):
+            st.markdown("""
+            ### Common Issues
+            
+            **Slow Rendering**:
+            - Reduce canvas size or DPI
+            - Filter out weak connections
+            - Disable visual effects temporarily
+            
+            **Memory Issues**:
+            - Clear the cache
+            - Restart the application
+            - Reduce cache size in settings
+            
+            **Visual Artifacts**:
+            - Check for NaN or infinite values in data
+            - Adjust color scales
+            - Try different themes
+            
+            **Export Problems**:
+            - Ensure sufficient disk space
+            - Try different formats (PNG vs PDF)
+            - Reduce DPI for large files
+            """)
+        
+        with st.expander("📚 Advanced Features"):
+            st.markdown("""
+            ### Advanced Configuration
+            
+            **Theme System**:
+            - Multiple built-in themes (Light, Professional, Pastel, Ocean, Dark)
+            - Custom theme support via configuration
+            - Dynamic CSS styling
+            
+            **Session Management**:
+            - Persistent settings across sessions
+            - Performance tracking and analytics
+            - State preservation on page refresh
+            
+            **Batch Processing**:
+            - Export multiple visualizations
+            - Parameter sweeps for comparison
+            - Automated report generation
+            
+            **Integration**:
+            - REST API for programmatic access
+            - Database connectivity
+            - Cloud storage integration
+            """)
     
     # Footer
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
+    footer_cols = st.columns(3)
+    with footer_cols[0]:
+        st.markdown(f"**Theme**: {current_theme.capitalize()}")
+    with footer_cols[1]:
+        st.markdown(f"**Version**: 2.0.0")
+    with footer_cols[2]:
+        st.markdown(f"**Last Render**: {st.session_state.get('last_render_time', 0):.2f}s")
+    
     st.markdown("""
     <div class="footer">
-        <p>Vivid Network Chord Diagrams • 24×24 inch • 300 DPI • Ultra-High Resolution</p>
-        <p>💡 Pro Tip: For maximum visual impact, use glow effects with Fire or Electric palettes 
-        on dark backgrounds. Enable node sizing to show hub sectors!</p>
+        <p>Network Chord Diagrams • Professional Light Theme • Smart Caching System</p>
+        <p>💡 Tip: Use the auto-render feature for real-time updates, and leverage the caching system for optimal performance.</p>
     </div>
     """, unsafe_allow_html=True)
-
 
 # ============================================================================
 # APPLICATION ENTRY POINT
@@ -2275,11 +2522,10 @@ def create_vivid_streamlit_app():
 def main():
     """Application entry point."""
     try:
-        create_vivid_streamlit_app()
+        create_light_theme_streamlit_app()
     except Exception as e:
         st.error(f"Application error: {str(e)}")
         st.code(traceback.format_exc())
-
 
 if __name__ == "__main__":
     main()
