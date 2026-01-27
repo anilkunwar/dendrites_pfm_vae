@@ -6,5 +6,6 @@ plotly
 pyCirclize
 scipy
 seaborn
+networkx 
 
 
