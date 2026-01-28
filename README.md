@@ -3,6 +3,7 @@
 
 # Phase Field Method 
 
+A binary two-phase phase-field model including an electrochemical reaction has been implemented. 
 (The description of the codes related to phase field method will be provided here)
 
 # Generative Machine Learning (Dual-branch VAE)
