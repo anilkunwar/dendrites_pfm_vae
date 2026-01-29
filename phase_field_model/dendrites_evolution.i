@@ -123,13 +123,25 @@
     material_property_names = 'ko length_scale energy_scale'
     outputs = exodus
   [../]
-  # h(eta) 
-  [./h]	
-    type = SwitchingFunctionMaterial
-    h_order = HIGH
-    eta = eta
-    outputs = exodus
-  [../]
+  # h(eta) thermodynamically inconsistent as the source code imposes external constraints to limit the order parameter within 0 - 1
+  # [./h]	
+  #  type = SwitchingFunctionMaterial
+  #  h_order = HIGH
+  #  eta = eta
+  #  outputs = exodus
+  #[../]
+
+   # Thermodynamically consistent interpolation function
+  [./h]
+     type=DerivativeParsedMaterial
+     property_name           = 'h'
+     #expression              = '3*(if(eta > 1, 1, if(eta < 0, 0, eta)))^2 - 2*(if(eta > 1, 1, if(eta < 0, 0, eta)))^3'
+     expression              = 'eta^2 / (eta^2 + (1 - eta)^2)'
+     coupled_variables       = 'eta'
+     derivative_order        = 2
+     outputs                 = 'exodus'
+   [../]
+
   # g(eta)
   [./g] 
     type = BarrierFunctionMaterial
