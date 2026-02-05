@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # Author: Hao Tang (Nov 2025)
 # Purpose: Generate randomized MOOSE input files from a template with placeholders like $ko
-
 import random
 import json
 from pathlib import Path
@@ -36,11 +35,9 @@ PARAM_RANGES = {
     "Noise": (5e-4, 5e-3)
 }
 
-# old_results_exp8 num
 NUM_CASES = 100
 
-# ====== 2️⃣ generate and replace ======
-
+# ====== generate and replace ======
 def generate_case(template_text: str, param_ranges: dict):
     """generate with template"""
     values = {}
@@ -52,8 +49,7 @@ def generate_case(template_text: str, param_ranges: dict):
     return new_text, values
 
 
-# ====== 3️⃣ main ======
-
+# ====== main ======
 def main():
     template = Path(TEMPLATE_FILE).read_text()
 

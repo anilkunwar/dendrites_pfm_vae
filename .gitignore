@@ -7,5 +7,5 @@ generative_ai/old_scripts/
 generative_ai/data/
 generative_ai/output/
 generative_ai/results/
-tmp/old_results_exp8/
+generative_ai/src/losses/
 tmp/

@@ -1,25 +1,22 @@
 # train_vae_mdn.py
-import os
+import os, json
 import math
 import argparse
-from datetime import datetime
-from collections import defaultdict
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 import torchvision.utils as vutils
-
 import albumentations as A
+
+from datetime import datetime
+from collections import defaultdict
+from torch.utils.data import DataLoader
 
 from src.dataloader import DendritePFMDataset
 from src.modelv11 import VAE_MDN, mdn_point_and_confidence
 
-import json
 
 def save_run_args(args, save_root: str):
     """Save CLI args for reproducibility."""
@@ -45,7 +42,7 @@ def plot_all_metrics_separately(
     df_val=None,
     save_root="plots",
     xcol="epoch",
-    drop_top=0.05,      # 删除最大的 5%
+    drop_top=0.05,
 ):
     """
     Plot every numeric column (except xcol) as a separate figure.
