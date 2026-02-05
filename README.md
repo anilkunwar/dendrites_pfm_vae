@@ -1,9 +1,11 @@
-# Understanding and controlling the battery dendrites through phase field method and generative AI
+# Understanding the battery dendrites through phase field simulations-informed generative AI
 
 
 # Phase Field Method 
 
-(The description of the codes related to phase field method will be provided here)
+A binary two-phase phase-field model including an electrochemical reaction has been implemented. 
+
+- Thermodynamically consistent interpolation function is utilized in the dendrites_evolution.i input file
 
 # Generative Machine Learning (Dual-branch VAE)
 
@@ -18,7 +20,7 @@
 [![vaemodel](https://img.shields.io/badge/dendritevaetest-streamlit-red)](https://phase-field-informed-vae5-test.streamlit.app/) (test code from development version )
 
 # Postprocessing the Results 
-- Chord Diagrams
+- Chord Diagrams and Radar Charts
   
 [![physicalparameters](https://img.shields.io/badge/chorddiagram1-streamlit-red)](https://multidimensional-data-visualization1.streamlit.app/) (visualization of 15 features )
 
@@ -32,9 +34,6 @@
 
 [![physicalparameters](https://img.shields.io/badge/chorddiagram6-streamlit-red)](https://multidimensional-data-visualization6.streamlit.app/) (visualization of 15 features )
 
-
-  
-- Radar charts
 - Hierarchical data visualization
 
 
