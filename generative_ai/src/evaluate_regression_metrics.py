@@ -1,7 +1,6 @@
 import os
 import numpy as np
-from scipy import stats
-import matplotlib.pyplot as plt
+from scipy.stats import norm
 
 from src.visualizer import plot_line_evolution, plot_scatter_evolution, plot_histogram
 
@@ -45,25 +44,6 @@ def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray, eps: float = 1e-1
         "Corr": corr.tolist(),
     }
     return {"overall": overall, "per_dim": per_dim}
-
-def plot_qq(residuals: np.ndarray, title: str = "Q–Q plot of residuals", save_path: str = None):
-    """Normal Q–Q plot for residuals."""
-    residuals = np.asarray(residuals).reshape(-1)
-    residuals = residuals[np.isfinite(residuals)]  # 防止 NaN/inf
-
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(111)
-    stats.probplot(residuals, dist="norm", plot=ax)
-    ax.set_title("")
-    ax.set_xlabel("Theoretical quantiles")
-    ax.set_ylabel("Sample quantiles")
-
-    fig.tight_layout()
-    if save_path is not None:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-    else:
-        plt.show()
 
 
 def plot_regression_summary(
@@ -113,8 +93,25 @@ def plot_regression_summary(
     plot_histogram(residuals, xlabel="Residual", ylabel="Count")
 
     # 5) Residual Q–Q plot
-    qq_save = None if save_dir is None else os.path.join(save_dir, f"{prefix}_residuals_qq.png")
-    plot_qq(residuals, save_path=qq_save)
+    residuals = np.asarray(residuals).reshape(-1)
+    residuals = residuals[np.isfinite(residuals)]
+
+    n = residuals.size
+    if n == 0:
+        return None, None
+
+    sample_q = np.sort(residuals)
+    probs = (np.arange(1, n + 1) - 0.5) / n
+    theoretical_q = norm.ppf(probs)
+
+    if theoretical_q is not None:
+        plot_scatter_evolution(
+            theoretical_q,
+            sample_q,
+            xlabel="Theoretical quantiles",
+            ylabel="Sample quantiles",
+            title="Residual Q–Q plot"
+        )
 
     return m
 
