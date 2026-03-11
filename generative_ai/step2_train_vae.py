@@ -448,7 +448,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
-    parser.add_argument("--latent_size", type=int, default=4)
+    parser.add_argument("--latent_size", type=int, default=16)
     parser.add_argument("--hidden_dim", type=int, default=512)
     parser.add_argument("--num_params", type=int, default=15)
 
@@ -457,21 +457,21 @@ if __name__ == "__main__":
     parser.add_argument("--mdn_hidden", type=int, default=256)
 
     # VAE losses
-    parser.add_argument("--beta", type=float, default=1e-4)
+    parser.add_argument("--beta", type=float, default=1e-3)
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.2)   # how many epochs (ratio * total epochs) before reaching beta
 
     # weights
-    parser.add_argument("--gamma", type=float, default=0.0)
+    parser.add_argument("--gamma", type=float, default=1e-2)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.2)
 
-    parser.add_argument("--phy_weight", type=float, default=1e-4)
+    parser.add_argument("--phy_weight", type=float, default=1e-3)
     parser.add_argument("--phy_alpha", type=float, default=5)   # interface
     parser.add_argument("--phy_beta", type=float, default=1)    # two phase
 
-    parser.add_argument("--scale_weight", type=float, default=0.5)
+    parser.add_argument("--scale_weight", type=float, default=0.1)
 
     # confidence scaling
-    parser.add_argument("--var_scale", type=float, default=0.01)
+    parser.add_argument("--var_scale", type=float, default=0.1)
 
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--save_root", type=str, default="results")
