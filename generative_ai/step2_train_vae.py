@@ -461,11 +461,11 @@ if __name__ == "__main__":
     parser.add_argument("--beta_warmup_ratio", type=float, default=0.2)   # how many epochs (ratio * total epochs) before reaching beta
 
     # weights
-    parser.add_argument("--gamma", type=float, default=0)
+    parser.add_argument("--gamma", type=float, default=1e-4)
     parser.add_argument("--gamma_warmup_ratio", type=float, default=0.2)
 
     parser.add_argument("--phy_weight", type=float, default=1e-4)
-    parser.add_argument("--phy_alpha", type=float, default=2)   # interface
+    parser.add_argument("--phy_alpha", type=float, default=1.5)   # interface
     parser.add_argument("--phy_beta", type=float, default=1)    # two phase
 
     parser.add_argument("--scale_weight", type=float, default=0.1)
