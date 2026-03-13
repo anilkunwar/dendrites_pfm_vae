@@ -1,8 +1,6 @@
 import os
 import numpy as np
 
-from src.visualizer import plot_line_evolution, plot_scatter_evolution, plot_histogram, plot_qq_evolution
-
 
 def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray, eps: float = 1e-12):
     """
@@ -43,79 +41,6 @@ def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray, eps: float = 1e-1
         "Corr": corr.tolist(),
     }
     return {"overall": overall, "per_dim": per_dim}
-
-
-def plot_regression_summary(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    prefix: str,
-    save_dir: str = None,
-    param_names=None
-):
-    """
-    Produces:
-      1) MAE bar chart per parameter
-      2) R2 bar chart per parameter
-      3) Overall scatter (flattened)
-      4) Residual histogram (flattened)
-      5) Residual Q–Q plot (flattened)
-    """
-    if save_dir is not None:
-        os.makedirs(save_dir, exist_ok=True)
-
-    N, P = y_true.shape
-    if param_names is None or len(param_names) != P:
-        param_names = [f"p{i}" for i in range(P)]
-
-    m = regression_metrics(y_true, y_pred)
-    mae = np.array(m["per_dim"]["MAE"])
-    r2 = np.array(m["per_dim"]["R2"])
-    x = np.arange(P)
-
-    # 1) MAE bar
-    plot_line_evolution(x, mae, ylabel="MAE", title="Control parameter regression: MAE per parameter")
-
-    # 2) R2 bar
-    plot_line_evolution(x, r2, ylabel="R²", title="Control parameter regression: R² per parameter")
-
-    # 3) Overall scatter (flatten)
-    plot_scatter_evolution(
-        y_true.reshape(-1),
-        y_pred.reshape(-1),
-        xlabel="True",
-        ylabel="Pred",
-        title="Overall true vs pred (all params flattened)"
-    )
-
-    # 4) Residual histogram
-    residuals = (y_pred - y_true).reshape(-1)
-    plot_histogram(residuals, xlabel="Residual", ylabel="Count")
-
-    # 5) Residual Q–Q plot
-    qq_save = None if save_dir is None else os.path.join(save_dir, f"{prefix}_residuals_qq.png")
-    plot_qq_evolution(residuals, title="Residual Q–Q plot", save_path=qq_save)
-
-    return m
-
-def plot_confidence_summary(conf_param: np.ndarray, conf_global: np.ndarray, prefix: str, save_dir: str=None, param_names=None):
-    """
-    conf_param: [N, P] in (0, 1]
-    conf_global: [N]
-    """
-    if save_dir is not None:
-        os.makedirs(save_dir, exist_ok=True)
-    N, P = conf_param.shape
-    if param_names is None or len(param_names) != P:
-        param_names = [f"p{i}" for i in range(P)]
-
-    # per-param mean confidence bar
-    plot_histogram(conf_param.mean(axis=0), ylabel="Mean confidence", title="Mean confidence per parameter")
-
-    # global confidence hist
-    plot_histogram(conf_global, xlabel="Global confidence", ylabel="Count")
-
-    # flattened param confidence hist
-    plot_histogram(conf_param.reshape(-1), xlabel="Param confidence", ylabel="Count")
 
 def plot_figure6_layoutB_bigfont(
     y_true,
