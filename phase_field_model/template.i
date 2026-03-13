@@ -95,7 +95,7 @@
   [./system_constants]
     type = GenericConstantMaterial
     prop_names  = 'Meo Mso L1o L2o ko S1o S2o'
-    prop_values = '1e-13 5e-13 0.25 0.1 1e-11 1e7 1.19'
+    prop_values = '1e-13 5e-13 $L1o $L2o $ko 1e7 1.19'
   [../]
   [./material_constants]
     type = GenericConstantMaterial

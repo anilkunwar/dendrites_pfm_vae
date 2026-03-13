@@ -15,14 +15,6 @@ from src.visualizer import plot_line_evolution
 
 
 def get_init_tensor(image_size: tuple):
-    """
-    生成一个 50x50 的初始图像：
-    - 左侧 5 列为 1
-    - 其余为 0
-    - 扩展为 3 通道
-    - resize 到 image_size
-    - 做 smooth_scale
-    """
 
     # ---- step 1: generate 50x50 base image ----
     base_eta = np.zeros((50, 50), dtype=np.float32)
