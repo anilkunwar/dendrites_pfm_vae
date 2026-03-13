@@ -5,6 +5,108 @@ from typing import Optional, Union, Literal
 from matplotlib.collections import LineCollection
 
 
+def _apply_white_background(fig, ax=None):
+    """Ensure classic white background for figure/axes (avoids blue/gray seaborn backgrounds)."""
+    try:
+        fig.patch.set_facecolor('white')
+    except Exception:
+        pass
+    if ax is None:
+        return
+    # handle single ax or iterable
+    if isinstance(ax, (list, tuple)):
+        axes = ax
+    else:
+        axes = [ax]
+    for a in axes:
+        try:
+            a.set_facecolor('white')
+        except Exception:
+            pass
+
+
+
+def draw_histogram(
+    ax,
+    data: np.ndarray,
+    *,
+    bins: Union[int, str] = 40,
+    color: str = "#4B5563",
+    edgecolor: str = "black",
+    linewidth: float = 1.0,
+    alpha: float = 0.85,
+    density: bool = False,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
+    show_mean: bool = False,
+    mean_color: str = "red",
+    mean_linestyle: str = "-",
+    mean_linewidth: float = 3.0,
+    label: Optional[str] = None,
+):
+    """Generic histogram drawer that works on a given Axes.
+
+    This is intended for *composite* figures (e.g., Fig. 6/7) so those
+    functions only need to *call* this helper.
+
+    Returns
+    -------
+    mean_val : float
+        Mean of the finite values in `data` (np.nan if empty).
+    """
+    data = np.asarray(data).reshape(-1)
+    data = data[np.isfinite(data)]
+    mean_val = float(np.mean(data)) if data.size else float("nan")
+
+    # matplotlib hist supports orientation="horizontal"
+    ax.hist(
+        data,
+        bins=bins,
+        color=color,
+        edgecolor=edgecolor,
+        linewidth=linewidth,
+        alpha=alpha,
+        density=density,
+        orientation=("horizontal" if orientation == "horizontal" else "vertical"),
+        label=label,
+    )
+
+    if show_mean and np.isfinite(mean_val):
+        if orientation == "horizontal":
+            ax.axhline(mean_val, color=mean_color, linestyle=mean_linestyle, linewidth=mean_linewidth)
+        else:
+            ax.axvline(mean_val, color=mean_color, linestyle=mean_linestyle, linewidth=mean_linewidth)
+
+    return mean_val
+
+
+def draw_line(
+    ax,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    color: str = "#111827",
+    marker: Optional[str] = "o",
+    markersize: float = 6,
+    linewidth: float = 2.8,
+    alpha: float = 0.95,
+    linestyle: str = "-",
+    label: Optional[str] = None,
+    zorder: int = 10,
+):
+    """Generic line-plot drawer that works on a given Axes."""
+    return ax.plot(
+        x,
+        y,
+        color=color,
+        marker=marker,
+        markersize=markersize,
+        linewidth=linewidth,
+        alpha=alpha,
+        linestyle=linestyle,
+        label=label,
+        zorder=zorder,
+    )[0]
+
 def plot_line_evolution(
         x: np.ndarray,
         y: np.ndarray,
@@ -19,7 +121,7 @@ def plot_line_evolution(
         show_colorbar: bool = False,
         color: str = '#3498DB',
         cmap: str = 'viridis',
-        style: str = 'darkgrid',
+        style: str = 'white',
         dpi: int = 300
 ):
     """
@@ -75,6 +177,7 @@ def plot_line_evolution(
 
     # 创建图表
     fig, ax = plt.subplots(figsize=figsize)
+    _apply_white_background(fig, ax)
 
     if show_colorbar:
         # 使用渐变色线条
@@ -192,7 +295,7 @@ def plot_scatter_evolution(
         color_by: Optional[np.ndarray] = None,
         size: Union[int, np.ndarray] = 60,
         alpha: float = 0.7,
-        style: str = 'darkgrid',
+        style: str = 'white',
         marker: str = 'o',
         edgecolor: str = 'white',
         linewidth: float = 1.0,
@@ -261,6 +364,7 @@ def plot_scatter_evolution(
 
     # 创建图表
     fig, ax = plt.subplots(figsize=figsize)
+    _apply_white_background(fig, ax)
 
     # 确定颜色设置
     if color_by is not None or show_colorbar:
@@ -437,7 +541,7 @@ def plot_histogram(
         color: str = '#3498DB',
         kde_color: str = '#E74C3C',
         alpha: float = 0.7,
-        style: str = 'darkgrid',
+        style: str = 'white',
         stat: Literal['count', 'frequency', 'density', 'probability'] = 'count',
         edgecolor: str = 'white',
         linewidth: float = 1.2,
@@ -508,6 +612,7 @@ def plot_histogram(
 
     # 创建图表
     fig, ax = plt.subplots(figsize=figsize)
+    _apply_white_background(fig, ax)
 
     # 计算统计量
     mean_val = np.mean(data)
@@ -678,7 +783,7 @@ def plot_histogram_with_line(
         show_markers: bool = True,
         marker_size: int = 6,
         line_width: float = 2.5,
-        style: str = 'darkgrid',
+        style: str = 'white',
         stat: Literal['count', 'frequency', 'density', 'probability'] = 'count',
         show_grid: bool = True,
         dpi: int = 300
@@ -872,7 +977,7 @@ def plot_dual_histogram_lines(
         show_legend: bool = False,
         marker_size: int = 6,
         line_width: float = 2.5,
-        style: str = 'darkgrid',
+        style: str = 'white',
         show_grid: bool = True,
         dpi: int = 300
 ):
@@ -998,3 +1103,60 @@ def plot_dual_histogram_lines(
         plt.show()
 
     return fig, ax1, ax2
+
+from scipy.stats import norm
+def plot_qq_evolution(
+    residuals: np.ndarray,
+    *,
+    title: str = "Residual Q–Q plot",
+    save_path: str = None
+):
+    """
+    Normal Q–Q plot with BOTH:
+      - y=x reference line
+      - least-squares fitted line
+    And a legend.
+    Uses existing plot_scatter_evolution for style consistency.
+    """
+    residuals = np.asarray(residuals).reshape(-1)
+    residuals = residuals[np.isfinite(residuals)]
+    n = residuals.size
+    if n < 3:
+        return  # too few points to be meaningful
+
+    # Q–Q data
+    sample_q = np.sort(residuals)
+    probs = (np.arange(1, n + 1) - 0.5) / n
+    theoretical_q = norm.ppf(probs)
+
+    # 1) scatter via existing visualizer function
+    plot_scatter_evolution(
+        theoretical_q,
+        sample_q,
+        xlabel="Theoretical quantiles",
+        ylabel="Sample quantiles",
+        title=title,
+    )
+
+    # 2) add BOTH lines on current axes
+    ax = plt.gca()
+
+    # y = x reference line
+    lo = float(min(theoretical_q.min(), sample_q.min()))
+    hi = float(max(theoretical_q.max(), sample_q.max()))
+    xx = np.array([lo, hi], dtype=float)
+    ax.plot(xx, xx, linestyle="--", linewidth=2, label="y = x (reference)")
+
+    # fitted line: y = a x + b
+    a, b = np.polyfit(theoretical_q, sample_q, 1)
+    ax.plot(xx, a * xx + b, linestyle="-", linewidth=2, label=f"Fit: y = {a:.3f}x + {b:.3f}")
+
+    ax.legend(loc="best")
+    ax.grid(True, alpha=0.3)
+
+    # 3) save / show behavior consistent with your plot_qq
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor='white')
+        plt.close(ax.figure)
+    else:
+        plt.show()
