@@ -7,4 +7,4 @@ Run the simulations with MOOSE (you can use "batch.sh" for a batch run). After t
 Note: You need the source files under MooseProject directory to run the simulations. 
 Remember to replace the "newt" app name to your own app name.
 
-Note: Some simulation results may not be physically reasonable, you need to manually filter the results, or choose other ranges for different parameters.
+Note: Some simulation results may not be physically reasonable (because of the randomly chosen parameters), you need to manually filter the results, or choose other ranges for different parameters.

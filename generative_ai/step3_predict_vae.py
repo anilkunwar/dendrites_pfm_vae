@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_size", type=tuple, default=(3, 48, 48))
-    parser.add_argument("--model_root", type=str, default='results/VAEv12_MDN_time=20260126_035348')
+    parser.add_argument("--model_root", type=str, default='results/good_v2')
 
     args = parser.parse_args()
 
