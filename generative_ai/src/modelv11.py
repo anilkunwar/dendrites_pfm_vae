@@ -237,8 +237,8 @@ class MDNHead(nn.Module):
         mu = self.fc_mu(h).view(-1, self.K, self.num_params)
         log_sigma = self.fc_log_sigma(h).view(-1, self.K, self.num_params)
 
-        # 稳定性：限制 sigma 下界，避免数值爆炸/塌陷
-        log_sigma = torch.clamp(log_sigma, min=-7.0, max=7.0)
+        # # 稳定性：限制 sigma 下界，避免数值爆炸/塌陷
+        # log_sigma = torch.clamp(log_sigma, min=-7.0, max=7.0)
         return pi, mu, log_sigma
 
 @torch.no_grad()
