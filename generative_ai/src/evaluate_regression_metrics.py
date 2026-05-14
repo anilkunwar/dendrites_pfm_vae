@@ -137,7 +137,6 @@ def plot_figure6_layoutB_bigfont(
     ax_a.set_xlabel("Residual")
     ax_a.set_ylabel("Frequency")
 
-    # # keep your mean text annotation if you still want it (optional)
     # ax_a.text(
     #     0.55, 0.92,
     #     r"Mean:" + f" = {mean_r:.3f}",
@@ -195,9 +194,6 @@ def plot_figure6_layoutB_bigfont(
     ax_c2.set_ylabel("Confidence", color=col_conf)
     ax_c2.tick_params(axis="y", colors=col_conf)
 
-    # IMPORTANT: no red dashed mean line in (c)
-
-    # ---------- keep your existing margins ----------
     fig.subplots_adjust(
         left=0.13,
         right=0.92,

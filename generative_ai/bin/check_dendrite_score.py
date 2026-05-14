@@ -101,7 +101,6 @@ def plot_images_with_seaborn_bars(
     fractal_raw = np.array([m[0] for m in metrics])
     dendrite_raw = np.array([m[1] for m in metrics])
 
-    # 🔽 归一化后的柱高
     fractal_norm = minmax_01(fractal_raw)
     dendrite_norm = minmax_01(dendrite_raw)
 

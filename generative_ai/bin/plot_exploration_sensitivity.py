@@ -43,7 +43,7 @@ def plot_metric_pretty(
             linewidth=lw,
             alpha=0.9
         )
-        color = line.get_color()  # 🔥 关键：统一颜色源
+        color = line.get_color()
 
         # 实心点（同色）
         ax.scatter(

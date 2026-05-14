@@ -463,8 +463,3 @@ def postprocess_image(
             out[mask] = img_f[mask].mean()
 
     return out
-
-
-# Optional backward-compatible alias.
-# Prefer importing VAE_LinearRegression explicitly in new training scripts.
-VAE_MDN = VAE_LinearRegression
