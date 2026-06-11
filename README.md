@@ -40,6 +40,12 @@ A binary two-phase phase-field model including an electrochemical reaction has b
 
 [![vaemodel](https://img.shields.io/badge/dendritepreventionmap1-streamlit-yellow)](https://lithium-ion-battery-stability-map1.streamlit.app/) (Dendrite prevention stability map)
 
+[![vaemodel](https://img.shields.io/badge/dendritepreventionmap2-streamlit-yellow)](https://lithium-ion-battery-stability-map2.streamlit.app/) (R2, Dendrite prevention stability map)
+
+[![vaemodel](https://img.shields.io/badge/dendritepreventionmap3-streamlit-yellow)](https://lithium-ion-battery-stability-map3.streamlit.app/) (R3, Dendrite prevention stability map)
+
+[![vaemodel](https://img.shields.io/badge/dendritepreventionmap4-streamlit-yellow)](https://lithium-ion-battery-stability-map4.streamlit.app/) (R4, Dendrite prevention stability map)
+
 # Authors of this repository :
 
 1. Anil Kunwar 
