@@ -1,53 +1,11 @@
+import streamlit as st
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
-from matplotlib import rcParams
+import io
 
-# =============================================================================
-# USER CONFIGURATION – adjust these values to match your manuscript
-# =============================================================================
-
-# Parameter definitions: name, min, max, threshold, direction ('lower' or 'upper')
-params = [
-    {"name": "$A_s$ (J/mol)",       "min": 0.0,  "max": 1.0,  "thresh": 0.05,  "dir": "lower"},
-    {"name": "$\kappa$ ($10^{-10}$ J/m)", "min": 1.0,  "max": 10.0, "thresh": 4.0,   "dir": "lower"},
-    {"name": "$U$ (V)",             "min": -0.5, "max": -0.2, "thresh": -0.33, "dir": "lower"},
-    {"name": "$\psi$ ($10^{-3}$ s$^{-1}$)", "min": 0.0,  "max": 5.0,  "thresh": 1.5,   "dir": "upper"},
-]
-
-# Reference point (example safe design)
-ref_point = [0.3, 6.0, -0.30, 1.0]
-
-# Figure appearance
-title_font      = 20
-label_font      = 16
-tick_font       = 12
-threshold_font  = 12
-reference_font  = 12
-
-fig_width       = 12   # inches
-fig_height      = 7    # inches
-line_width      = 2.0
-trajectory_width= 3.0
-marker_size     = 8
-dpi             = 600
-show_grid       = True
-dark_theme      = False
-show_legend     = True
-show_colorbar   = True
-
-# Colormap (choose from matplotlib's large set)
-colormap_name   = "viridis"   # alternatives: 'plasma', 'inferno', 'turbo', 'cividis', ...
-threshold_style = "--"        # line style for threshold lines (--, -, -., :)
-
-# Axis labeling: use integer numbers on bottom
-use_axis_numbers = True
-
-# =============================================================================
-# END OF CONFIGURATION
-# =============================================================================
-
-# Set journal-quality rcParams
-rcParams.update({
+# --- 1. Journal-Quality Configuration ---
+plt.rcParams.update({
     'font.family': 'serif',
     'font.size': 12,
     'axes.linewidth': 1.5,
@@ -56,111 +14,280 @@ rcParams.update({
     'savefig.bbox': 'tight'
 })
 
-if dark_theme:
-    plt.style.use('dark_background')
-else:
-    plt.style.use('default')
+# --- 2. Page Configuration ---
+st.set_page_config(layout="wide")
+st.title("🔋 Interactive Stability Map for Dendrite Suppression")
+st.markdown("""
+Adjust the parameter thresholds and reference design points below to explore the safe operating window. 
+You can download the high-resolution figures directly for your LaTeX manuscript.
+""")
 
-cmap = plt.get_cmap(colormap_name)
-safe_color   = cmap(0.85)
-unsafe_color = cmap(0.15)
-ref_color    = cmap(0.55)
+# --- 3. Sidebar: Appearance & Style ---
+st.sidebar.header("🎨 Figure Appearance")
 
-N = len(params)
-x_pos = np.arange(N)
+# Font Controls
+title_font = st.sidebar.slider("Title Font Size", 10, 40, 20)
+label_font = st.sidebar.slider("Parameter Label Font Size", 8, 30, 16)
+tick_font = st.sidebar.slider("Tick Font Size", 6, 24, 12)
+threshold_font = st.sidebar.slider("Threshold Font Size", 6, 24, 12)
+reference_font = st.sidebar.slider("Reference Font Size", 6, 24, 12)
 
-# Normalise thresholds and reference point to [0,1] based on each axis limits
-mins   = [p["min"] for p in params]
-maxs   = [p["max"] for p in params]
-thresh_norm = []
-ref_norm    = []
-for i, p in enumerate(params):
-    t = p["thresh"]
-    r = ref_point[i]
-    # clip to axis range to avoid plotting errors
-    thresh_norm.append(max(0, min(1, (t - mins[i]) / (maxs[i] - mins[i]))))
-    ref_norm.append(max(0, min(1, (r - mins[i]) / (maxs[i] - mins[i]))))
+# Dimension Controls
+fig_width = st.sidebar.slider("Figure Width (inches)", 6, 20, 12)
+fig_height = st.sidebar.slider("Figure Height (inches)", 4, 12, 7)
 
-# Create figure
-fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+# Line and Marker Controls
+line_width = st.sidebar.slider("Axis Line Width", 0.5, 5.0, 2.0)
+trajectory_width = st.sidebar.slider("Trajectory Line Width", 1.0, 8.0, 3.0)
+marker_size = st.sidebar.slider("Marker Size", 2, 20, 8)
+dpi = st.sidebar.slider("Export DPI", 300, 1200, 600)
 
-# Axis limits and aesthetics
-ax.set_ylim(-0.05, 1.15)
-ax.set_xlim(-0.5, N - 0.5)
-ax.set_yticks([])
-ax.spines['left'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['top'].set_visible(False)
+# Style Toggles
+threshold_style = st.sidebar.selectbox("Threshold Line Style", ["--", "-", "-.", ":"])
+show_grid = st.sidebar.checkbox("Show Grid", True)
+dark_theme = st.sidebar.checkbox("Dark Theme", False)
+show_legend = st.sidebar.checkbox("Show Legend", True)
+show_colorbar = st.sidebar.checkbox("Show Colorbar", True)
 
-if show_grid:
-    ax.grid(axis='y', linestyle=':', alpha=0.6)
+# Colormap Selection
+available_colormaps = sorted([
+    'viridis','plasma','inferno','magma','cividis',
+    'turbo','jet','rainbow','nipy_spectral','gist_rainbow',
+    'cool','hot','spring','summer','autumn','winter',
+    'Wistia','afmhot','copper','Spectral','RdYlGn',
+    'RdBu','PiYG','PRGn','BrBG','PuOr',
+    'coolwarm','bwr','seismic',
+    'twilight','twilight_shifted','hsv',
+    'Pastel1','Pastel2','Paired','Accent',
+    'Dark2','Set1','Set2','Set3',
+    'tab10','tab20','tab20b','tab20c',
+    'flag','prism','ocean','terrain',
+    'gist_earth','cubehelix','gnuplot',
+    'gnuplot2','CMRmap','gist_stern',
+    'bone','pink','gray','Greys'
+])
 
-# Draw vertical axes and tick labels
-for i in range(N):
-    # Axis line
-    ax.plot([x_pos[i], x_pos[i]], [0, 1], color='black', linewidth=line_width, zorder=1)
-    # Parameter name
-    ax.text(x_pos[i], 1.05, params[i]["name"], ha='center', va='bottom', fontsize=label_font, fontweight='bold')
-    # Tick marks and labels
-    ticks = np.linspace(0, 1, 5)
-    tick_vals = np.linspace(mins[i], maxs[i], 5)
-    for t, val in zip(ticks, tick_vals):
-        ax.plot([x_pos[i]-0.02, x_pos[i]+0.02], [t, t], color='black', linewidth=1)
-        ax.text(x_pos[i]-0.1, t, f'{val:.2f}', ha='right', va='center', fontsize=tick_font)
+selected_cmap = st.sidebar.selectbox(
+    "Colormap",
+    available_colormaps,
+    index=0 # Default to viridis (perceptually uniform)
+)
 
-# Shade safe/unsafe regions
-for i in range(N):
-    t_norm = thresh_norm[i]
-    if params[i]["dir"] == "lower":
-        # Safe = above threshold
-        ax.fill_between([x_pos[i]-0.1, x_pos[i]+0.1], t_norm, 1, color=safe_color, alpha=0.3, zorder=0)
-        ax.fill_between([x_pos[i]-0.1, x_pos[i]+0.1], 0, t_norm, color=unsafe_color, alpha=0.2, zorder=0)
-        ax.plot([x_pos[i]-0.1, x_pos[i]+0.1], [t_norm, t_norm], color='red', linestyle=threshold_style, linewidth=1.5, zorder=2)
-        ax.text(x_pos[i]+0.12, t_norm, f'{params[i]["thresh"]}', va='center', ha='left', color='red', fontsize=threshold_font, fontweight='bold')
+# --- 4. Sidebar: Control Parameters ---
+st.sidebar.header("⚙️ Control Parameters")
+
+# Default values based on the manuscript context
+default_names = ['$A_s$\n(J/mol)', '$\kappa$\n($10^{-10}$ J/m)', '$U$\n(V)', '$\psi$\n($10^{-3}$ s$^{-1}$)']
+default_mins = [0.0, 1.0, -0.5, 0.0]
+default_maxs = [1.0, 10.0, -0.2, 5.0]
+default_thresholds = [0.05, 4.0, -0.33, 1.5]
+default_directions = ['lower', 'lower', 'lower', 'upper']
+default_ref = [0.3, 6.0, -0.30, 1.0]
+
+params = []
+mins = []
+maxs = []
+thresholds = []
+directions = []
+ref_point = []
+
+# Create interactive widgets for each parameter
+# We iterate through the defaults. To add more parameters, simply extend the default lists.
+for i in range(len(default_names)):
+    st.sidebar.subheader(f"Param {i+1}: {default_names[i].replace(chr(10), ' ')}")
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        min_val = st.number_input(f"Min", value=default_mins[i], key=f"min_{i}", format="%.3f")
+    with col2:
+        max_val = st.number_input(f"Max", value=default_maxs[i], key=f"max_{i}", format="%.3f")
+        
+    if min_val >= max_val:
+        st.sidebar.error("Max must be > Min!")
+        max_val = min_val + 0.1
+
+    thresh = st.number_input(f"Threshold", value=default_thresholds[i], key=f"thresh_{i}", format="%.3f")
+    dir_val = st.selectbox(
+        f"Safe Region is", 
+        options=['> Threshold (Lower bound)', '< Threshold (Upper bound)'], 
+        index=0 if default_directions[i] == 'lower' else 1, 
+        key=f"dir_{i}"
+    )
+    
+    ref = st.number_input(f"Reference Point", value=default_ref[i], key=f"ref_{i}", format="%.3f")
+    
+    params.append(default_names[i])
+    mins.append(min_val)
+    maxs.append(max_val)
+    thresholds.append(thresh)
+    directions.append('lower' if 'Lower' in dir_val else 'upper')
+    ref_point.append(ref)
+
+# --- 5. Plotting Function ---
+def create_plot(params, mins, maxs, thresholds, directions, ref_point, 
+                title_font, label_font, tick_font, threshold_font, reference_font,
+                fig_width, fig_height, line_width, trajectory_width, marker_size, 
+                show_grid, dark_theme, show_legend, show_colorbar, threshold_style, selected_cmap):
+    
+    # Apply Theme
+    if dark_theme:
+        plt.style.use('dark_background')
+        text_color = 'white'
     else:
-        # Safe = below threshold (upper bound)
-        ax.fill_between([x_pos[i]-0.1, x_pos[i]+0.1], 0, t_norm, color=safe_color, alpha=0.3, zorder=0)
-        ax.fill_between([x_pos[i]-0.1, x_pos[i]+0.1], t_norm, 1, color=unsafe_color, alpha=0.2, zorder=0)
-        ax.plot([x_pos[i]-0.1, x_pos[i]+0.1], [t_norm, t_norm], color='red', linestyle=threshold_style, linewidth=1.5, zorder=2)
-        ax.text(x_pos[i]+0.12, t_norm, f'{params[i]["thresh"]}', va='center', ha='left', color='red', fontsize=threshold_font, fontweight='bold')
+        plt.style.use('default')
+        text_color = 'black'
 
-# Reference trajectory (polyline)
-ax.plot(x_pos, ref_norm, color=ref_color, linewidth=trajectory_width,
-        marker='o', markersize=marker_size, markeredgecolor='black', markeredgewidth=1.0,
-        zorder=5, label='Reference safe design' if show_legend else "")
-for i in range(N):
-    ax.text(x_pos[i], ref_norm[i] + 0.03, f'{ref_point[i]}', ha='center', va='bottom',
-            fontsize=reference_font, color=ref_color, fontweight='bold')
+    # Colormap Setup
+    cmap = plt.get_cmap(selected_cmap)
+    safe_color = cmap(0.85) 
+    unsafe_color = cmap(0.15)
+    reference_color = cmap(0.55)
 
-# Bottom axis with integer numbers (optional)
-if use_axis_numbers:
+    # Data Normalization
+    ref_norm = [(ref_point[i] - mins[i]) / (maxs[i] - mins[i]) for i in range(len(params))]
+    thresh_norm = [(thresholds[i] - mins[i]) / (maxs[i] - mins[i]) for i in range(len(params))]
+
+    # Initialize Figure
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    
+    # X-Axis Setup (Integer Control Variable Numbers)
+    N = len(params)
+    x_pos = np.arange(N)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([str(i+1) for i in range(N)], fontsize=tick_font, fontweight='bold')
-    ax.set_xlabel("Control variable number", fontsize=label_font, fontweight='bold')
-else:
-    ax.set_xticks([])
+    ax.set_xticklabels(
+        [str(i+1) for i in range(N)],
+        fontsize=tick_font,
+        fontweight='bold'
+    )
+    ax.set_xlabel(
+        "Control Variable Number",
+        fontsize=label_font,
+        fontweight='bold'
+    )
+    ax.set_xlim(-0.5, N - 0.5)
 
-# Title
-ax.set_title("Stability Map for Dendrite Suppression", fontsize=title_font, fontweight='bold', pad=25)
+    # Y-Axis Setup
+    ax.set_ylim(-0.05, 1.15)
+    ax.set_yticks([])
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_visible(True)
+    ax.spines['bottom'].set_linewidth(line_width)
 
-# Legend
-if show_legend:
-    ax.legend(loc='upper right', fontsize=tick_font)
+    if show_grid:
+        ax.grid(True, linestyle=':', alpha=0.6, zorder=0)
 
-# Colorbar (optional)
-if show_colorbar:
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 1))
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, pad=0.02, shrink=0.7)
-    cbar.set_label("Normalized stability scale", fontsize=label_font)
+    # Plot Parameters Bars
+    for i in range(N):
+        # Main vertical axis line
+        ax.plot([x_pos[i], x_pos[i]], [0, 1], color=text_color, linewidth=line_width, zorder=1)
+        
+        # Parameter Label (Top)
+        ax.text(x_pos[i], 1.05, params[i], ha='center', va='bottom', fontsize=label_font, fontweight='bold')
+        
+        # Ticks on the bar
+        ticks = np.linspace(0, 1, 5)
+        tick_vals = np.linspace(mins[i], maxs[i], 5)
+        for t, val in zip(ticks, tick_vals):
+            ax.plot([x_pos[i]-0.02, x_pos[i]+0.02], [t, t], color=text_color, linewidth=1)
+            # Scientific notation support (using 'g' format which switches to 'e' if needed)
+            ax.text(x_pos[i]-0.08, t, f'{val:.2g}', ha='right', va='center', fontsize=tick_font)
+            
+        # Threshold and Safe/Unsafe Regions
+        t_norm = max(0, min(1, thresh_norm[i]))
+        
+        if directions[i] == 'lower': # Safe is > Threshold (Top region)
+            ax.fill_between([x_pos[i]-0.08, x_pos[i]+0.08], t_norm, 1, color=safe_color, alpha=0.4, zorder=0, label='Safe Region' if i==0 else "")
+            ax.fill_between([x_pos[i]-0.08, x_pos[i]+0.08], 0, t_norm, color=unsafe_color, alpha=0.2, zorder=0, label='Unsafe Region' if i==0 else "")
+            ax.plot([x_pos[i]-0.08, x_pos[i]+0.08], [t_norm, t_norm], color=unsafe_color, linestyle=threshold_style, linewidth=line_width, zorder=2)
+            ax.text(x_pos[i]+0.12, t_norm, f'{thresholds[i]:.2g}', va='center', ha='left', color=unsafe_color, fontsize=threshold_font, fontweight='bold')
+        else: # Safe is < Threshold (Bottom region)
+            ax.fill_between([x_pos[i]-0.08, x_pos[i]+0.08], 0, t_norm, color=safe_color, alpha=0.4, zorder=0, label='Safe Region' if i==0 else "")
+            ax.fill_between([x_pos[i]-0.08, x_pos[i]+0.08], t_norm, 1, color=unsafe_color, alpha=0.2, zorder=0, label='Unsafe Region' if i==0 else "")
+            ax.plot([x_pos[i]-0.08, x_pos[i]+0.08], [t_norm, t_norm], color=unsafe_color, linestyle=threshold_style, linewidth=line_width, zorder=2)
+            ax.text(x_pos[i]+0.12, t_norm, f'{thresholds[i]:.2g}', va='center', ha='left', color=unsafe_color, fontsize=threshold_font, fontweight='bold')
 
-plt.tight_layout()
+    # Reference Trajectory
+    r_norm = [max(0, min(1, rn)) for rn in ref_norm]
+    
+    # Draw Line connecting reference points
+    ax.plot(
+        x_pos, r_norm, 
+        color=reference_color, 
+        linewidth=trajectory_width, 
+        marker='o', 
+        markersize=marker_size, 
+        markeredgecolor=text_color, 
+        markeredgewidth=1.0, 
+        zorder=5,
+        label='Reference Design'
+    )
+    
+    # Draw Reference Value Labels
+    for i in range(N):
+        ax.text(x_pos[i], r_norm[i] + 0.03, f'{ref_point[i]:.2g}', ha='center', va='bottom', 
+                fontsize=reference_font, color=reference_color, fontweight='bold')
 
-# Save figures (choose format)
-fig.savefig("stability_map.pdf", dpi=dpi, format='pdf')
-fig.savefig("stability_map.png", dpi=dpi, format='png')
-fig.savefig("stability_map.svg", format='svg')
-print("Figure saved as PDF, PNG, and SVG.")
+    # Final Styling
+    ax.set_title("Stability Map for Dendrite Suppression", fontsize=title_font, fontweight='bold', pad=25)
+    
+    if show_legend:
+        ax.legend(loc='upper right', framealpha=0.9)
 
-# If running in a notebook, show the plot
-# plt.show()
+    if show_colorbar:
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0,1))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax, pad=0.02)
+        cbar.set_label("Normalized Stability Scale", fontsize=label_font)
+        cbar.ax.tick_params(labelsize=tick_font)
+
+    plt.tight_layout()
+    return fig
+
+# --- 6. Main Execution ---
+fig = create_plot(
+    params, mins, maxs, thresholds, directions, ref_point, 
+    title_font, label_font, tick_font, threshold_font, reference_font,
+    fig_width, fig_height, line_width, trajectory_width, marker_size,
+    show_grid, dark_theme, show_legend, show_colorbar, threshold_style, selected_cmap
+)
+
+st.pyplot(fig)
+
+# --- 7. Export Buttons ---
+st.header("📥 Download Figures")
+col1, col2, col3 = st.columns(3)
+
+# PDF
+with col1:
+    pdf_buf = io.BytesIO()
+    fig.savefig(pdf_buf, format='pdf', dpi=dpi)
+    st.download_button(
+        label="Download PDF",
+        data=pdf_buf.getvalue(),
+        file_name="stability_map.pdf",
+        mime="application/pdf"
+    )
+
+# PNG
+with col2:
+    png_buf = io.BytesIO()
+    fig.savefig(png_buf, format='png', dpi=dpi, transparent=True)
+    st.download_button(
+        label="Download PNG",
+        data=png_buf.getvalue(),
+        file_name="stability_map.png",
+        mime="image/png"
+    )
+
+# SVG
+with col3:
+    svg_buf = io.BytesIO()
+    fig.savefig(svg_buf, format='svg')
+    st.download_button(
+        label="Download SVG",
+        data=svg_buf.getvalue(),
+        file_name="stability_map.svg",
+        mime="image/svg+xml"
+    )
