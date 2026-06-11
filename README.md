@@ -36,6 +36,9 @@ A binary two-phase phase-field model including an electrochemical reaction has b
 
 - Hierarchical data visualization
 
+# Lithium-ion Battery Stability Map
+
+[![vaemodel](https://img.shields.io/badge/dendritepreventionmap1-streamlit-yellow)](https://lithium-ion-battery-stability-map1.streamlit.app/) (Dendrite prevention stability map)
 
 # Authors of this repository :
 
