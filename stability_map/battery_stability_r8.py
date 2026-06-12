@@ -146,18 +146,19 @@ st.sidebar.header("⚙️ Control Parameters")
 
 # UPDATED: As values based on thermodynamic derivation (Appendix A)
 # A_s: Min=100 J/mol, Max=1000 J/mol, Threshold=145 J/mol (safe > threshold), Ref=370 J/mol
+# All parameters now use scaled units in labels for clean tick display
 default_names = [
-    r'$A_s$' + '\n(J mol$^{-1}$)',
-    r'$\kappa$' + '\n($10^{-10}$ J/m)',
+    r'$A_s$' + '\n($\times$ 10$^{2}$ J mol$^{-1}$)',
+    r'$\kappa$' + '\n($\times$ 10$^{-10}$ J m$^{-1}$)',
     r'$U$' + '\n(V)',
-    r'$\psi$' + '\n($10^{-3}$ s$^{-1}$)'
+    r'$\psi$' + '\n($\times$ 10$^{-3}$ s$^{-1}$)'
 ]
-# Updated As values: [100, 1000, 145, 370]
-default_mins = [100.0, 1.0, -0.5, 0.0]
-default_maxs = [1000.0, 10.0, -0.2, 5.0]
-default_thresholds = [145.0, 4.0, -0.33, 1.5]
+# Scaled min/max/thresh/ref values for clean axis ticks
+default_mins = [1.0, 1.0, -0.5, 0.0]
+default_maxs = [10.0, 10.0, -0.2, 5.0]
+default_thresholds = [1.45, 4.0, -0.33, 1.5]
 default_directions = ['lower', 'lower', 'lower', 'upper']
-default_ref = [370.0, 6.0, -0.30, 1.0]
+default_ref = [3.70, 6.0, -0.30, 1.0]
 
 params = []
 mins = []
