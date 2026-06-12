@@ -147,11 +147,13 @@ st.sidebar.header("⚙️ Control Parameters")
 # UPDATED: As values based on thermodynamic derivation (Appendix A)
 # A_s: Min=100 J/mol, Max=1000 J/mol, Threshold=145 J/mol (safe > threshold), Ref=370 J/mol
 # All parameters now use scaled units in labels for clean tick display
+# FIXED: Use raw strings to prevent backslash escape issues in streamlit
+# Use Unicode multiplication sign (×) instead of LaTeX \times to avoid 'imes' rendering bug
 default_names = [
-    r'$A_s$' + '\n($\times$ 10$^{2}$ J mol$^{-1}$)',
-    r'$\kappa$' + '\n($\times$ 10$^{-10}$ J m$^{-1}$)',
-    r'$U$' + '\n(V)',
-    r'$\psi$' + '\n($\times$ 10$^{-3}$ s$^{-1}$)'
+    r'$A_s$' + chr(10) + '(× 10$^{2}$ J mol$^{-1}$)',
+    r'$\kappa$' + chr(10) + '(× 10$^{-10}$ J m$^{-1}$)',
+    r'$U$' + chr(10) + '(V)',
+    r'$\psi$' + chr(10) + '(× 10$^{-3}$ s$^{-1}$)'
 ]
 # Scaled min/max/thresh/ref values for clean axis ticks
 default_mins = [1.0, 1.0, -0.5, 0.0]
