@@ -25,7 +25,7 @@ You can download the high-resolution figures directly for your LaTeX manuscript.
 # --- 3. Sidebar: Appearance & Style ---
 st.sidebar.header("🎨 Figure Appearance")
 
-# === TITLE CONTROLS (NEW) ===
+# === TITLE CONTROLS ===
 st.sidebar.subheader("📝 Title Controls")
 show_title = st.sidebar.checkbox("Show Title", True)
 title_text = st.sidebar.text_input("Title Text", "Stability Map for Dendrite Suppression")
@@ -62,11 +62,39 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📋 Legend Controls")
 show_legend = st.sidebar.checkbox("Show Legend", True)
 
-legend_locations = [
+# === NEW: Legend Position Mode ===
+legend_mode = st.sidebar.selectbox(
+    "Legend Position Mode",
+    ["Inside Plot", "Outside Plot"],
+    index=0,
+    help="Place legend inside the axes or outside the plot area"
+)
+
+# Inside plot locations
+inside_locations = [
     'best', 'upper right', 'upper left', 'lower left', 'lower right',
     'right', 'center left', 'center right', 'lower center', 'upper center', 'center'
 ]
-legend_loc = st.sidebar.selectbox("Legend Location", legend_locations, index=0)
+
+# Outside plot positions
+outside_positions = [
+    "Right of plot", "Left of plot", "Below plot", "Above plot"
+]
+
+if legend_mode == "Inside Plot":
+    legend_loc = st.sidebar.selectbox("Legend Location", inside_locations, index=0)
+    bbox_to_anchor = None
+else:
+    outside_choice = st.sidebar.selectbox("Outside Position", outside_positions, index=0)
+    # Map outside choice to bbox_to_anchor and loc
+    outside_map = {
+        "Right of plot": ((1.02, 1), 'upper left'),
+        "Left of plot": ((-0.02, 1), 'upper right'),
+        "Below plot": ((0.5, -0.15), 'upper center'),
+        "Above plot": ((0.5, 1.15), 'lower center')
+    }
+    bbox_to_anchor, legend_loc = outside_map[outside_choice]
+
 legend_ncol = st.sidebar.slider("Legend Columns", 1, 3, 1)
 legend_frame = st.sidebar.checkbox("Legend Frame", True)
 legend_alpha = st.sidebar.slider("Legend Frame Alpha", 0.0, 1.0, 0.9)
@@ -170,7 +198,7 @@ for i in range(len(default_names)):
 def create_plot(params, mins, maxs, thresholds, directions, ref_point, 
                 show_title, title_text, title_font, label_font, tick_font, threshold_font, reference_font,
                 fig_width, fig_height, line_width, trajectory_width, marker_size, 
-                show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
+                show_grid, dark_theme, show_legend, legend_loc, bbox_to_anchor, legend_ncol, legend_frame, legend_alpha,
                 show_colorbar, threshold_style, selected_cmap,
                 bar_thickness, param_label_pad, tick_label_pad, threshold_label_pad, ref_label_pad,
                 ref_label_position, min_label_spacing):
@@ -325,19 +353,24 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
                ha='center', va=va, 
                fontsize=reference_font, color=reference_color, fontweight='bold', zorder=10)
 
-    # === CONDITIONAL TITLE (NEW) ===
+    # Conditional Title
     if show_title:
         ax.set_title(title_text, fontsize=title_font, fontweight='bold', pad=25)
     
-    # Legend
+    # === ENHANCED LEGEND WITH OUTSIDE SUPPORT ===
     if show_legend:
-        legend = ax.legend(
-            loc=legend_loc,
-            ncol=legend_ncol,
-            frameon=legend_frame,
-            framealpha=legend_alpha,
-            fontsize=tick_font
-        )
+        legend_kwargs = {
+            'loc': legend_loc,
+            'ncol': legend_ncol,
+            'frameon': legend_frame,
+            'framealpha': legend_alpha,
+            'fontsize': tick_font
+        }
+        # Add bbox_to_anchor only for outside mode
+        if bbox_to_anchor is not None:
+            legend_kwargs['bbox_to_anchor'] = bbox_to_anchor
+        
+        legend = ax.legend(**legend_kwargs)
         for text in legend.get_texts():
             text.set_color(text_color)
 
@@ -356,7 +389,7 @@ fig = create_plot(
     params, mins, maxs, thresholds, directions, ref_point, 
     show_title, title_text, title_font, label_font, tick_font, threshold_font, reference_font,
     fig_width, fig_height, line_width, trajectory_width, marker_size,
-    show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
+    show_grid, dark_theme, show_legend, legend_loc, bbox_to_anchor, legend_ncol, legend_frame, legend_alpha,
     show_colorbar, threshold_style, selected_cmap,
     bar_thickness, param_label_pad, tick_label_pad, threshold_label_pad, ref_label_pad,
     ref_label_position, min_label_spacing
