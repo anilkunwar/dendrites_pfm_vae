@@ -42,6 +42,10 @@ trajectory_width = st.sidebar.slider("Trajectory Line Width", 1.0, 8.0, 3.0)
 marker_size = st.sidebar.slider("Marker Size", 2, 20, 8)
 dpi = st.sidebar.slider("Export DPI", 300, 1200, 600)
 
+# === BAR THICKNESS SLIDER (RESTORED ORIGINAL BEHAVIOR) ===
+bar_thickness = st.sidebar.slider("Bar Thickness", 0.02, 0.30, 0.08, step=0.01,
+    help="Width of the safe/unsafe color bands (original default was 0.08)")
+
 # Style Toggles
 threshold_style = st.sidebar.selectbox("Threshold Line Style", ["--", "-", "-.", ":"])
 show_grid = st.sidebar.checkbox("Show Grid", True)
@@ -62,7 +66,7 @@ legend_ncol = st.sidebar.slider("Legend Columns", 1, 3, 1)
 legend_frame = st.sidebar.checkbox("Legend Frame", True)
 legend_alpha = st.sidebar.slider("Legend Frame Alpha", 0.0, 1.0, 0.9)
 
-# === LABEL PADDING & OFFSET CONTROLS (NEW) ===
+# === LABEL PADDING & OFFSET CONTROLS ===
 st.sidebar.markdown("---")
 st.sidebar.subheader("📐 Label Padding & Offsets")
 
@@ -89,10 +93,6 @@ ref_label_position = st.sidebar.selectbox(
     index=2,
     help="'Auto' places label above if space permits, otherwise below to avoid overlap"
 )
-
-# Safe/unsafe region width (horizontal padding from axis)
-region_width = st.sidebar.slider("Region Band Width", 0.04, 0.20, 0.08, step=0.01,
-    help="Width of safe/unsafe color bands; narrower = less overlap with labels")
 
 # Minimum vertical spacing between labels
 min_label_spacing = st.sidebar.slider("Min Label Spacing", 0.0, 0.10, 0.02, step=0.005,
@@ -126,7 +126,7 @@ selected_cmap = st.sidebar.selectbox(
 # --- 4. Sidebar: Control Parameters ---
 st.sidebar.header("⚙️ Control Parameters")
 
-default_names = ['$A_s$\n(J/mol)', '$\kappa$\n($10^{-10}$ J/m)', '$U$\n(V)', '$\psi$\n($10^{-3}$ s$^{-1}$)']
+default_names = [r'$A_s$' + '\n(J/mol)', r'$\kappa$' + '\n($10^{-10}$ J/m)', r'$U$' + '\n(V)', r'$\psi$' + '\n($10^{-3}$ s$^{-1}$)']
 default_mins = [0.0, 1.0, -0.5, 0.0]
 default_maxs = [1.0, 10.0, -0.2, 5.0]
 default_thresholds = [0.05, 4.0, -0.33, 1.5]
@@ -176,8 +176,8 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
                 fig_width, fig_height, line_width, trajectory_width, marker_size, 
                 show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
                 show_colorbar, threshold_style, selected_cmap,
-                param_label_pad, tick_label_pad, threshold_label_pad, ref_label_pad,
-                ref_label_position, region_width, min_label_spacing):
+                bar_thickness, param_label_pad, tick_label_pad, threshold_label_pad, ref_label_pad,
+                ref_label_position, min_label_spacing):
     
     # Apply Theme
     if dark_theme:
@@ -228,7 +228,7 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
     if show_grid:
         ax.grid(True, linestyle=':', alpha=0.6, zorder=0)
 
-    # Plot Parameters Bars
+    # === PLOT PARAMETERS BARS (RESTORED ORIGINAL STRUCTURE) ===
     for i in range(N):
         # Main vertical axis line
         ax.plot([x_pos[i], x_pos[i]], [0, 1], color=text_color, linewidth=line_width, zorder=1)
@@ -245,40 +245,37 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
             ax.text(x_pos[i] - tick_label_pad, t, f'{val:.2g}', 
                     ha='right', va='center', fontsize=tick_font)
             
-        # Threshold and Safe/Unsafe Regions
+        # Threshold and Safe/Unsafe Regions — USING bar_thickness SLIDER
         t_norm = max(0, min(1, thresh_norm[i]))
         
-        # Use configurable region width for safe/unsafe bands
-        half_band = region_width / 2
-        
         if directions[i] == 'lower':  # Safe is > Threshold (Top region)
-            ax.fill_between([x_pos[i]-half_band, x_pos[i]+half_band], t_norm, 1, 
+            ax.fill_between([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], t_norm, 1, 
                           color=safe_color, alpha=0.4, zorder=0, 
                           label='Safe Region' if i==0 else "")
-            ax.fill_between([x_pos[i]-half_band, x_pos[i]+half_band], 0, t_norm, 
+            ax.fill_between([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], 0, t_norm, 
                           color=unsafe_color, alpha=0.2, zorder=0, 
                           label='Unsafe Region' if i==0 else "")
-            ax.plot([x_pos[i]-half_band, x_pos[i]+half_band], [t_norm, t_norm], 
+            ax.plot([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], [t_norm, t_norm], 
                    color=unsafe_color, linestyle=threshold_style, linewidth=line_width, zorder=2)
             
-            # Threshold label with configurable horizontal padding
-            ax.text(x_pos[i] + half_band + threshold_label_pad, t_norm, 
+            # Threshold label with configurable horizontal padding — HIGH ZORDER=10
+            ax.text(x_pos[i] + bar_thickness + threshold_label_pad, t_norm, 
                    f'{thresholds[i]:.2g}', va='center', ha='left', 
-                   color=unsafe_color, fontsize=threshold_font, fontweight='bold')
+                   color=unsafe_color, fontsize=threshold_font, fontweight='bold', zorder=10)
         else:  # Safe is < Threshold (Bottom region)
-            ax.fill_between([x_pos[i]-half_band, x_pos[i]+half_band], 0, t_norm, 
+            ax.fill_between([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], 0, t_norm, 
                           color=safe_color, alpha=0.4, zorder=0, 
                           label='Safe Region' if i==0 else "")
-            ax.fill_between([x_pos[i]-half_band, x_pos[i]+half_band], t_norm, 1, 
+            ax.fill_between([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], t_norm, 1, 
                           color=unsafe_color, alpha=0.2, zorder=0, 
                           label='Unsafe Region' if i==0 else "")
-            ax.plot([x_pos[i]-half_band, x_pos[i]+half_band], [t_norm, t_norm], 
+            ax.plot([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], [t_norm, t_norm], 
                    color=unsafe_color, linestyle=threshold_style, linewidth=line_width, zorder=2)
             
-            # Threshold label with configurable horizontal padding
-            ax.text(x_pos[i] + half_band + threshold_label_pad, t_norm, 
+            # Threshold label with configurable horizontal padding — HIGH ZORDER=10
+            ax.text(x_pos[i] + bar_thickness + threshold_label_pad, t_norm, 
                    f'{thresholds[i]:.2g}', va='center', ha='left', 
-                   color=unsafe_color, fontsize=threshold_font, fontweight='bold')
+                   color=unsafe_color, fontsize=threshold_font, fontweight='bold', zorder=10)
 
     # Reference Trajectory
     r_norm = [max(0, min(1, rn)) for rn in ref_norm]
@@ -296,13 +293,12 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
         label='Reference Design'
     )
     
-    # Draw Reference Value Labels — with smart positioning to avoid overlap
+    # === REFERENCE VALUE LABELS — HIGH ZORDER=10 + SMART POSITIONING ===
     for i in range(N):
-        # Determine vertical position based on settings and proximity to threshold
         t_norm = max(0, min(1, thresh_norm[i]))
         ref_val = r_norm[i]
         
-        # Smart positioning: check if reference is too close to threshold
+        # Determine vertical position based on settings and proximity to threshold
         distance_to_thresh = abs(ref_val - t_norm)
         
         if ref_label_position == "Above":
@@ -312,7 +308,6 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
             label_y = ref_val - ref_label_pad
             va = 'top'
         else:  # Auto (smart)
-            # If reference is very close to threshold, place on opposite side
             if distance_to_thresh < min_label_spacing + ref_label_pad:
                 if ref_val > t_norm:
                     label_y = ref_val + ref_label_pad
@@ -320,7 +315,6 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
                 else:
                     label_y = ref_val - ref_label_pad
                     va = 'top'
-            # If reference is near top, place below; near bottom, place above
             elif ref_val > 0.9:
                 label_y = ref_val - ref_label_pad
                 va = 'top'
@@ -331,9 +325,10 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
                 label_y = ref_val + ref_label_pad
                 va = 'bottom'
         
+        # Draw reference label ON TOP with zorder=10
         ax.text(x_pos[i], label_y, f'{ref_point[i]:.2g}', 
                ha='center', va=va, 
-               fontsize=reference_font, color=reference_color, fontweight='bold')
+               fontsize=reference_font, color=reference_color, fontweight='bold', zorder=10)
 
     # Final Styling
     ax.set_title("Stability Map for Dendrite Suppression", 
@@ -368,8 +363,8 @@ fig = create_plot(
     fig_width, fig_height, line_width, trajectory_width, marker_size,
     show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
     show_colorbar, threshold_style, selected_cmap,
-    param_label_pad, tick_label_pad, threshold_label_pad, ref_label_pad,
-    ref_label_position, region_width, min_label_spacing
+    bar_thickness, param_label_pad, tick_label_pad, threshold_label_pad, ref_label_pad,
+    ref_label_position, min_label_spacing
 )
 
 st.pyplot(fig)
