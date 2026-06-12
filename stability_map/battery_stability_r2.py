@@ -46,10 +46,29 @@ dpi = st.sidebar.slider("Export DPI", 300, 1200, 600)
 threshold_style = st.sidebar.selectbox("Threshold Line Style", ["--", "-", "-.", ":"])
 show_grid = st.sidebar.checkbox("Show Grid", True)
 dark_theme = st.sidebar.checkbox("Dark Theme", False)
-show_legend = st.sidebar.checkbox("Show Legend", True)
 show_colorbar = st.sidebar.checkbox("Show Colorbar", True)
 
+# === LEGEND CONTROLS (NEW) ===
+st.sidebar.markdown("---")
+st.sidebar.subheader("📋 Legend Controls")
+show_legend = st.sidebar.checkbox("Show Legend", True)
+
+# Legend location options - 'best' is the default
+legend_locations = [
+    'best', 'upper right', 'upper left', 'lower left', 'lower right',
+    'right', 'center left', 'center right', 'lower center', 'upper center', 'center'
+]
+legend_loc = st.sidebar.selectbox("Legend Location", legend_locations, index=0)
+
+# Number of columns for legend entries
+legend_ncol = st.sidebar.slider("Legend Columns", 1, 3, 1)
+
+# Legend frame and transparency
+legend_frame = st.sidebar.checkbox("Legend Frame", True)
+legend_alpha = st.sidebar.slider("Legend Frame Alpha", 0.0, 1.0, 0.9)
+
 # Colormap Selection
+st.sidebar.markdown("---")
 available_colormaps = sorted([
     'viridis','plasma','inferno','magma','cividis',
     'turbo','jet','rainbow','nipy_spectral','gist_rainbow',
@@ -127,7 +146,8 @@ for i in range(len(default_names)):
 def create_plot(params, mins, maxs, thresholds, directions, ref_point, 
                 title_font, label_font, tick_font, threshold_font, reference_font,
                 fig_width, fig_height, line_width, trajectory_width, marker_size, 
-                show_grid, dark_theme, show_legend, show_colorbar, threshold_style, selected_cmap):
+                show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
+                show_colorbar, threshold_style, selected_cmap):
     
     # Apply Theme
     if dark_theme:
@@ -232,8 +252,18 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
     # Final Styling
     ax.set_title("Stability Map for Dendrite Suppression", fontsize=title_font, fontweight='bold', pad=25)
     
+    # === ENHANCED LEGEND HANDLING ===
     if show_legend:
-        ax.legend(loc='upper right', framealpha=0.9)
+        legend = ax.legend(
+            loc=legend_loc,
+            ncol=legend_ncol,
+            frameon=legend_frame,
+            framealpha=legend_alpha,
+            fontsize=tick_font
+        )
+        # Ensure legend text color matches theme
+        for text in legend.get_texts():
+            text.set_color(text_color)
 
     if show_colorbar:
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0,1))
@@ -250,7 +280,8 @@ fig = create_plot(
     params, mins, maxs, thresholds, directions, ref_point, 
     title_font, label_font, tick_font, threshold_font, reference_font,
     fig_width, fig_height, line_width, trajectory_width, marker_size,
-    show_grid, dark_theme, show_legend, show_colorbar, threshold_style, selected_cmap
+    show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
+    show_colorbar, threshold_style, selected_cmap
 )
 
 st.pyplot(fig)
