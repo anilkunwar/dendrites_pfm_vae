@@ -104,7 +104,8 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📐 Label Padding & Offsets")
 
 param_label_pad = st.sidebar.slider("Param Label Vertical Pad", 0.0, 0.15, 0.05, step=0.01)
-tick_label_pad = st.sidebar.slider("Tick Label Horizontal Pad", 0.02, 0.20, 0.08, step=0.01)
+#tick_label_pad = st.sidebar.slider("Tick Label Horizontal Pad", 0.02, 0.20, 0.08, step=0.01)
+tick_label_pad = st.sidebar.slider("Tick Label Horizontal Pad", 0.02, 0.50, 0.08, step=0.01)
 threshold_label_pad = st.sidebar.slider("Threshold Label Horizontal Pad", 0.05, 0.30, 0.12, step=0.01)
 ref_label_pad = st.sidebar.slider("Reference Label Vertical Pad", 0.01, 0.10, 0.03, step=0.005)
 
