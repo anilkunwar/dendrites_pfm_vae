@@ -25,6 +25,11 @@ You can download the high-resolution figures directly for your LaTeX manuscript.
 # --- 3. Sidebar: Appearance & Style ---
 st.sidebar.header("🎨 Figure Appearance")
 
+# === TITLE CONTROLS (NEW) ===
+st.sidebar.subheader("📝 Title Controls")
+show_title = st.sidebar.checkbox("Show Title", True)
+title_text = st.sidebar.text_input("Title Text", "Stability Map for Dendrite Suppression")
+
 # Font Controls
 title_font = st.sidebar.slider("Title Font Size", 10, 40, 20)
 label_font = st.sidebar.slider("Parameter Label Font Size", 8, 30, 16)
@@ -163,7 +168,7 @@ for i in range(len(default_names)):
 
 # --- 5. Plotting Function ---
 def create_plot(params, mins, maxs, thresholds, directions, ref_point, 
-                title_font, label_font, tick_font, threshold_font, reference_font,
+                show_title, title_text, title_font, label_font, tick_font, threshold_font, reference_font,
                 fig_width, fig_height, line_width, trajectory_width, marker_size, 
                 show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
                 show_colorbar, threshold_style, selected_cmap,
@@ -320,9 +325,9 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
                ha='center', va=va, 
                fontsize=reference_font, color=reference_color, fontweight='bold', zorder=10)
 
-    # Final Styling
-    ax.set_title("Stability Map for Dendrite Suppression", 
-                fontsize=title_font, fontweight='bold', pad=25)
+    # === CONDITIONAL TITLE (NEW) ===
+    if show_title:
+        ax.set_title(title_text, fontsize=title_font, fontweight='bold', pad=25)
     
     # Legend
     if show_legend:
@@ -349,7 +354,7 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
 # --- 6. Main Execution ---
 fig = create_plot(
     params, mins, maxs, thresholds, directions, ref_point, 
-    title_font, label_font, tick_font, threshold_font, reference_font,
+    show_title, title_text, title_font, label_font, tick_font, threshold_font, reference_font,
     fig_width, fig_height, line_width, trajectory_width, marker_size,
     show_grid, dark_theme, show_legend, legend_loc, legend_ncol, legend_frame, legend_alpha,
     show_colorbar, threshold_style, selected_cmap,
