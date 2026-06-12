@@ -1,6 +1,6 @@
 # Understanding the battery dendrites through phase field simulations-informed generative AI
 
-
+![Image of Stability Map](images/stability_map.png)
 # Phase Field Method 
 
 A binary two-phase phase-field model including an electrochemical reaction has been implemented. 
