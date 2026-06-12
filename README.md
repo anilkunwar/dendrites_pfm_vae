@@ -38,6 +38,8 @@ A binary two-phase phase-field model including an electrochemical reaction has b
 
 # Lithium-ion Battery Stability Map
 
+Curvature of Free Energy presented in Normalized Unit
+
 [![vaemodel](https://img.shields.io/badge/dendritepreventionmap1-streamlit-yellow)](https://lithium-ion-battery-stability-map1.streamlit.app/) (Dendrite prevention stability map)
 
 [![vaemodel](https://img.shields.io/badge/dendritepreventionmap2-streamlit-yellow)](https://lithium-ion-battery-stability-map2.streamlit.app/) (R2, Dendrite prevention stability map)
@@ -49,6 +51,14 @@ A binary two-phase phase-field model including an electrochemical reaction has b
 [![vaemodel](https://img.shields.io/badge/dendritepreventionmap5-streamlit-yellow)](https://lithium-ion-battery-stability-map5.streamlit.app/) (R5, Dendrite prevention stability map)
 
 [![vaemodel](https://img.shields.io/badge/dendritepreventionmap6-streamlit-yellow)](https://lithium-ion-battery-stability-map6.streamlit.app/) (R6, Dendrite prevention stability map)
+
+
+Curvature of Free Energy presented in Denormalized Unit (Physical Unit)
+
+[![vaemodel](https://img.shields.io/badge/dendritepreventionmap7-streamlit-yellow)](https://lithium-ion-battery-stability-map7.streamlit.app/) (R7, Dendrite prevention stability map)
+
+[![vaemodel](https://img.shields.io/badge/dendritepreventionmap8-streamlit-yellow)](https://lithium-ion-battery-stability-map7.streamlit.app/) (R8, Dendrite prevention stability map)
+
 
 
 
