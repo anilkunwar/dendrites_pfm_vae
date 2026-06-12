@@ -42,9 +42,9 @@ trajectory_width = st.sidebar.slider("Trajectory Line Width", 1.0, 8.0, 3.0)
 marker_size = st.sidebar.slider("Marker Size", 2, 20, 8)
 dpi = st.sidebar.slider("Export DPI", 300, 1200, 600)
 
-# === BAR THICKNESS SLIDER (RESTORED ORIGINAL BEHAVIOR) ===
+# === BAR THICKNESS SLIDER ===
 bar_thickness = st.sidebar.slider("Bar Thickness", 0.02, 0.30, 0.08, step=0.01,
-    help="Width of the safe/unsafe color bands (original default was 0.08)")
+    help="Width of the safe/unsafe color bands")
 
 # Style Toggles
 threshold_style = st.sidebar.selectbox("Threshold Line Style", ["--", "-", "-.", ":"])
@@ -70,33 +70,18 @@ legend_alpha = st.sidebar.slider("Legend Frame Alpha", 0.0, 1.0, 0.9)
 st.sidebar.markdown("---")
 st.sidebar.subheader("📐 Label Padding & Offsets")
 
-# Parameter label (top) vertical padding
-param_label_pad = st.sidebar.slider("Param Label Vertical Pad", 0.0, 0.15, 0.05, step=0.01,
-    help="Vertical distance between parameter name and top of axis bar")
+param_label_pad = st.sidebar.slider("Param Label Vertical Pad", 0.0, 0.15, 0.05, step=0.01)
+tick_label_pad = st.sidebar.slider("Tick Label Horizontal Pad", 0.02, 0.20, 0.08, step=0.01)
+threshold_label_pad = st.sidebar.slider("Threshold Label Horizontal Pad", 0.05, 0.30, 0.12, step=0.01)
+ref_label_pad = st.sidebar.slider("Reference Label Vertical Pad", 0.01, 0.10, 0.03, step=0.005)
 
-# Tick label horizontal padding
-tick_label_pad = st.sidebar.slider("Tick Label Horizontal Pad", 0.02, 0.20, 0.08, step=0.01,
-    help="Horizontal distance between tick marks and their numeric labels")
-
-# Threshold label horizontal padding
-threshold_label_pad = st.sidebar.slider("Threshold Label Horizontal Pad", 0.05, 0.30, 0.12, step=0.01,
-    help="Horizontal distance between threshold line and its value label")
-
-# Reference point label vertical padding
-ref_label_pad = st.sidebar.slider("Reference Label Vertical Pad", 0.01, 0.10, 0.03, step=0.005,
-    help="Vertical distance between reference marker and its value label")
-
-# Reference label offset direction
 ref_label_position = st.sidebar.selectbox(
     "Reference Label Position",
     ["Above", "Below", "Auto (smart)"],
-    index=2,
-    help="'Auto' places label above if space permits, otherwise below to avoid overlap"
+    index=2
 )
 
-# Minimum vertical spacing between labels
-min_label_spacing = st.sidebar.slider("Min Label Spacing", 0.0, 0.10, 0.02, step=0.005,
-    help="Minimum vertical gap to prevent threshold and reference labels from overlapping")
+min_label_spacing = st.sidebar.slider("Min Label Spacing", 0.0, 0.10, 0.02, step=0.005)
 
 # Colormap Selection
 st.sidebar.markdown("---")
@@ -126,7 +111,13 @@ selected_cmap = st.sidebar.selectbox(
 # --- 4. Sidebar: Control Parameters ---
 st.sidebar.header("⚙️ Control Parameters")
 
-default_names = [r'$A_s$' + '\n(J/mol)', r'$\kappa$' + '\n($10^{-10}$ J/m)', r'$U$' + '\n(V)', r'$\psi$' + '\n($10^{-3}$ s$^{-1}$)']
+# FIXED: Use raw strings and proper math mode separation
+default_names = [
+    r'$A_s$' + '\n(J/mol)',
+    r'$\kappa$' + '\n($10^{-10}$ J/m)',
+    r'$U$' + '\n(V)',
+    r'$\psi$' + '\n($10^{-3}$ s$^{-1}$)'
+]
 default_mins = [0.0, 1.0, -0.5, 0.0]
 default_maxs = [1.0, 10.0, -0.2, 5.0]
 default_thresholds = [0.05, 4.0, -0.33, 1.5]
@@ -228,7 +219,7 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
     if show_grid:
         ax.grid(True, linestyle=':', alpha=0.6, zorder=0)
 
-    # === PLOT PARAMETERS BARS (RESTORED ORIGINAL STRUCTURE) ===
+    # Plot Parameters Bars
     for i in range(N):
         # Main vertical axis line
         ax.plot([x_pos[i], x_pos[i]], [0, 1], color=text_color, linewidth=line_width, zorder=1)
@@ -245,7 +236,7 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
             ax.text(x_pos[i] - tick_label_pad, t, f'{val:.2g}', 
                     ha='right', va='center', fontsize=tick_font)
             
-        # Threshold and Safe/Unsafe Regions — USING bar_thickness SLIDER
+        # Threshold and Safe/Unsafe Regions — using bar_thickness slider
         t_norm = max(0, min(1, thresh_norm[i]))
         
         if directions[i] == 'lower':  # Safe is > Threshold (Top region)
@@ -258,7 +249,7 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
             ax.plot([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], [t_norm, t_norm], 
                    color=unsafe_color, linestyle=threshold_style, linewidth=line_width, zorder=2)
             
-            # Threshold label with configurable horizontal padding — HIGH ZORDER=10
+            # Threshold label — HIGH ZORDER=10 to stay on top
             ax.text(x_pos[i] + bar_thickness + threshold_label_pad, t_norm, 
                    f'{thresholds[i]:.2g}', va='center', ha='left', 
                    color=unsafe_color, fontsize=threshold_font, fontweight='bold', zorder=10)
@@ -272,7 +263,7 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
             ax.plot([x_pos[i]-bar_thickness, x_pos[i]+bar_thickness], [t_norm, t_norm], 
                    color=unsafe_color, linestyle=threshold_style, linewidth=line_width, zorder=2)
             
-            # Threshold label with configurable horizontal padding — HIGH ZORDER=10
+            # Threshold label — HIGH ZORDER=10 to stay on top
             ax.text(x_pos[i] + bar_thickness + threshold_label_pad, t_norm, 
                    f'{thresholds[i]:.2g}', va='center', ha='left', 
                    color=unsafe_color, fontsize=threshold_font, fontweight='bold', zorder=10)
@@ -293,12 +284,11 @@ def create_plot(params, mins, maxs, thresholds, directions, ref_point,
         label='Reference Design'
     )
     
-    # === REFERENCE VALUE LABELS — HIGH ZORDER=10 + SMART POSITIONING ===
+    # Reference Value Labels — HIGH ZORDER=10 + SMART POSITIONING
     for i in range(N):
         t_norm = max(0, min(1, thresh_norm[i]))
         ref_val = r_norm[i]
         
-        # Determine vertical position based on settings and proximity to threshold
         distance_to_thresh = abs(ref_val - t_norm)
         
         if ref_label_position == "Above":
