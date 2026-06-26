@@ -1,1 +1,7 @@
-
+streamlit
+numpy
+pandas
+bokeh
+scipy
+plotly
+matplotlib
